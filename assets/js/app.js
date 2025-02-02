@@ -35,7 +35,7 @@ document.addEventListener("DOMContentLoaded", function () {
       firebase.auth().signInWithEmailAndPassword(email, password)
         .then((userCredential) => {
           console.log("Usuario autenticado:", userCredential.user);
-          window.location.href = '../dashboard.html';  // Redirigir al dashboard
+          window.location.href = '../Inventario-y-Ventas/dashboard.html';  // Redirigir al dashboard
         })
         .catch((error) => {
           console.error("Error al iniciar sesión:", error.message);
