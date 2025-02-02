@@ -1,0 +1,75 @@
+<!-- inventory.html -->
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventario - Sistema de Gestión</title>
+    <link rel="stylesheet" href="assets/css/inventary.css">
+</head>
+
+<body>
+    <!-- Barra de navegación -->
+    <nav class="navbar">
+        <div class="navbar-logo">
+            <a href="#">Logo</a>
+        </div>
+        <div class="navbar-links">
+            <ul>
+                <li><a href="dashboard.html">Inicio</a></li>
+                <li><a href="inventory.html">Inventario</a></li>
+                <li><a href="sales.html">Ventas</a></li>
+                <li><a href="attendance.html">Asistencia</a></li>
+                <li><a href="invoices.html">Facturación</a></li>
+                <div class="navbar-user">
+                    <span>Hola, Usuario</span>
+                    <button id="logoutButton">Cerrar sesión</button>
+                </div>
+    </nav>
+
+    <!-- Sección de Inventario -->
+    <div class="inventory">
+        <h1>Inventario de Productos</h1>
+        <button onclick="showAddProductForm()">Añadir Producto</button>
+        <table id="inventoryTable">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Cantidad</th>
+                    <th>Precio</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Los productos se llenarán aquí dinámicamente -->
+            </tbody>
+        </table>
+
+        <!-- Formulario para añadir y actualizar producto -->
+        <div id="addProductForm" class="form-container" style="display: none;">
+            <h2 id="formTitle">Nuevo Producto</h2>
+            <form id="productForm">
+                <input type="hidden" id="productId" /> <!-- Campo oculto para almacenar el ID del producto -->
+                <label for="productName">Nombre del Producto</label>
+                <input type="text" id="productName" required>
+
+                <label for="productQuantity">Cantidad</label>
+                <input type="number" id="productQuantity" required>
+
+                <label for="productPrice">Precio</label>
+                <input type="number" id="productPrice" required>
+
+                <button type="submit">Guardar Producto</button>
+                <button type="button" onclick="hideAddProductForm()">Cancelar</button>
+            </form>
+        </div>
+    </div>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="assets/js/app.js"></script>
+    <script src="assets/js/inventory.js"></script>
+</body>
+
+</html>

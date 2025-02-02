@@ -1,0 +1,73 @@
+<!-- invoices.html -->
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facturación - Sistema de Gestión</title>
+    <link rel="stylesheet" href="assets/css/invoices.css">
+</head>
+
+<body>
+    <!-- Barra de navegación -->
+    <nav class="navbar">
+        <div class="navbar-logo">
+            <a href="#">Logo</a>
+        </div>
+        <div class="navbar-links">
+            <ul>
+                <li><a href="dashboard.html">Inicio</a></li>
+                <li><a href="inventory.html">Inventario</a></li>
+                <li><a href="sales.html">Ventas</a></li>
+                <li><a href="attendance.html">Asistencia</a></li>
+                <li><a href="invoices.html">Facturación</a></li>
+                <div class="navbar-user">
+                    <span>Hola, Usuario</span>
+                    <button id="logoutButton">Cerrar sesión</button>
+                </div>
+    </nav>
+
+    <!-- Sección de Facturación -->
+    <div class="invoices">
+        <h1>Generar Factura</h1>
+
+        <form id="invoiceForm">
+            <label for="customerName">Nombre del Cliente</label>
+            <input type="text" id="customerName" required>
+
+            <label for="saleSelect">Venta</label>
+            <select id="saleSelect" required>
+                <!-- Opciones de ventas se llenarán aquí dinámicamente -->
+            </select>
+
+            <button type="submit">Generar Factura</button>
+        </form>
+
+        <h2>Historial de Facturación</h2>
+        <table id="invoiceTable">
+            <thead>
+                <tr>
+                    <th>Factura</th>
+                    <th>Cliente</th>
+                    <th>Total</th>
+                    <th>Fecha</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Las facturas se llenarán aquí dinámicamente -->
+            </tbody>
+        </table>
+    </div>
+    <script type="text/javascript" src="https://cdn.emailjs.com/dist/email.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <!-- Agregar jsPDF desde el CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="assets/js/app.js"></script>
+    <script src="assets/js/invoices.js"></script>
+</body>
+
+</html>

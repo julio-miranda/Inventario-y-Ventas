@@ -1,0 +1,72 @@
+<!-- dashboard.html -->
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Sistema de Gestión</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+  <!-- Barra de navegación -->
+  <nav class="navbar">
+    <div class="navbar-logo">
+      <a href="#">Logo</a>
+    </div>
+    <div class="navbar-links">
+      <ul>
+        <li><a href="dashboard.html">Inicio</a></li>
+        <li><a href="inventory.html">Inventario</a></li>
+        <li><a href="sales.html">Ventas</a></li>
+        <li><a href="attendance.html">Asistencia</a></li>
+        <li><a href="invoices.html">Facturación</a></li>
+        <div class="navbar-user">
+          <span>Hola, Usuario</span>
+          <button id="logoutButton">Cerrar sesión</button>
+        </div>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Contenido del Dashboard -->
+  <div class="dashboard">
+    <h1>Bienvenido al Sistema de Gestión</h1>
+    <div>
+      <label for="salesGoal">Meta de Ventas del Mes:</label>
+      <input type="number" id="salesGoal" value="1000" min="0">
+      <button onclick="updateSalesGoal()">Actualizar Meta</button>
+    </div>
+    <div class="chart-container">
+      <canvas id="salesChart"></canvas> <!-- Gráfico de ventas -->
+    </div>
+    <div>
+      <!-- Tabla de Ventas del Mes -->
+      <h2>Ventas del Mes</h2>
+      <div class="table-container">
+        <table id="salesTable">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Total</th>
+              <th>Fecha</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Las filas de ventas se agregarán dinámicamente aquí -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script src="assets/js/chart-utils.js"></script>
+</body>
+
+</html>
