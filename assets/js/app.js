@@ -35,7 +35,7 @@ document.addEventListener("DOMContentLoaded", function () {
       firebase.auth().signInWithEmailAndPassword(email, password)
         .then((userCredential) => {
           console.log("Usuario autenticado:", userCredential.user);
-          window.location.href = '../dashboard.html';  // Redirigir al dashboard
+          window.location.href = 'https://julio-miranda.github.io/Inventario-y-Ventas/dashboard.html';  // Redirigir al dashboard
         })
         .catch((error) => {
           console.error("Error al iniciar sesión:", error.message);
@@ -51,20 +51,10 @@ document.addEventListener("DOMContentLoaded", function () {
   if (logoutButton) {
     logoutButton.addEventListener('click', function () {
       firebase.auth().signOut().then(() => {
-        window.location.href = '../index.html';
+        window.location.href = 'https://julio-miranda.github.io/Inventario-y-Ventas/index.html';
       }).catch((error) => {
         console.error("Error al cerrar sesión:", error.message);
       });
     });
   }
 });
-
-document.addEventListener("DOMContentLoaded", () => {
-  const menuToggle = document.querySelector(".menu-toggle");
-  const navbarLinks = document.querySelector(".navbar-links");
-
-  menuToggle.addEventListener("click", () => {
-    navbarLinks.classList.toggle("active");
-  });
-});
-
