@@ -51,7 +51,7 @@ document.addEventListener("DOMContentLoaded", function () {
   if (logoutButton) {
     logoutButton.addEventListener('click', function () {
       firebase.auth().signOut().then(() => {
-        window.location.href = '../login.html';
+        window.location.href = '../index.html';
       }).catch((error) => {
         console.error("Error al cerrar sesión:", error.message);
       });
