@@ -1,10 +1,10 @@
 // assets/js/chart-utils.js
 function drawSalesChart(salesData, salesGoal) {
-  const ctx = document.getElementById('salesChart').getContext('2d');  
+  const ctx = document.getElementById('salesChart').getContext('2d');
 
   // Verifica si window.salesChart ya está definido antes de destruirlo
   if (window.salesChart instanceof Chart) {
-      window.salesChart.destroy();
+    window.salesChart.destroy();
   }
 
   window.salesChart = new Chart(ctx, {
@@ -36,12 +36,16 @@ function updateSalesGoal() {
 
 function getSalesData(salesGoal) {
   const db = firebase.firestore();
-  db.collection("ventas").get().then((querySnapshot) => {
-      let totalSales = 0;
-      querySnapshot.forEach((doc) => {
-          totalSales += doc.data().total;
-      });
-      drawSalesChart(totalSales, salesGoal);
+
+  // Usar la colección "facturas" en lugar de "ventas"
+  db.collection("facturas").onSnapshot((snapshot) => {
+    let totalSales = 0;
+
+    snapshot.forEach((doc) => {
+      totalSales += doc.data().total; // Sumar el total de la factura
+    });
+
+    drawSalesChart(totalSales, salesGoal);
   });
 }
 
@@ -53,27 +57,33 @@ getSalesData(initialGoal);
 function loadSalesOfTheMonth() {
   const db = firebase.firestore();
   const salesTableBody = document.getElementById('salesTable').getElementsByTagName('tbody')[0];
-  
+
   // Obtener la fecha actual y el primer día del mes
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  
+
   // Consulta para obtener las ventas del mes
   db.collection("facturas")
-    .where("date", ">=", startOfMonth)  // Asegúrate de tener un campo `date` en cada venta
+    .where("date", ">=", startOfMonth)
     .get()
     .then((querySnapshot) => {
-      salesTableBody.innerHTML = '';  // Limpiar la tabla antes de llenarla
-      
+      console.log("Documentos encontrados:", querySnapshot.size);  // Ver cuántos documentos se obtienen
+      salesTableBody.innerHTML = '';
+
       querySnapshot.forEach((doc) => {
         const sale = doc.data();
-        const saleDate = new Date(sale.date.seconds * 1000);  // Convierte la fecha Firestore a Date
+        console.log("Venta encontrada:", sale);  // Ver los datos de cada venta
+        if (!sale.date || !sale.date.seconds) {
+          console.error("Fecha inválida en documento:", doc.id, sale);
+          return;
+        }
+        const saleDate = new Date(sale.date.seconds * 1000);
         const row = salesTableBody.insertRow();
         row.innerHTML = `
-          <td>${sale.customerName}</td>
-          <td>$${sale.total}</td>
-          <td>${saleDate.toLocaleDateString()}</td>
-        `;
+        <td>${sale.customerName}</td>
+        <td>$${sale.total}</td>
+        <td>${saleDate.toLocaleDateString()}</td>
+      `;
       });
     })
     .catch((error) => {
