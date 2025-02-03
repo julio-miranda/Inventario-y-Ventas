@@ -56,7 +56,12 @@ invoiceForm.addEventListener('submit', function (e) {
                 date: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
                 console.log("Factura registrada correctamente");
-                generatePDF(invoiceNumber, customerName, saleTotal, saleDetails);
+                db.collection("facturas").where("invoiceNumber", "==", invoiceNumber).get().then((querySnapshot) => {
+                    querySnapshot.forEach((doc) => {
+                        const invoice = doc.data();
+                        generatePDF(invoiceNumber, customerName, saleTotal, saleDetails, new Date(invoice.date.seconds * 1000).toLocaleString());
+                    });
+                });
                 loadInvoices();  // Recargar el historial de facturación
             }).catch((error) => {
                 console.error("Error al registrar la factura: ", error);

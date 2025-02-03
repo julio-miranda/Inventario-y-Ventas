@@ -42,14 +42,31 @@
         <form id="saleForm">
             <label for="productSelect">Producto</label>
             <select id="productSelect" required>
-                <!-- Opciones de productos se llenarán aquí dinámicamente -->
+                <!-- Opciones se llenarán dinámicamente -->
             </select>
 
             <label for="saleQuantity">Cantidad</label>
-            <input type="number" id="saleQuantity" required>
+            <input type="number" id="saleQuantity" min="1" required>
 
-            <button type="submit">Registrar Venta</button>
+            <button type="button" id="addProductButton">Agregar Producto</button>
         </form>
+
+        <h2>Carrito de Venta</h2>
+        <table id="cartTable">
+            <thead>
+                <tr>
+                    <th>Producto</th>
+                    <th>Cantidad</th>
+                    <th>Total</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Aquí se agregan los productos temporalmente -->
+            </tbody>
+        </table>
+
+        <button id="registerSaleButton">Registrar Venta</button>
 
         <h2>Ventas Realizadas</h2>
         <table id="salesTable">

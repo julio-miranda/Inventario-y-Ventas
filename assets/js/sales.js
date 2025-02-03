@@ -1,82 +1,144 @@
 // assets/js/sales.js
 const db = firebase.firestore();
 const productSelect = document.getElementById('productSelect');
-const saleForm = document.getElementById('saleForm');
+const saleQuantity = document.getElementById('saleQuantity');
+const addProductButton = document.getElementById('addProductButton');
+const cartTable = document.getElementById('cartTable').getElementsByTagName('tbody')[0];
+const registerSaleButton = document.getElementById('registerSaleButton');
 const salesTable = document.getElementById('salesTable').getElementsByTagName('tbody')[0];
-productName = "";
 
-// Cargar productos en el selector para registrar ventas
+let cart = []; // Lista de productos en la venta actual
+
+// Cargar productos en el selector
 function loadProducts() {
-  db.collection("productos").get().then((querySnapshot) => {
-    productSelect.innerHTML = '';  // Limpiar el selector antes de llenarlo
-    querySnapshot.forEach((doc) => {
-      const product = doc.data();
-      const option = document.createElement('option');
-      option.value = doc.id;  // Usamos el ID del producto como valor
-      option.textContent = `${product.name} - $${product.price}`;
-      productSelect.appendChild(option);
+    db.collection("productos").get().then((querySnapshot) => {
+        productSelect.innerHTML = ''; // Limpiar antes de llenar
+        querySnapshot.forEach((doc) => {
+            const product = doc.data();
+            const option = document.createElement('option');
+            option.value = doc.id;
+            option.textContent = `${product.name} - $${product.price}`;
+            productSelect.appendChild(option);
+        });
     });
-  });
 }
 
-// Función para registrar una venta
-saleForm.addEventListener('submit', function(e) {
-  e.preventDefault();
+// Agregar producto al carrito
+function addToCart() {
+    const productId = productSelect.value;
+    const quantity = parseInt(saleQuantity.value);
 
-  const productId = productSelect.value;
-  const saleQuantity = parseInt(document.getElementById('saleQuantity').value);
-
-  // Obtener datos del producto
-  db.collection("productos").doc(productId).get().then((doc) => {
-    const product = doc.data();
-    productName = product.name;
-    const productPrice = product.price;
-    const productStock = product.quantity;
-
-    // Verificar que haya suficiente stock
-    if (saleQuantity > productStock) {
-      alert('No hay suficiente stock para esta venta.');
-      return;
+    if (!productId || quantity <= 0) {
+        alert("Selecciona un producto y una cantidad válida.");
+        return;
     }
 
-    // Calcular el total de la venta
-    const totalSale = saleQuantity * productPrice;
+    db.collection("productos").doc(productId).get().then((doc) => {
+        if (doc.exists) {
+            const product = doc.data();
 
-    // Registrar la venta en la colección de ventas
-    db.collection("ventas").add({
-      productId: productId,
-      productName: productName,
-      quantity: saleQuantity,
-      total: totalSale,
-      timestamp: firebase.firestore.FieldValue.serverTimestamp()
-    }).then(() => {
-      // Actualizar el inventario
-      db.collection("productos").doc(productId).update({
-        quantity: productStock - saleQuantity
-      }).then(() => {
-        loadSales();  // Recargar la lista de ventas
-        loadProducts();  // Recargar los productos disponibles
-      });
-    });
-  });
-});
+            // Verificar stock
+            if (quantity > product.quantity) {
+                alert("No hay suficiente stock.");
+                return;
+            }
 
-// Cargar ventas realizadas
-function loadSales() {
-  db.collection("ventas").orderBy("timestamp", "desc").get().then((querySnapshot) => {
-    salesTable.innerHTML = '';  // Limpiar la tabla de ventas
-    querySnapshot.forEach((doc) => {
-      const sale = doc.data();
-      const row = salesTable.insertRow();
-      row.innerHTML = `
-        <td>${sale.productName}</td>
-        <td>${sale.quantity}</td>
-        <td>$${sale.total}</td>
-      `;
+            // Agregar al carrito
+            const existingProduct = cart.find(item => item.productId === productId);
+            if (existingProduct) {
+                existingProduct.quantity += quantity;
+                existingProduct.total += quantity * product.price;
+            } else {
+                cart.push({
+                    productId,
+                    productName: product.name,
+                    quantity,
+                    price: product.price,
+                    total: quantity * product.price
+                });
+            }
+
+            updateCartTable();
+        }
     });
-  });
 }
 
-// Cargar los productos y las ventas al cargar la página
+// Actualizar tabla del carrito
+function updateCartTable() {
+    cartTable.innerHTML = "";
+    cart.forEach((item, index) => {
+        const row = cartTable.insertRow();
+        row.innerHTML = `
+            <td>${item.productName}</td>
+            <td>${item.quantity}</td>
+            <td>$${item.total.toFixed(2)}</td>
+            <td><button onclick="removeFromCart(${index})">🗑️</button></td>
+        `;
+    });
+}
+
+// Eliminar producto del carrito
+function removeFromCart(index) {
+    cart.splice(index, 1);
+    updateCartTable();
+}
+
+// Registrar la venta final
+registerSaleButton.addEventListener("click", function () {
+    if (cart.length === 0) {
+        alert("Agrega productos antes de registrar la venta.");
+        return;
+    }
+
+    const totalSale = cart.reduce((sum, item) => sum + item.total, 0);
+
+    db.collection("ventas").add({
+        products: cart,
+        total: totalSale,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    }).then(() => {
+        // Actualizar stock en la base de datos
+        cart.forEach(item => {
+            db.collection("productos").doc(item.productId).update({
+                quantity: firebase.firestore.FieldValue.increment(-item.quantity)
+            });
+        });
+
+        // Limpiar carrito y recargar ventas
+        cart = [];
+        updateCartTable();
+        loadSales();
+        alert("Venta registrada correctamente.");
+    });
+});
+
+// Cargar ventas en la tabla de historial
+function loadSales() {
+    db.collection("ventas").orderBy("timestamp", "desc").onSnapshot((querySnapshot) => {
+        salesTable.innerHTML = ''; // Limpiar la tabla
+        querySnapshot.forEach((doc) => {
+            const sale = doc.data();
+
+            // Verificar si sale.products es un array antes de usar .map()
+            const productsList = Array.isArray(sale.products)
+                ? sale.products.map(p => `<li>${p.productName}</li>`).join('')
+                : "<li>Datos no disponibles</li>";
+            const productsList2 = Array.isArray(sale.products)
+                ? sale.products.map(p => `<li>x${p.quantity}</li>`).join('')
+                : "<li>Datos no disponibles</li>";
+            const row = salesTable.insertRow();
+            row.innerHTML = `
+                <td><ul>${productsList}</ul></td>
+                <td><ul>${productsList2}</ul></td>
+                <td>$${sale.total.toFixed(2)}</td>
+            `;
+        });
+    });
+}
+
+// Agregar evento para el botón de agregar producto al carrito
+addProductButton.addEventListener("click", addToCart);
+
+// Cargar los productos y ventas al iniciar
 loadProducts();
 loadSales();
