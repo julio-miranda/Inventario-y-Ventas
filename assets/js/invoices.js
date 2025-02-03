@@ -6,15 +6,31 @@ const invoiceForm = document.getElementById('invoiceForm');
 const invoiceTable = document.getElementById('invoiceTable').getElementsByTagName('tbody')[0];
 
 // Cargar ventas en el selector para generar facturas
+// Cargar ventas en el selector para generar facturas
 function loadSalesForInvoice() {
     db.collection("ventas").get().then((querySnapshot) => {
         saleSelect.innerHTML = '';  // Limpiar el selector antes de llenarlo
-        querySnapshot.forEach((doc) => {
-            const sale = doc.data();
-            const option = document.createElement('option');
-            option.value = doc.id;  // Usamos el ID de la venta como valor
-            option.textContent = `Venta #${doc.id} - $${sale.total}`;
-            saleSelect.appendChild(option);
+
+        // Primero, obtenemos todas las facturas ya registradas
+        db.collection("facturas").get().then((facturasSnapshot) => {
+            const facturadas = [];
+            facturasSnapshot.forEach((facturaDoc) => {
+                const factura = facturaDoc.data();
+                facturadas.push(factura.saleId); // Guardamos el saleId de las facturas ya generadas
+            });
+
+            querySnapshot.forEach((doc) => {
+                const sale = doc.data();
+                const saleId = doc.id;
+                
+                // Solo agregamos al selector aquellas ventas que no han sido facturadas
+                if (!facturadas.includes(saleId)) {
+                    const option = document.createElement('option');
+                    option.value = saleId;  // Usamos el ID de la venta como valor
+                    option.textContent = `Venta #${saleId} - $${sale.total}`;
+                    saleSelect.appendChild(option);
+                }
+            });
         });
     });
 }
@@ -56,22 +72,13 @@ invoiceForm.addEventListener('submit', function (e) {
                 date: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
                 console.log("Factura registrada correctamente");
-
-                // Eliminar la opción seleccionada del selector de ventas
-                const selectedOption = saleSelect.querySelector(`option[value="${saleId}"]`);
-                if (selectedOption) {
-                    selectedOption.remove();
-                }
-
-                // Recargar el historial de facturación
-                loadInvoices();
-
                 db.collection("facturas").where("invoiceNumber", "==", invoiceNumber).get().then((querySnapshot) => {
                     querySnapshot.forEach((doc) => {
                         const invoice = doc.data();
                         generatePDF(invoiceNumber, customerName, saleTotal, saleDetails, new Date(invoice.date.seconds * 1000).toLocaleString());
                     });
                 });
+                loadInvoices();  // Recargar el historial de facturación
             }).catch((error) => {
                 console.error("Error al registrar la factura: ", error);
             });
@@ -136,38 +143,38 @@ function downloadInvoice(invoiceNumber) {
 
     // Realizamos una consulta para encontrar el documento con el invoiceNumber
     db.collection("facturas").where("invoiceNumber", "==", invoiceNumber).get()
-        .then((querySnapshot) => {
-            if (!querySnapshot.empty) {  // Verifica que haya resultados
-                const invoice = querySnapshot.docs[0].data();  // Obtenemos el primer documento que coincida
-                console.log(invoice);  // Verifica el contenido del documento
+    .then((querySnapshot) => {
+        if (!querySnapshot.empty) {  // Verifica que haya resultados
+            const invoice = querySnapshot.docs[0].data();  // Obtenemos el primer documento que coincida
+            console.log(invoice);  // Verifica el contenido del documento
 
-                // Verifica si existe el campo 'saleId'
-                if (invoice.saleId) {
-                    // Obtener los detalles de los productos de la venta
-                    db.collection("ventas").doc(invoice.saleId).collection("productos").get().then((productosSnapshot) => {
-                        const saleDetails = [];
-                        productosSnapshot.forEach((productoDoc) => {
-                            const producto = productoDoc.data();
-                            saleDetails.push({
-                                product: producto.nombre,
-                                price: producto.precio,
-                                quantity: producto.cantidad,
-                                total: producto.precio * producto.cantidad
-                            });
+            // Verifica si existe el campo 'saleId'
+            if (invoice.saleId) {
+                // Obtener los detalles de los productos de la venta
+                db.collection("ventas").doc(invoice.saleId).collection("productos").get().then((productosSnapshot) => {
+                    const saleDetails = [];
+                    productosSnapshot.forEach((productoDoc) => {
+                        const producto = productoDoc.data();
+                        saleDetails.push({
+                            product: producto.nombre,
+                            price: producto.precio,
+                            quantity: producto.cantidad,
+                            total: producto.precio * producto.cantidad
                         });
-
-                        // Generar el PDF de la factura
-                        generatePDF(invoice.invoiceNumber, invoice.customerName, invoice.total, saleDetails, new Date(invoice.date.seconds * 1000).toLocaleString());
                     });
-                } else {
-                    console.error('El campo saleId no está disponible en la factura');
-                }
+
+                    // Generar el PDF de la factura
+                    generatePDF(invoice.invoiceNumber, invoice.customerName, invoice.total, saleDetails, new Date(invoice.date.seconds * 1000).toLocaleString());
+                });
             } else {
-                console.error('No se encontró la factura con el número:', invoiceNumber);
+                console.error('El campo saleId no está disponible en la factura');
             }
-        }).catch((error) => {
-            console.error('Error al obtener la factura:', error);
-        });
+        } else {
+            console.error('No se encontró la factura con el número:', invoiceNumber);
+        }
+    }).catch((error) => {
+        console.error('Error al obtener la factura:', error);
+    });
 }
 
 // Cargar las ventas y facturas al cargar la página
