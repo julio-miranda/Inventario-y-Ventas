@@ -44,7 +44,7 @@ function hideAddProductForm() {
 }
 
 // Función para manejar el formulario de añadir o actualizar producto
-document.getElementById('productForm').addEventListener('submit', function(e) {
+document.getElementById('productForm').addEventListener('submit', function (e) {
   e.preventDefault();
 
   const productId = document.getElementById('productId').value;
@@ -79,13 +79,13 @@ document.getElementById('productForm').addEventListener('submit', function(e) {
 function editProduct(productId) {
   db.collection("productos").doc(productId).get().then((doc) => {
     const product = doc.data();
-    
+
     // Rellenar el formulario con los datos del producto
     document.getElementById('productId').value = productId;
     document.getElementById('productName').value = product.name;
     document.getElementById('productQuantity').value = product.quantity;
     document.getElementById('productPrice').value = product.price;
-    
+
     // Mostrar el formulario con los datos del producto
     document.getElementById('addProductForm').style.display = 'block';
     document.getElementById('formTitle').innerText = 'Actualizar Producto';
@@ -94,3 +94,13 @@ function editProduct(productId) {
 
 // Cargar los productos cuando se carga la página
 loadInventory();
+
+// Verificar si el usuario está autenticado
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) {
+    // Redirigir al login si no está autenticado
+    window.location.href = 'index.html';
+  } else {
+    console.log('Usuario autenticado:', user);
+  }
+});

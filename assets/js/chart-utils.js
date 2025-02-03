@@ -67,12 +67,10 @@ function loadSalesOfTheMonth() {
     .where("date", ">=", startOfMonth)
     .get()
     .then((querySnapshot) => {
-      console.log("Documentos encontrados:", querySnapshot.size);  // Ver cuántos documentos se obtienen
       salesTableBody.innerHTML = '';
 
       querySnapshot.forEach((doc) => {
         const sale = doc.data();
-        console.log("Venta encontrada:", sale);  // Ver los datos de cada venta
         if (!sale.date || !sale.date.seconds) {
           console.error("Fecha inválida en documento:", doc.id, sale);
           return;
@@ -93,3 +91,12 @@ function loadSalesOfTheMonth() {
 
 // Cargar las ventas al cargar el dashboard
 loadSalesOfTheMonth();
+// Verificar si el usuario está autenticado
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) {
+    // Redirigir al login si no está autenticado
+    window.location.href = 'index.html';
+  } else {
+    console.log('Usuario autenticado:', user);
+  }
+});

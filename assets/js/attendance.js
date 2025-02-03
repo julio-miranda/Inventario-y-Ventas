@@ -97,3 +97,13 @@ saveEmployeeButton.addEventListener('click', () => {
 // Cargar datos al inicio
 loadEmployees();
 loadAttendance();
+
+// Verificar si el usuario está autenticado
+firebase.auth().onAuthStateChanged(user => {
+    if (!user) {
+        // Redirigir al login si no está autenticado
+        window.location.href = 'index.html';
+    } else {
+        console.log('Usuario autenticado:', user);
+    }
+});

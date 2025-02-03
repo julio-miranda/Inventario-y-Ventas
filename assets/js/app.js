@@ -16,10 +16,12 @@ const firebaseConfig = {
   measurementId: "G-ELPGSV8ZLP"
 };
 
-// Inicializa Firebase solo si no está inicializado
+// Inicializar Firebase
 if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
   console.log("Firebase inicializado correctamente.");
+} else {
+  firebase.app(); // Usar la app ya inicializada
 }
 
 // Función para manejar el login
@@ -40,7 +42,7 @@ document.addEventListener("DOMContentLoaded", function () {
         .catch((error) => {
           console.error("Error al iniciar sesión:", error.message);
           const errorElement = document.getElementById('error-message');
-          errorElement.textContent = error.message;
+          errorElement.textContent = "Correo o contraseña incorrectos. Por favor intente nuevamente.";
           errorElement.style.display = 'block';
         });
     });
@@ -51,7 +53,7 @@ document.addEventListener("DOMContentLoaded", function () {
   if (logoutButton) {
     logoutButton.addEventListener('click', function () {
       firebase.auth().signOut().then(() => {
-        window.location.href = 'index.html';
+        window.location.href = 'index.html'; // Redirigir al login después de cerrar sesión
       }).catch((error) => {
         console.error("Error al cerrar sesión:", error.message);
       });
@@ -62,10 +64,9 @@ document.addEventListener("DOMContentLoaded", function () {
 document.addEventListener("DOMContentLoaded", () => {
   const menuToggle = document.querySelector(".menu-toggle");
   const navbarLinks = document.querySelector(".navbar-links");
-
-  menuToggle.addEventListener("click", () => {
-    navbarLinks.classList.toggle("active");
-  });
-
+  if (menuToggle !== null) {
+    menuToggle.addEventListener("click", () => {
+      navbarLinks.classList.toggle("active");
+    });
+  }
 });
-

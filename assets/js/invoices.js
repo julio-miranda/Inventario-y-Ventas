@@ -189,3 +189,13 @@ function downloadInvoice(invoiceNumber) {
 // Cargar las ventas y facturas al cargar la página
 loadSalesForInvoice();
 loadInvoices();
+
+// Verificar si el usuario está autenticado
+firebase.auth().onAuthStateChanged(user => {
+    if (!user) {
+        // Redirigir al login si no está autenticado
+        window.location.href = 'index.html';
+    } else {
+        console.log('Usuario autenticado:', user);
+    }
+});
