@@ -126,11 +126,6 @@ button {
 }
 
 @media (max-width: 1024px) {
-    
-    .invoices{
-        margin: 20px;
-    }
-
     .navbar-links {
         display: none;
         flex-direction: column;
