@@ -14,7 +14,6 @@
             <a href="#">Logo</a>
         </div>
 
-        <!-- Menú de navegación -->
         <div class="navbar-links">
             <ul>
                 <li><span style="color:white">Hola, Usuario</span></li>
@@ -29,34 +28,12 @@
             </ul>
         </div>
 
-        <!-- Botón hamburguesa -->
         <button class="menu-toggle" aria-label="Abrir menú">☰</button>
     </nav>
 
-
-    <!-- Contenido de la página (Formulario, tabla, etc.) -->
     <div class="attendance">
         <h1>Registrar Asistencia</h1>
 
-        <!-- Botón para agregar un nuevo empleado -->
-        <button id="addEmployeeButton" class="add-employee-btn">Registrar Nuevo Empleado</button>
-
-        <!-- Formulario de nuevo empleado (oculto inicialmente) -->
-        <div id="newEmployeeForm" style="display: none;">
-            <h2>Nuevo Empleado</h2>
-            <label for="newEmployeeName">Nombre</label>
-            <input type="text" id="newEmployeeName" required>
-
-            <label for="newEmployeePosition">Posición</label>
-            <input type="text" id="newEmployeePosition" required>
-
-            <label for="newEmployeePhone">Teléfono</label>
-            <input type="text" id="newEmployeePhone" required>
-
-            <button id="saveEmployeeButton">Guardar Empleado</button>
-        </div>
-
-        <!-- Formulario para registrar asistencia -->
         <form id="attendanceForm">
             <label for="employeeSelect">Empleado</label>
             <select id="employeeSelect" required>
@@ -87,12 +64,10 @@
         </table>
     </div>
 
-    <!-- Scripts -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="assets/js/app.js"></script>
     <script src="assets/js/attendance.js"></script>
 </body>
-
 </html>

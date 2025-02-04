@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administrar Empleados - Sistema de Gestión</title>
+    <link rel="stylesheet" href="assets/css/employees.css">
+</head>
+
+<body>
+    <!-- Barra de navegación -->
+    <nav class="navbar">
+        <div class="navbar-logo">
+            <a href="#">Logo</a>
+        </div>
+
+        <!-- Menú de navegación -->
+        <div class="navbar-links">
+            <ul>
+                <li><span style="color:white">Hola, Usuario</span></li>
+                <li><a href="dashboard.html">Inicio</a></li>
+                <li><a href="inventory.html">Inventario</a></li>
+                <li><a href="sales.html">Ventas</a></li>
+                <li><a href="employee.html">Empleados</a></li>
+                <li><a href="attendance.html">Asistencia</a></li>
+                <li><a href="invoices.html">Facturación</a></li>
+                <li><div class="navbar-user">
+                    <button id="logoutButton">Cerrar sesión</button>
+                </div></li>
+            </ul>
+        </div>
+
+        <!-- Botón hamburguesa -->
+        <button class="menu-toggle" aria-label="Abrir menú">☰</button>
+    </nav>
+    <!-- Formulario de nuevo empleado (oculto inicialmente) -->
+    <div id="newEmployeeForm" style="display: none;">
+        <h2>Nuevo Empleado</h2>
+        <label for="newEmployeeName">Nombre</label>
+        <input type="text" id="newEmployeeName" required>
+
+        <label for="newEmployeePosition">Posición</label>
+        <input type="text" id="newEmployeePosition" required>
+
+        <label for="newEmployeePhone">Teléfono</label>
+        <input type="text" id="newEmployeePhone" required>
+
+        <label for="newEmployeeEmail">Correo Electrónico</label>
+        <input type="email" id="newEmployeeEmail" required>
+
+        <label for="newEmployeePassword">Contraseña</label>
+        <input type="password" id="newEmployeePassword" required>
+
+        <button id="saveEmployeeButton">Guardar Empleado</button>
+        <button id="cancelButton">Cancelar</button>
+    </div>
+    <!-- Formulario de editar empleado (oculto inicialmente) -->
+    <div id="editEmployeeForm" style="display: none;">
+        <h2>Editar Empleado</h2>
+        <label for="editEmployeeName">Nombre</label>
+        <input type="text" id="editEmployeeName" required>
+
+        <label for="editEmployeePosition">Posición</label>
+        <input type="text" id="editEmployeePosition" required>
+
+        <label for="editEmployeePhone">Teléfono</label>
+        <input type="text" id="editEmployeePhone" required>
+
+        <label for="editEmployeeEmail">Correo Electrónico</label>
+        <input type="email" id="editEmployeeEmail" required>
+
+        <button id="updateEmployeeButton">Actualizar Empleado</button>
+        <button id="cancelEditButton">Cancelar</button>
+    </div>
+
+    <!-- Contenido de la página -->
+    <div class="employees">
+        <h1>Administrar Empleados</h1>
+
+        <!-- Botón para agregar un nuevo empleado -->
+        <button id="addEmployeeButton" class="add-employee-btn">Registrar Nuevo Empleado</button>
+
+        <!-- Filtro de empleados -->
+        <label for="employeeSearch">Buscar empleado</label>
+        <input type="text" id="employeeSearch" placeholder="Buscar por nombre">
+
+        <!-- Tabla de empleados -->
+        <table id="employeeTable">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Posición</th>
+                    <th>Teléfono</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="employeeTableBody">
+                <!-- Los registros de empleados se llenarán aquí dinámicamente -->
+            </tbody>
+        </table>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="assets/js/app.js"></script>
+    <script src="assets/js/employees.js"></script>
+</body>
+
+</html>

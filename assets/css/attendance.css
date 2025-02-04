@@ -227,10 +227,6 @@ tr:hover {
     .menu-toggle:active {
         transform: scale(0.9);
     }
-
-    .attendance{
-        margin: 20px;
-    }
 }
 
 /* Nueva regla para resoluciones medianas */
