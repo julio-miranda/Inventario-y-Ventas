@@ -9,6 +9,9 @@
     padding: 0;
 }
 
+.inventory{
+    margin: 20px;
+}
 /* =======================
    Navbar Styles
    ======================= */
@@ -183,9 +186,6 @@
 /* =======================
    Tabla de Inventario
    ======================= */
-.inventory {
-    margin: 20px;
-}
 
 #inventoryTable {
     width: 100%;

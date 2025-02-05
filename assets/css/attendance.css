@@ -9,6 +9,10 @@ body {
     padding: 0;
 }
 
+.attendance{
+    margin: 20px;
+}
+
 /* =======================
    Navbar Styles
    ======================= */

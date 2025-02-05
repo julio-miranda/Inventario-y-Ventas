@@ -9,6 +9,9 @@
     padding: 0;
 }
 
+.sales{
+    margin: 20px;
+}
 /* =======================
    Navbar Styles
    ======================= */
@@ -183,10 +186,6 @@
 /* =======================
    Sales Section
    ======================= */
-
-.sales {
-    margin: 20px;
-}
 
 #salesTable {
     width: 100%;
