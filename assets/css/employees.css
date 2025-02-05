@@ -321,6 +321,21 @@ button:focus {
 
 /* Estilos para el botón de hamburguesa */
 @media screen and (max-width: 768px) {
+    .employees.active {
+        display: none;
+    }
+
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch; /* Mejora la experiencia en móviles */
+    }
+
+    #employeeTable {
+        width: 100%;
+        min-width: 600px; /* Ajusta según el contenido */
+        white-space: nowrap;
+    }
+
     .navbar-links {
         display: none;
     }

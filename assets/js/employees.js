@@ -33,22 +33,33 @@ function loadEmployees() {
                 <button class="deleteButton" data-id="${doc.id}" style="background-color:red;">Eliminar</button>
             `;
         });
+        initializeDataTable();
     });
 }
 
-// Función para filtrar empleados
-employeeSearch.addEventListener('input', (e) => {
-    const query = e.target.value.toLowerCase();
-    const rows = employeeTableBody.getElementsByTagName('tr');
-    Array.from(rows).forEach(row => {
-        const name = row.cells[0].textContent.toLowerCase();
-        if (name.includes(query)) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
+function initializeDataTable() {
+    if ($.fn.DataTable.isDataTable("#employeeTable")) {
+        $('#employeeTable').DataTable().destroy();
+    }
+    $('#employeeTable').DataTable({
+        "paging": true,
+        "searching": true,
+        "ordering": true,
+        "language": {
+            "lengthMenu": "Mostrar _MENU_ registros",
+            "zeroRecords": "No se encontraron resultados",
+            "info": "Mostrando _START_ a _END_ de _TOTAL_ productos",
+            "infoFiltered": "(filtrado de _MAX_ total)",
+            "search": "Buscar:",
+            paginate: {
+                first: "Primero",
+                last: "Último",
+                next: "Siguiente",
+                previous: "Anterior"
+            }
         }
     });
-});
+}
 
 // Función para registrar un nuevo empleado
 saveEmployeeButton.addEventListener('click', () => {

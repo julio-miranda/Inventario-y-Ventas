@@ -13,6 +13,7 @@ body {
     margin: 20px;
 }
 
+
 /* =======================
    Navbar Styles
    ======================= */
@@ -112,6 +113,14 @@ body {
 
 /* Estilos para el menú hamburguesa en dispositivos pequeños */
 @media screen and (max-width: 768px) {
+    #attendanceTable_length select{
+        width: 20%;
+    }
+
+    #attendanceTable_filter input{
+        width: 75%;
+    }
+
     .navbar-links {
         display: none;
         flex-direction: column;

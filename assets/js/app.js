@@ -74,6 +74,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if(document.querySelector('.invoices') !== null){
         document.querySelector('.invoices').classList.toggle("active");
       }
+      if(document.querySelector('.employees') !== null){
+        document.querySelector('.employees').classList.toggle("active");
+      }
     });
   }
 });

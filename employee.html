@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Administrar Empleados - Sistema de Gestión</title>
     <link rel="stylesheet" href="assets/css/employees.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 </head>
 
 <body>
@@ -25,9 +28,11 @@
                 <li><a href="employee.html">Empleados</a></li>
                 <li><a href="attendance.html">Asistencia</a></li>
                 <li><a href="invoices.html">Facturación</a></li>
-                <li><div class="navbar-user">
-                    <button id="logoutButton">Cerrar sesión</button>
-                </div></li>
+                <li>
+                    <div class="navbar-user">
+                        <button id="logoutButton">Cerrar sesión</button>
+                    </div>
+                </li>
             </ul>
         </div>
 
@@ -81,24 +86,22 @@
         <!-- Botón para agregar un nuevo empleado -->
         <button id="addEmployeeButton" class="add-employee-btn">Registrar Nuevo Empleado</button>
         <br><br>
-        <!-- Filtro de empleados -->
-        <label for="employeeSearch">Buscar empleado:</label>
-        <input type="text" id="employeeSearch" placeholder="Buscar por nombre">
-
-        <!-- Tabla de empleados -->
-        <table id="employeeTable">
-            <thead>
-                <tr>
-                    <th>Nombre</th>
-                    <th>Posición</th>
-                    <th>Teléfono</th>
-                    <th>Acciones</th>
-                </tr>
-            </thead>
-            <tbody id="employeeTableBody">
-                <!-- Los registros de empleados se llenarán aquí dinámicamente -->
-            </tbody>
-        </table>
+        <div class="table-responsive">
+            <!-- Tabla de empleados -->
+            <table id="employeeTable" class="display nowrap" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Posición</th>
+                        <th>Teléfono</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="employeeTableBody">
+                    <!-- Los registros de empleados se llenarán aquí dinámicamente -->
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
