@@ -2,7 +2,7 @@
 if (typeof firebase === "undefined") {
   console.error("Firebase no se ha cargado correctamente.");
 } else {
-  console.log("Firebase cargado exitosamente.");
+  //console.log("Firebase cargado exitosamente.");
 }
 
 // Configuración de Firebase
@@ -19,7 +19,7 @@ const firebaseConfig = {
 // Inicializar Firebase
 if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
-  console.log("Firebase inicializado correctamente.");
+  //console.log("Firebase inicializado correctamente.");
 } else {
   firebase.app(); // Usar la app ya inicializada
 }

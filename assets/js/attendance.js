@@ -65,6 +65,6 @@ firebase.auth().onAuthStateChanged(user => {
         // Redirigir al login si no está autenticado
         window.location.href = 'index.html';
     } else {
-        console.log('Usuario autenticado:', user);
+        //console.log('Usuario autenticado:', user);
     }
 });
