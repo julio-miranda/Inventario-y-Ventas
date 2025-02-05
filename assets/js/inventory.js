@@ -22,10 +22,10 @@ function loadInventory() {
 }
 
 function initializeDataTable() {
-  if ($.fn.DataTable.isDataTable("#attendanceTable")) {
-      $('#attendanceTable').DataTable().destroy();
+  if ($.fn.DataTable.isDataTable("#inventoryTable")) {
+      $('#inventoryTable').DataTable().destroy();
   }
-  $('#attendanceTable').DataTable({
+  $('#inventoryTable').DataTable({
       "paging": true,
       "searching": true,
       "ordering": true,
