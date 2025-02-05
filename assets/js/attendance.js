@@ -33,8 +33,33 @@ function loadAttendance() {
                 employeeCell.textContent = employee.name;
                 dateCell.textContent = new Date(attendance.date.seconds * 1000).toLocaleDateString("es-ES");
                 statusCell.textContent = attendance.status;
+                initializeDataTable();
             });
         });
+    });
+}
+
+function initializeDataTable() {
+    if ($.fn.DataTable.isDataTable("#attendanceTable")) {
+        $('#attendanceTable').DataTable().destroy();
+    }
+    $('#attendanceTable').DataTable({
+        "paging": true,
+        "searching": true,
+        "ordering": true,
+        "language": {
+            "lengthMenu": "Mostrar _MENU_ registros",
+            "zeroRecords": "No se encontraron resultados",
+            "info": "Mostrando _START_ a _END_ de _TOTAL_ productos",
+            "infoFiltered": "(filtrado de _MAX_ total)",
+            "search": "Buscar:",
+            paginate: {
+                first: "Primero",
+                last: "Último",
+                next: "Siguiente",
+                previous: "Anterior"
+            }
+        }
     });
 }
 

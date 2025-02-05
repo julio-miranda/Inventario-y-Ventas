@@ -115,23 +115,48 @@ registerSaleButton.addEventListener("click", function () {
 // Cargar ventas en la tabla de historial
 function loadSales() {
     db.collection("ventas").orderBy("timestamp", "desc").onSnapshot((querySnapshot) => {
-        salesTable.innerHTML = ''; // Limpiar la tabla
+        let salesData = [];
         querySnapshot.forEach((doc) => {
             const sale = doc.data();
-
-            // Verificar si sale.products es un array antes de usar .map()
             const productsList = Array.isArray(sale.products)
-                ? sale.products.map(p => `<li>${p.productName}</li>`).join('')
-                : "<li>Datos no disponibles</li>";
-            const productsList2 = Array.isArray(sale.products)
-                ? sale.products.map(p => `<li>x${p.quantity}</li>`).join('')
-                : "<li>Datos no disponibles</li>";
-            const row = salesTable.insertRow();
-            row.innerHTML = `
-                <td><ul>${productsList}</ul></td>
-                <td><ul>${productsList2}</ul></td>
-                <td>$${sale.total.toFixed(2)}</td>
-            `;
+                ? sale.products.map(p => `${p.productName} (x${p.quantity})`).join(', ')
+                : "Datos no disponibles";
+
+            salesData.push([
+                productsList,
+                sale.products.reduce((sum, p) => sum + p.quantity, 0), // Total de productos vendidos
+                `$${sale.total.toFixed(2)}`
+            ]);
+        });
+
+        // Destruir DataTable si ya está inicializado
+        if ($.fn.DataTable.isDataTable('#salesTable')) {
+            $('#salesTable').DataTable().destroy();
+        }
+
+        // Limpiar la tabla antes de agregar nuevas filas
+        $('#salesTable tbody').empty();
+
+        // Agregar las filas a la tabla
+        salesData.forEach(row => {
+            $('#salesTable tbody').append(`<tr><td>${row[0]}</td><td>${row[1]}</td><td>${row[2]}</td></tr>`);
+        });
+
+        // Inicializar DataTable
+        $('#salesTable').DataTable({
+            responsive: true,
+            pageLength: 5,
+            language: {
+                search: "Buscar:",
+                lengthMenu: "Mostrar _MENU_ registros",
+                info: "Mostrando _START_ a _END_ de _TOTAL_ registros",
+                paginate: {
+                    first: "Primero",
+                    last: "Último",
+                    next: "Siguiente",
+                    previous: "Anterior"
+                }
+            }
         });
     });
 }
@@ -146,9 +171,9 @@ loadSales();
 // Verificar si el usuario está autenticado
 firebase.auth().onAuthStateChanged(user => {
     if (!user) {
-      // Redirigir al login si no está autenticado
-      window.location.href = 'index.html';
+        // Redirigir al login si no está autenticado
+        window.location.href = 'index.html';
     } else {
-      //console.log('Usuario autenticado:', user);
+        //console.log('Usuario autenticado:', user);
     }
-  });
+});

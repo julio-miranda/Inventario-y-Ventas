@@ -6,7 +6,6 @@ const invoiceForm = document.getElementById('invoiceForm');
 const invoiceTable = document.getElementById('invoiceTable').getElementsByTagName('tbody')[0];
 
 // Cargar ventas en el selector para generar facturas
-// Cargar ventas en el selector para generar facturas
 function loadSalesForInvoice() {
     db.collection("ventas").get().then((querySnapshot) => {
         saleSelect.innerHTML = '';  // Limpiar el selector antes de llenarlo
@@ -143,6 +142,29 @@ function loadInvoices() {
         <td><button onclick="downloadInvoice('${invoice.invoiceNumber}')">Descargar</button></td>
       `;
         });
+        initializeDataTable();
+    });
+}
+
+function initializeDataTable() {
+    if ($.fn.DataTable.isDataTable("#invoiceTable")) {
+        $('#invoiceTable').DataTable().destroy();
+    }
+    $('#invoiceTable').DataTable({
+        "paging": true,
+        "searching": true,
+        "ordering": true,
+        "language": {
+            "lengthMenu": "Mostrar _MENU_ registros",
+            "zeroRecords": "No se encontraron resultados",
+            "info": "Mostrando _START_ a _END_ de _TOTAL_ registros",
+            "infoFiltered": "(filtrado de _MAX_ total)",
+            "search": "Buscar:",
+            "paginate": {
+                "next": "Siguiente",
+                "previous": "Anterior"
+            }
+        }
     });
 }
 

@@ -83,10 +83,35 @@ function loadSalesOfTheMonth() {
         <td>${saleDate.toLocaleDateString()}</td>
       `;
       });
+      initializeDataTable();
     })
     .catch((error) => {
       console.error("Error al cargar las ventas del mes: ", error);
     });
+}
+
+function initializeDataTable() {
+  if ($.fn.DataTable.isDataTable("#salesTable")) {
+      $('#salesTable').DataTable().destroy();
+  }
+  $('#salesTable').DataTable({
+      "paging": true,
+      "searching": true,
+      "ordering": true,
+      "language": {
+          "lengthMenu": "Mostrar _MENU_ registros",
+          "zeroRecords": "No se encontraron resultados",
+          "info": "Mostrando _START_ a _END_ de _TOTAL_ productos",
+          "infoFiltered": "(filtrado de _MAX_ total)",
+          "search": "Buscar:",
+          paginate: {
+              first: "Primero",
+              last: "Último",
+              next: "Siguiente",
+              previous: "Anterior"
+          }
+      }
+  });
 }
 
 // Cargar las ventas al cargar el dashboard

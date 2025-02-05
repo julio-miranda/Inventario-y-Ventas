@@ -138,6 +138,10 @@
         display: flex;
     }
 
+    .inventory.active {
+        display: none;
+    }
+    
     .navbar-links ul {
         display: flex;
         flex-direction: column;

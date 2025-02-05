@@ -68,6 +68,12 @@ document.addEventListener("DOMContentLoaded", () => {
   if (menuToggle !== null) {
     menuToggle.addEventListener("click", () => {
       navbarLinks.classList.toggle("active");
+      if(document.querySelector('.inventory') !== null){
+        document.querySelector('.inventory').classList.toggle("active");
+      }
+      if(document.querySelector('.invoices') !== null){
+        document.querySelector('.invoices').classList.toggle("active");
+      }
     });
   }
 });
