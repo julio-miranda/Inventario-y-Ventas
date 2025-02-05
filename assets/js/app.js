@@ -64,6 +64,7 @@ document.addEventListener("DOMContentLoaded", function () {
 document.addEventListener("DOMContentLoaded", () => {
   const menuToggle = document.querySelector(".menu-toggle");
   const navbarLinks = document.querySelector(".navbar-links");
+  navbarLinks.setAttribute("style","list-style: none;");
   if (menuToggle !== null) {
     menuToggle.addEventListener("click", () => {
       navbarLinks.classList.toggle("active");
