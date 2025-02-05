@@ -29,8 +29,8 @@ function loadEmployees() {
             positionCell.textContent = employee.position;
             phoneCell.textContent = employee.phone;
             actionsCell.innerHTML = `
-                <button class="editButton" data-id="${doc.id}">Editar</button>
-                <button class="deleteButton" data-id="${doc.id}">Eliminar</button>
+                <button class="editButton" data-id="${doc.id}" style="background-color:blue;">Editar</button>
+                <button class="deleteButton" data-id="${doc.id}" style="background-color:red;">Eliminar</button>
             `;
         });
     });

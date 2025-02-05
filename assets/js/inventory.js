@@ -12,8 +12,8 @@ function loadInventory() {
                 <td>${product.quantity}</td>
                 <td>${product.price}</td>
                 <td>
-                    <button onclick="editProduct('${doc.id}')">Editar</button>
-                    <button onclick="deleteProduct('${doc.id}')">Eliminar</button>
+                    <button onclick="editProduct('${doc.id}')" style="background-color:blue;">Editar</button>
+                    <button onclick="deleteProduct('${doc.id}')" style="background-color:red;">Eliminar</button>
                 </td>
             `;
     });
