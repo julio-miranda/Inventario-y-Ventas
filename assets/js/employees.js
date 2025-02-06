@@ -105,7 +105,7 @@ addEmployeeButton.addEventListener('click', () => {
 // Cancelar el registro de nuevo empleado
 cancelButton.addEventListener('click', () => {
     newEmployeeForm.style.display = 'none';
-    document.querySelector('.employees').style.display = 'block';
+    document.querySelector('.employees').removeAttribute("style",'display:none;');
 });
 
 // Cargar empleados al inicio

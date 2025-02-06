@@ -34,6 +34,10 @@ function updateSalesGoal() {
   getSalesData(newGoal);
 }
 
+function getFirestoreTimestamp(date) {
+  return firebase.firestore.Timestamp.fromDate(date);
+}
+
 function getSalesData(salesGoal) {
   const db = firebase.firestore();
 
@@ -61,16 +65,16 @@ function loadSalesOfTheMonth() {
   // Obtener la fecha actual y el primer día del mes
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
   // Consulta para obtener las ventas del mes
   db.collection("facturas")
-    .where("date", ">=", startOfMonth)
+    .where("date", ">=", getFirestoreTimestamp(startOfMonth))
     .get()
     .then((querySnapshot) => {
       salesTableBody.innerHTML = '';
 
       querySnapshot.forEach((doc) => {
         const sale = doc.data();
+        console.log(doc.data().date);
         if (!sale.date || !sale.date.seconds) {
           console.error("Fecha inválida en documento:", doc.id, sale);
           return;
@@ -80,7 +84,7 @@ function loadSalesOfTheMonth() {
         row.innerHTML = `
         <td>${sale.customerName}</td>
         <td>$${sale.total}</td>
-        <td>${saleDate.toLocaleDateString()}</td>
+        <td>${saleDate.toLocaleDateString("es-ES")}</td>
       `;
       });
       initializeDataTable();
@@ -92,26 +96,41 @@ function loadSalesOfTheMonth() {
 
 function initializeDataTable() {
   if ($.fn.DataTable.isDataTable("#salesTable")) {
-      $('#salesTable').DataTable().destroy();
+    $('#salesTable').DataTable().destroy();
   }
   $('#salesTable').DataTable({
-      "paging": true,
-      "searching": true,
-      "ordering": true,
-      "language": {
-          "lengthMenu": "Mostrar _MENU_ registros",
-          "zeroRecords": "No se encontraron resultados",
-          "info": "Mostrando _START_ a _END_ de _TOTAL_ productos",
-          "infoFiltered": "(filtrado de _MAX_ total)",
-          "search": "Buscar:",
-          paginate: {
-              first: "Primero",
-              last: "Último",
-              next: "Siguiente",
-              previous: "Anterior"
-          }
+    "paging": true,
+    "searching": true,
+    "ordering": true,
+    "language": {
+      "lengthMenu": "Mostrar _MENU_ registros",
+      "zeroRecords": "No se encontraron resultados",
+      "info": "Mostrando _START_ a _END_ de _TOTAL_ productos",
+      "infoFiltered": "(filtrado de _MAX_ total)",
+      "search": "Buscar:",
+      paginate: {
+        first: "Primero",
+        last: "Último",
+        next: "Siguiente",
+        previous: "Anterior"
       }
+    }
   });
+}
+
+function formatDate(fecha) {
+  const opciones = {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+    timeZoneName: "short"
+  };
+
+  return fecha.toLocaleDateString("es-ES", opciones);
 }
 
 // Cargar las ventas al cargar el dashboard

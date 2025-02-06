@@ -104,7 +104,7 @@ function showAddProductForm() {
 
 function hideAddProductForm() {
   document.getElementById('addProductForm').style.display = 'none';
-  document.querySelector('.inventory').style.display = 'block';
+  document.querySelector('.inventory').removeAttribute("style",'display:none;');
 }
 
 // Cargar inventario al inicio

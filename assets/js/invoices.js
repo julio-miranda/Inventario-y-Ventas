@@ -56,7 +56,7 @@ invoiceForm.addEventListener("submit", async (e) => {
             customerEmail,
             total: saleData.total,
             saleId,
-            date: new Date(saleDoc.data().date.seconds * 1000).toLocaleString()
+            date: saleDoc.data().date
         });
         // 🔹 Generar PDF y enviarlo por correo
         generateAndSendInvoicePDF(invoiceNumber, customerName, customerEmail, saleData.total, new Date(saleDoc.data().date.seconds * 1000).toLocaleString("es-ES"));
@@ -176,7 +176,7 @@ function loadInvoices() {
                 <td>${invoice.invoiceNumber}</td>
                 <td>${invoice.customerName}</td>
                 <td>$${invoice.total}</td>
-                <td>${invoice.date}</td>
+                <td>${new Date(invoice.date.seconds * 1000).toLocaleString("es-ES")}</td>
                 <td><button onclick="downloadInvoice('${invoice.invoiceNumber}')">Descargar</button></td>
             `;
         });
@@ -195,7 +195,6 @@ function downloadInvoice(invoiceNumber) {
                     db.collection("ventas").doc(invoice.saleId).collection("productos").get()
                         .then(productosSnapshot => {
                             const saleDetails = productosSnapshot.docs.map(doc => doc.data());
-                            console.log(invoice.date);
                             generatePDF(invoice.invoiceNumber, invoice.customerName, invoice.customerEmail, invoice.total, invoice.date);
                         });
                 } else {
