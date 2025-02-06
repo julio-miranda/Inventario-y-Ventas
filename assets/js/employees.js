@@ -163,7 +163,7 @@ updateEmployeeButton.addEventListener('click', () => {
             alert("Empleado actualizado");
             loadEmployees(); // Recargar la lista de empleados
             editEmployeeForm.style.display = 'none'; // Ocultar el formulario de edición
-            document.querySelector('.employees').style.display = 'block'; // Mostrar la vista principal
+            document.querySelector('.employees').removeAttribute("style",'display:none;'); // Mostrar la vista principal
         }).catch((error) => {
             alert("Error al actualizar el empleado: " + error.message);
         });
@@ -175,7 +175,7 @@ updateEmployeeButton.addEventListener('click', () => {
 // Cancelar la edición
 cancelEditButton.addEventListener('click', () => {
     editEmployeeForm.style.display = 'none'; // Ocultar el formulario de edición
-    document.querySelector('.employees').style.display = 'block'; // Mostrar la vista principal
+    document.querySelector('.employees').removeAttribute("style",'display:none;'); // Mostrar la vista principal
 });
 
 // Función para manejar el clic en el botón de editar
