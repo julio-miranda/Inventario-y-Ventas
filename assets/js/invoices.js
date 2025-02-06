@@ -110,8 +110,7 @@ function generateAndSendInvoicePDF(invoiceNumber, customerName, customerEmail, t
                 datef: date.split(",")[0]
             }).then(() => {
                 alert("Factura generada y enviada al correo del cliente.");
-                loadSalesForInvoice();
-                loadInvoices();
+                window.location.href = 'invoices.html';
             }).catch(error => {
                 console.error("Error al enviar el correo:", error);
             });
