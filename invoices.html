@@ -48,15 +48,16 @@
 
         <form id="invoiceForm">
             <label for="customerName">Nombre del Cliente</label>
-            <br>
             <input type="text" id="customerName" required>
-            <br>
+
+            <label for="customerEmail">Correo del Cliente</label>
+            <input type="email" id="customerEmail" required>
+
             <label for="saleSelect">Venta</label>
-            <br>
             <select id="saleSelect" required>
                 <!-- Opciones de ventas se llenarán aquí dinámicamente -->
             </select>
-            <br>
+
             <button type="submit">Generar Factura</button>
         </form>
 
@@ -78,11 +79,50 @@
             </table>
         </div>
     </div>
-    <script type="text/javascript" src="https://cdn.emailjs.com/dist/email.min.js"></script>
+    <div id="invoice-pdf" style="display: none; width: 600px; padding: 20px; background: white; box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);">
+        <div style="background-color: #3498db; color: white; padding: 15px; text-align: center;">
+            <h1>Factura <span id="span"></span></h1>
+        </div>
+        <div style="padding: 20px;">
+            <p>Estimado(a) <b id="pdf-client-name"></b>,</p>
+            <p>Gracias por tu compra. A continuación, se detallan los datos de la factura:</p>
+    
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <th style="background: #34495e; color: white; padding: 12px;">Correo del Cliente</th>
+                    <td id="pdf-client-email" style="padding: 12px; border-bottom: 1px solid #ddd;"></td>
+                </tr>
+                <tr>
+                    <th style="background: #34495e; color: white; padding: 12px;">Total de la Compra</th>
+                    <td id="pdf-total" style="padding: 12px; border-bottom: 1px solid #ddd;"></td>
+                </tr>
+                <tr>
+                    <th style="background: #34495e; color: white; padding: 12px;">Fecha</th>
+                    <td id="pdf-date" style="padding: 12px; border-bottom: 1px solid #ddd;"></td>
+                </tr>
+                <tr>
+                    <th style="font-weight: bold; padding: 12px;">Total a Pagar:</th>
+                    <td id="pdf-total2" style="font-weight: bold; padding: 0;"></td>
+                </tr>
+            </table>
+            <p style="margin: 20px;">Si tienes alguna pregunta o inquietud, no dudes en contactarnos.</p>
+            <a href="mailto:julioarmando_3@hotmail.com" style="margin:20px; background-color: #3498db; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold;">Contactar Soporte</a>
+            <div style="text-align: center; margin-top: 30px; font-size: 14px; color: #7f8c8d; justify-content: end;">
+                <p>&copy; 2025 Tu Empresa. Todos los derechos reservados.</p>
+            </div>
+        </div>
+    </div>
+    
+
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <script>
+        emailjs.init("68oDQ35azu4ti1tsR");
+    </script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <!-- Agregar jsPDF desde el CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="assets/js/app.js"></script>
     <script src="assets/js/invoices.js"></script>

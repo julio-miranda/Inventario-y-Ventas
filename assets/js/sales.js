@@ -95,7 +95,7 @@ registerSaleButton.addEventListener("click", function () {
     db.collection("ventas").add({
         products: cart,
         total: totalSale,
-        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        date: firebase.firestore.FieldValue.serverTimestamp()
     }).then(() => {
         // Actualizar stock en la base de datos
         cart.forEach(item => {
@@ -114,7 +114,7 @@ registerSaleButton.addEventListener("click", function () {
 
 // Cargar ventas en la tabla de historial
 function loadSales() {
-    db.collection("ventas").orderBy("timestamp", "desc").onSnapshot((querySnapshot) => {
+    db.collection("ventas").orderBy("date", "desc").onSnapshot((querySnapshot) => {
         let salesData = [];
         querySnapshot.forEach((doc) => {
             const sale = doc.data();
