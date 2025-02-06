@@ -124,6 +124,46 @@ function generateAndSendInvoicePDF(invoiceNumber, customerName, customerEmail, t
     }, 500); // Espera 500ms para que se renderice antes de capturar
 }
 
+function generatePDF(invoiceNumber, customerName, customerEmail, total, date) {
+    const invoiceElement = document.getElementById("invoice-pdf");
+
+    // Llenar los datos en la factura antes de hacer la captura
+    document.getElementById("span").innerText = invoiceNumber;
+    document.getElementById("pdf-client-name").innerText = customerName;
+    document.getElementById("pdf-client-email").innerText = customerEmail;
+    document.getElementById("pdf-total").innerText = `$${total}`;
+    document.getElementById("pdf-total2").innerText = `$${total}`;
+    document.getElementById("pdf-date").innerText = date.split(",")[0];
+
+    // Asegurar que la factura es visible temporalmente
+    invoiceElement.style.display = "block";
+
+    setTimeout(() => {
+        html2canvas(invoiceElement, {
+            scale: 3, // Mejor resolución
+            useCORS: true, // Permite cargar imágenes externas
+            allowTaint: true, // Permite imágenes de diferentes dominios
+            logging: false
+        }).then(canvas => {
+            const imgData = canvas.toDataURL("image/png");
+
+            const pdf = new jsPDF("p", "mm", "a4");
+            const imgWidth = 210;
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+            pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
+            pdf.save(`Factura-${invoiceNumber}.pdf`);
+
+            // Ocultar la factura después de capturarla
+            invoiceElement.style.display = "none";
+        }).catch(error => {
+            console.error("Error al generar la imagen de la factura:", error);
+            alert("Hubo un problema al generar la factura en PDF.");
+            invoiceElement.style.display = "none"; // Asegurar que se oculta
+        });
+    }, 500); // Espera 500ms para que se renderice antes de capturar
+}
+
 // 🔹 Cargar historial de facturación
 function loadInvoices() {
     db.collection("facturas").orderBy("date", "desc").get().then((querySnapshot) => {
@@ -155,8 +195,8 @@ function downloadInvoice(invoiceNumber) {
                     db.collection("ventas").doc(invoice.saleId).collection("productos").get()
                         .then(productosSnapshot => {
                             const saleDetails = productosSnapshot.docs.map(doc => doc.data());
-
-                            generateAndSendInvoicePDF(invoice.invoiceNumber, invoice.customerName, invoice.customerEmail, invoice.total, saleDetails);
+                            console.log(invoice.date);
+                            generatePDF(invoice.invoiceNumber, invoice.customerName, invoice.customerEmail, invoice.total, invoice.date);
                         });
                 } else {
                     console.error('El campo saleId no está disponible en la factura');
