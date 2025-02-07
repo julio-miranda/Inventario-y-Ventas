@@ -74,7 +74,6 @@ function loadSalesOfTheMonth() {
 
       querySnapshot.forEach((doc) => {
         const sale = doc.data();
-        console.log(doc.data().date);
         if (!sale.date || !sale.date.seconds) {
           console.error("Fecha inválida en documento:", doc.id, sale);
           return;

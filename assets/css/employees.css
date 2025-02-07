@@ -1,15 +1,14 @@
 /* =======================
    Estilos Generales
    ======================= */
-   
-body {
+   body {
     font-family: Arial, sans-serif;
     background-color: #f4f4f9;
     margin: 0;
     padding: 0;
 }
 
-.employees{
+.employees {
     margin: 20px;
 }
 
@@ -24,7 +23,6 @@ body {
 /* =======================
    Navbar Styles
    ======================= */
-
 .navbar {
     display: flex;
     justify-content: space-between;
@@ -88,7 +86,6 @@ body {
 /* =======================
    Button Style Adjustments
    ======================= */
-
 .navbar button {
     padding: 12px;
     background-color: #4CAF50;
@@ -111,7 +108,6 @@ body {
     display: none;
 }
 
-/* Efecto hover para los enlaces */
 .navbar-links li a:hover,
 .navbar-links li a:focus {
     background-color: #3498db;
@@ -120,6 +116,16 @@ body {
 
 /* Estilos para el menú hamburguesa en dispositivos pequeños */
 @media screen and (max-width: 768px) {
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch; /* Mejora la experiencia en móviles */
+    }
+
+    #employeeTable {
+        width: 100%;
+        min-width: 600px; /* Ajusta según el contenido */
+        white-space: nowrap;
+    }
     .navbar-links {
         display: none;
         flex-direction: column;
@@ -158,12 +164,10 @@ body {
         display: block;
         width: 100%;
         padding: 12px 0;
-        /* Ajuste de tamaño */
         text-align: center;
         color: white;
         text-decoration: none;
         font-size: clamp(1rem, 2vw, 1.3rem);
-        /* Ajuste dinámico del tamaño del texto */
         font-weight: bold;
         border-bottom: 1px solid rgba(255, 255, 255, 0.2);
         transition: background 0.3s ease, color 0.3s ease;
@@ -192,6 +196,9 @@ body {
     }
 }
 
+/* =======================
+   Estilos para Tablas
+   ======================= */
 table {
     width: 100%;
     border-collapse: collapse;
@@ -214,12 +221,11 @@ td {
     background-color: #ecf0f1;
 }
 
-button:focus {
-    outline: none;
-}
-
-/* Estilos para el formulario de nuevo empleado */
-#newEmployeeForm {
+/* =======================
+   Formulario de Nuevo Empleado
+   ======================= */
+#newEmployeeForm,
+#editEmployeeForm {
     display: none;
     margin-top: 50px;
     padding: 30px;
@@ -232,23 +238,25 @@ button:focus {
     margin-right: auto;
 }
 
-#newEmployeeForm h2 {
+#newEmployeeForm h2,
+#editEmployeeForm h2 {
     color: #2c3e50;
     text-align: center;
     font-size: 1.8rem;
     margin-bottom: 20px;
 }
 
-#newEmployeeForm label {
+#newEmployeeForm label,
+#editEmployeeForm label {
     font-size: 1.1rem;
     color: #34495e;
     margin-bottom: 8px;
     display: block;
-    margin-top: 15px;
 }
 
 #newEmployeeForm input,
-#newEmployeeForm select {
+#newEmployeeForm select,
+#editEmployeeForm input {
     width: 100%;
     padding: 12px;
     margin-top: 5px;
@@ -258,21 +266,21 @@ button:focus {
     transition: border-color 0.3s;
 }
 
-/* Efecto al pasar el mouse sobre los inputs */
 #newEmployeeForm input:hover,
-#newEmployeeForm select:hover {
+#newEmployeeForm select:hover,
+#editEmployeeForm input:hover {
     border-color: #3498db;
 }
 
-/* Enfoque en el input */
 #newEmployeeForm input:focus,
-#newEmployeeForm select:focus {
+#newEmployeeForm select:focus,
+#editEmployeeForm input:focus {
     border-color: #2980b9;
     outline: none;
 }
 
-/* Botones de guardar y cancelar */
-#newEmployeeForm button {
+#newEmployeeForm button,
+#editEmployeeForm button {
     width: 48%;
     padding: 12px;
     font-size: 1.1rem;
@@ -283,165 +291,43 @@ button:focus {
     transition: background-color 0.3s;
 }
 
-#newEmployeeForm #saveEmployeeButton {
+#newEmployeeForm #saveEmployeeButton,
+#editEmployeeForm #updateEmployeeButton {
     background-color: #27ae60;
     color: white;
 }
 
-#newEmployeeForm #saveEmployeeButton:hover {
-    background-color: #2ecc71;
-}
-
-#newEmployeeForm #cancelButton {
+#newEmployeeForm #cancelButton,
+#editEmployeeForm #cancelEditButton {
     background-color: #e74c3c;
     color: white;
 }
 
-#newEmployeeForm #cancelButton:hover {
-    background-color: #c0392b;
-}
-
-#newEmployeeForm button:focus {
-    outline: none;
-}
-
-/* Espaciado entre los botones */
 #newEmployeeForm .button-container {
     display: flex;
     justify-content: space-between;
 }
 
-/* Ajustes en los campos del formulario */
-#newEmployeeForm input,
-#newEmployeeForm select {
-    padding: 12px;
-    margin-top: 8px;
-    font-size: 1.1rem;
-}
-
-/* Estilos para el botón de hamburguesa */
-@media screen and (max-width: 768px) {
-    .employees.active {
-        display: none;
-    }
-
-    .table-responsive {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch; /* Mejora la experiencia en móviles */
-    }
-
-    #employeeTable {
-        width: 100%;
-        min-width: 600px; /* Ajusta según el contenido */
-        white-space: nowrap;
-    }
-
-    .navbar-links {
-        display: none;
-    }
-
-    .navbar-links.active {
-        display: flex;
-    }
-}
-
-/* =======================
-   Estilos del Formulario de Editar Empleado
-   ======================= */
-#editEmployeeForm {
-    margin-top: 20px;
-    padding: 20px;
-    background-color: #fff;
-    border-radius: 4px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    display: none;
-}
-
-#editEmployeeForm h2 {
-    color: #2c3e50;
-}
-
-#editEmployeeForm label {
-    font-size: 1rem;
-    color: #2c3e50;
-    margin-top: 10px;
-    display: block;
-}
-
-#editEmployeeForm input {
-    width: 100%;
-    padding: 10px;
-    margin: 10px 0;
-    border-radius: 4px;
-    border: 1px solid #ccc;
-    font-size: 1rem;
-}
-
-#editEmployeeForm button {
-    background-color: #3498db;
-    color: white;
-    padding: 10px 20px;
-    border: none;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: background-color 0.3s ease;
-    margin-top: 10px;
-    width: 100%;
-}
-
-#editEmployeeForm button:hover {
-    background-color: #2980b9;
-}
-
-#editEmployeeForm button:focus {
-    outline: none;
-}
-
-#editEmployeeForm .cancel-button {
-    background-color: #e74c3c;
-}
-
-#editEmployeeForm .cancel-button:hover {
-    background-color: #c0392b;
-}
-
 button {
     background-color: #3498db;
-    /* Color de fondo azul */
     color: white;
-    /* Color del texto blanco */
     padding: 10px 20px;
-    /* Espaciado interior */
     border: none;
-    /* Sin borde */
     cursor: pointer;
-    /* Cambio de cursor al pasar sobre el botón */
     border-radius: 6px;
-    /* Bordes redondeados */
     font-size: 1rem;
-    /* Tamaño de la fuente */
     font-weight: 600;
-    /* Peso de la fuente */
     transition: all 0.3s ease;
-    /* Transición suave para todos los estados */
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    /* Sombra suave */
 }
 
-/* Efecto al pasar el cursor (hover) */
 button:hover {
     background-color: #2980b9;
-    /* Cambio de color a un azul más oscuro */
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-    /* Sombra más prominente */
 }
 
-/* Efecto al hacer foco (focus) */
 button:focus {
     outline: none;
-    /* Eliminar el contorno por defecto */
     background-color: #2980b9;
-    /* Color de fondo al hacer foco */
     box-shadow: 0 0 0 3px rgba(41, 128, 185, 0.5);
-    /* Resaltar con sombra azul */
 }

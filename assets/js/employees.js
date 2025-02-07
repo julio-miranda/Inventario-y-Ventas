@@ -29,11 +29,13 @@ function loadEmployees() {
             positionCell.textContent = employee.position;
             phoneCell.textContent = employee.phone;
             actionsCell.innerHTML = `
-                <button class="editButton" data-id="${doc.id}" style="background-color:blue;">Editar</button>
-                <button class="deleteButton" data-id="${doc.id}" style="background-color:red;">Eliminar</button>
+                <button class="editButton" data-id="${doc.id}" data-uid="${employee.uid}" data-name="${employee.name}" data-position="${employee.position}" data-phone="${employee.phone}" data-email="${employee.email}" style="background-color:blue;">Editar</button>
+                <button class="deleteButton" data-id="${doc.id}" data-email="${employee.email}" style="background-color:red;">Eliminar</button>
             `;
         });
+
         initializeDataTable();
+        addEditEventListeners();
     });
 }
 
@@ -77,12 +79,14 @@ saveEmployeeButton.addEventListener('click', () => {
             db.collection("empleados").add({
                 name: name,
                 position: position,
+                email: email,
                 phone: phone,
                 uid: user.uid
             }).then(() => {
                 alert("Empleado registrado");
                 loadEmployees();
                 newEmployeeForm.style.display = 'none';
+                document.querySelector('.employees').removeAttribute("style",'display:none;');
             }).catch((error) => {
                 alert("Error al registrar el empleado: " + error.message);
             });
@@ -115,12 +119,34 @@ loadEmployees();
 employeeTableBody.addEventListener('click', (e) => {
     if (e.target.classList.contains('deleteButton')) {
         const employeeId = e.target.getAttribute('data-id');
-        db.collection("empleados").doc(employeeId).delete().then(() => {
-            alert("Empleado eliminado");
-            loadEmployees();
-        }).catch((error) => {
-            alert("Error al eliminar el empleado: " + error.message);
-        });
+
+        db.collection("empleados").doc(employeeId).get()
+            .then((doc) => {
+                if (doc.exists) {
+                    const userUid = doc.data().uid; // Obtener UID del usuario en Authentication
+
+                    // Eliminar de Firestore
+                    db.collection("empleados").doc(employeeId).delete().then(() => {
+                        alert("Empleado eliminado de Firestore");
+
+                        // Eliminar de Authentication
+                        auth.currentUser.delete().then(() => {
+                            alert("Usuario eliminado de Authentication");
+                        }).catch((error) => {
+                            console.error("Error al eliminar usuario de Authentication:", error.message);
+                        });
+
+                    }).catch((error) => {
+                        console.error("Error al eliminar empleado de Firestore:", error.message);
+                    });
+
+                } else {
+                    console.error("No se encontró el empleado.");
+                }
+            })
+            .catch((error) => {
+                console.error("Error al obtener el empleado:", error.message);
+            });
     }
 });
 
@@ -129,10 +155,90 @@ const editEmployeeName = document.getElementById('editEmployeeName');
 const editEmployeePosition = document.getElementById('editEmployeePosition');
 const editEmployeePhone = document.getElementById('editEmployeePhone');
 const editEmployeeEmail = document.getElementById('editEmployeeEmail');
+const editEmployeePassword = document.getElementById('editEmployeePassword');
 const updateEmployeeButton = document.getElementById('updateEmployeeButton');
 const cancelEditButton = document.getElementById('cancelEditButton');
 
-let employeeIdToEdit = null; // Variable para almacenar el ID del empleado a editar
+let currentEmployeeId = "";
+let currentEmployeeUid = "";
+let currentEmployeeEmail = "";
+
+// Escuchar clic en botón "Editar"
+function addEditEventListeners() {
+    document.querySelectorAll('.editButton').forEach(button => {
+        button.addEventListener('click', (event) => {
+            const button = event.target;
+            currentEmployeeId = button.getAttribute('data-id');
+            currentEmployeeUid = button.getAttribute('data-uid');
+            currentEmployeeEmail = button.getAttribute('data-email');
+
+            editEmployeeName.value = button.getAttribute('data-name');
+            editEmployeePosition.value = button.getAttribute('data-position');
+            editEmployeePhone.value = button.getAttribute('data-phone');
+            editEmployeeEmail.value = currentEmployeeEmail; // Bloqueado para evitar cambios
+
+            editEmployeeForm.style.display = 'block';
+            document.querySelector('.employees').style.display = 'none';
+        });
+    });
+}
+
+// Función para actualizar empleado
+updateEmployeeButton.addEventListener('click', () => {
+    const updatedName = editEmployeeName.value;
+    const updatedPosition = editEmployeePosition.value;
+    const updatedPhone = editEmployeePhone.value;
+    const updatedPassword = editEmployeePassword.value;
+
+    if (!updatedName || !updatedPosition || !updatedPhone) {
+        alert("Por favor, complete todos los campos obligatorios.");
+        return;
+    }
+
+    // Actualizar datos en Firestore
+    db.collection("empleados").doc(currentEmployeeId).update({
+        name: updatedName,
+        position: updatedPosition,
+        phone: updatedPhone
+    }).then(() => {
+        alert("Datos del empleado actualizados con éxito.");
+        loadEmployees();
+        editEmployeeForm.style.display = 'none';
+        document.querySelector('.employees').style.display = 'block';
+
+        // Actualizar contraseña si se ingresó una nueva
+        if (updatedPassword) {
+            updateEmployeePassword(updatedPassword);
+        }
+    }).catch(error => {
+        alert("Error al actualizar los datos del empleado: " + error.message);
+    });
+});
+
+// Función para actualizar contraseña en Firebase Authentication
+function updateEmployeePassword(newPassword) {
+    const user = auth.currentUser;
+
+    if (user) {
+        auth.signInWithEmailAndPassword(currentEmployeeEmail, newPassword).then(() => {
+            user.updatePassword(newPassword).then(() => {
+                alert("Contraseña actualizada con éxito.");
+            }).catch(error => {
+                alert("Error al actualizar la contraseña: " + error.message);
+            });
+        }).catch(error => {
+            alert("Error al autenticar usuario: " + error.message);
+        });
+    } else {
+        alert("No se pudo actualizar la contraseña. Asegúrese de estar autenticado.");
+    }
+}
+
+// Cancelar edición de empleado
+cancelEditButton.addEventListener('click', () => {
+    editEmployeeForm.style.display = 'none';
+    document.querySelector('.employees').style.display = 'block';
+});
 
 // Función para mostrar el formulario de edición
 function showEditForm(employee) {
@@ -144,64 +250,6 @@ function showEditForm(employee) {
     editEmployeeForm.style.display = 'block';
     document.querySelector('.employees').style.display = 'none'; // Ocultar la vista principal
 }
-
-// Función para actualizar los datos del empleado
-updateEmployeeButton.addEventListener('click', () => {
-    const name = editEmployeeName.value;
-    const position = editEmployeePosition.value;
-    const phone = editEmployeePhone.value;
-    const email = editEmployeeEmail.value;
-
-    if (name && position && phone && email) {
-        // Actualizar los datos en Firestore
-        db.collection("empleados").doc(employeeIdToEdit).update({
-            name: name,
-            position: position,
-            phone: phone,
-            email: email
-        }).then(() => {
-            alert("Empleado actualizado");
-            loadEmployees(); // Recargar la lista de empleados
-            editEmployeeForm.style.display = 'none'; // Ocultar el formulario de edición
-            document.querySelector('.employees').removeAttribute("style",'display:none;'); // Mostrar la vista principal
-        }).catch((error) => {
-            alert("Error al actualizar el empleado: " + error.message);
-        });
-    } else {
-        alert("Por favor complete todos los campos.");
-    }
-});
-
-// Cancelar la edición
-cancelEditButton.addEventListener('click', () => {
-    editEmployeeForm.style.display = 'none'; // Ocultar el formulario de edición
-    document.querySelector('.employees').removeAttribute("style",'display:none;'); // Mostrar la vista principal
-});
-
-// Función para manejar el clic en el botón de editar
-employeeTableBody.addEventListener('click', (e) => {
-    if (e.target.classList.contains('editButton')) {
-        const employeeId = e.target.getAttribute('data-id');
-
-        // Obtener los datos del empleado de Firestore
-        db.collection("empleados").doc(employeeId).get().then((doc) => {
-            if (doc.exists) {
-                const employee = {
-                    id: doc.id,
-                    name: doc.data().name,
-                    position: doc.data().position,
-                    phone: doc.data().phone,
-                    email: doc.data().email
-                };
-                showEditForm(employee); // Mostrar el formulario de edición con los datos del empleado
-            } else {
-                alert("Empleado no encontrado");
-            }
-        }).catch((error) => {
-            alert("Error al obtener el empleado: " + error.message);
-        });
-    }
-});
 
 // Verificar si el usuario está autenticado
 firebase.auth().onAuthStateChanged(user => {
