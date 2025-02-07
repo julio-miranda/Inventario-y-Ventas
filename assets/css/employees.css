@@ -1,14 +1,15 @@
 /* =======================
    Estilos Generales
    ======================= */
-   body {
+   
+body {
     font-family: Arial, sans-serif;
     background-color: #f4f4f9;
     margin: 0;
     padding: 0;
 }
 
-.employees {
+.employees{
     margin: 20px;
 }
 
@@ -23,6 +24,7 @@
 /* =======================
    Navbar Styles
    ======================= */
+
 .navbar {
     display: flex;
     justify-content: space-between;
@@ -86,6 +88,7 @@
 /* =======================
    Button Style Adjustments
    ======================= */
+
 .navbar button {
     padding: 12px;
     background-color: #4CAF50;
@@ -108,6 +111,7 @@
     display: none;
 }
 
+/* Efecto hover para los enlaces */
 .navbar-links li a:hover,
 .navbar-links li a:focus {
     background-color: #3498db;
@@ -116,16 +120,6 @@
 
 /* Estilos para el menú hamburguesa en dispositivos pequeños */
 @media screen and (max-width: 768px) {
-    .table-responsive {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch; /* Mejora la experiencia en móviles */
-    }
-
-    #employeeTable {
-        width: 100%;
-        min-width: 600px; /* Ajusta según el contenido */
-        white-space: nowrap;
-    }
     .navbar-links {
         display: none;
         flex-direction: column;
@@ -164,10 +158,12 @@
         display: block;
         width: 100%;
         padding: 12px 0;
+        /* Ajuste de tamaño */
         text-align: center;
         color: white;
         text-decoration: none;
         font-size: clamp(1rem, 2vw, 1.3rem);
+        /* Ajuste dinámico del tamaño del texto */
         font-weight: bold;
         border-bottom: 1px solid rgba(255, 255, 255, 0.2);
         transition: background 0.3s ease, color 0.3s ease;
@@ -196,9 +192,6 @@
     }
 }
 
-/* =======================
-   Estilos para Tablas
-   ======================= */
 table {
     width: 100%;
     border-collapse: collapse;
@@ -221,66 +214,70 @@ td {
     background-color: #ecf0f1;
 }
 
-/* =======================
-   Formulario de Nuevo Empleado
-   ======================= */
-#newEmployeeForm,
-#editEmployeeForm {
-    display: none;
-    margin-top: 50px;
-    padding: 30px;
-    background-color: #ffffff;
-    border-radius: 8px;
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-    width: 100%;
-    max-width: 500px;
-    margin-left: auto;
-    margin-right: auto;
-}
-
-#newEmployeeForm h2,
-#editEmployeeForm h2 {
-    color: #2c3e50;
-    text-align: center;
-    font-size: 1.8rem;
-    margin-bottom: 20px;
-}
-
-#newEmployeeForm label,
-#editEmployeeForm label {
-    font-size: 1.1rem;
-    color: #34495e;
-    margin-bottom: 8px;
-    display: block;
-}
-
-#newEmployeeForm input,
-#newEmployeeForm select,
-#editEmployeeForm input {
-    width: 100%;
-    padding: 12px;
-    margin-top: 5px;
-    border-radius: 8px;
-    border: 1px solid #ccc;
-    font-size: 1rem;
-    transition: border-color 0.3s;
-}
-
-#newEmployeeForm input:hover,
-#newEmployeeForm select:hover,
-#editEmployeeForm input:hover {
-    border-color: #3498db;
-}
-
-#newEmployeeForm input:focus,
-#newEmployeeForm select:focus,
-#editEmployeeForm input:focus {
-    border-color: #2980b9;
+button:focus {
     outline: none;
 }
 
-#newEmployeeForm button,
-#editEmployeeForm button {
+/* Estilos para el botón de hamburguesa */
+@media screen and (max-width: 768px) {
+    .employees.active {
+        display: none;
+    }
+
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch; /* Mejora la experiencia en móviles */
+    }
+
+    #employeeTable {
+        width: 100%;
+        min-width: 600px; /* Ajusta según el contenido */
+        white-space: nowrap;
+    }
+
+    .navbar-links {
+        display: none;
+    }
+
+    .navbar-links.active {
+        display: flex;
+    }
+}
+
+/* =======================
+   Estilos del Formulario
+   ======================= */
+#editEmployeeForm, #newEmployeeForm {
+    margin-top: 20px;
+    padding: 20px;
+    background-color: #fff;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    display: none;
+}
+
+#editEmployeeForm h2, #newEmployeeForm h2 {
+    color: #2c3e50;
+}
+
+#editEmployeeForm label, #newEmployeeForm label{
+    font-size: 1rem;
+    color: #2c3e50;
+    margin-top: 10px;
+    display: block;
+}
+
+#editEmployeeForm input,#newEmployeeForm input{
+    width: 95%;
+    padding: 10px;
+    margin: 10px 0;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    font-size: 1rem;
+}
+
+#editEmployeeForm button, #newEmployeeForm button{
+    color: white;
     width: 48%;
     padding: 12px;
     font-size: 1.1rem;
@@ -291,43 +288,60 @@ td {
     transition: background-color 0.3s;
 }
 
-#newEmployeeForm #saveEmployeeButton,
-#editEmployeeForm #updateEmployeeButton {
-    background-color: #27ae60;
-    color: white;
-}
-
-#newEmployeeForm #cancelButton,
-#editEmployeeForm #cancelEditButton {
-    background-color: #e74c3c;
-    color: white;
-}
-
-#newEmployeeForm .button-container {
+#newEmployeeForm .button-container, #editEmployeeForm .button-container {
     display: flex;
     justify-content: space-between;
 }
 
+#editEmployeeForm button:focus, #newEmployeeForm button:focus {
+    outline: none;
+}
+
+#updateEmployeeButton, #saveEmployeeButton{
+    background-color: #27ae60;
+}
+
+#cancelEditButton, #cancelButton {
+    background-color: #e74c3c;
+}
+
 button {
     background-color: #3498db;
+    /* Color de fondo azul */
     color: white;
+    /* Color del texto blanco */
     padding: 10px 20px;
+    /* Espaciado interior */
     border: none;
+    /* Sin borde */
     cursor: pointer;
+    /* Cambio de cursor al pasar sobre el botón */
     border-radius: 6px;
+    /* Bordes redondeados */
     font-size: 1rem;
+    /* Tamaño de la fuente */
     font-weight: 600;
+    /* Peso de la fuente */
     transition: all 0.3s ease;
+    /* Transición suave para todos los estados */
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    /* Sombra suave */
 }
 
+/* Efecto al pasar el cursor (hover) */
 button:hover {
     background-color: #2980b9;
+    /* Cambio de color a un azul más oscuro */
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    /* Sombra más prominente */
 }
 
+/* Efecto al hacer foco (focus) */
 button:focus {
     outline: none;
+    /* Eliminar el contorno por defecto */
     background-color: #2980b9;
+    /* Color de fondo al hacer foco */
     box-shadow: 0 0 0 3px rgba(41, 128, 185, 0.5);
+    /* Resaltar con sombra azul */
 }
