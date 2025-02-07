@@ -84,9 +84,7 @@ saveEmployeeButton.addEventListener('click', () => {
                 uid: user.uid
             }).then(() => {
                 alert("Empleado registrado");
-                loadEmployees();
-                newEmployeeForm.style.display = 'none';
-                document.querySelector('.employees').removeAttribute("style",'display:none;');
+                window.location.href = 'employee.html';
             }).catch((error) => {
                 alert("Error al registrar el empleado: " + error.message);
             });
@@ -104,7 +102,6 @@ addEmployeeButton.addEventListener('click', () => {
     newEmployeeForm.style.display = 'block';
     document.querySelector('.employees').style.display = 'none';
 });
-
 
 // Cancelar el registro de nuevo empleado
 cancelButton.addEventListener('click', () => {
@@ -132,6 +129,9 @@ employeeTableBody.addEventListener('click', (e) => {
                         // Eliminar de Authentication
                         auth.currentUser.delete().then(() => {
                             alert("Usuario eliminado de Authentication");
+
+                            // Recargar empleados sin redireccionar
+                            loadEmployees();
                         }).catch((error) => {
                             console.error("Error al eliminar usuario de Authentication:", error.message);
                         });
@@ -202,9 +202,7 @@ updateEmployeeButton.addEventListener('click', () => {
         phone: updatedPhone
     }).then(() => {
         alert("Datos del empleado actualizados con éxito.");
-        loadEmployees();
-        editEmployeeForm.style.display = 'none';
-        document.querySelector('.employees').style.display = 'block';
+        window.location.href = 'employee.html';
 
         // Actualizar contraseña si se ingresó una nueva
         if (updatedPassword) {
@@ -237,7 +235,7 @@ function updateEmployeePassword(newPassword) {
 // Cancelar edición de empleado
 cancelEditButton.addEventListener('click', () => {
     editEmployeeForm.style.display = 'none';
-    document.querySelector('.employees').style.display = 'block';
+    document.querySelector('.employees').removeAttribute("style", 'display:none;');
 });
 
 // Función para mostrar el formulario de edición
