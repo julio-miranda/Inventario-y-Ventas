@@ -23,25 +23,27 @@ function loadInventory() {
 
 function initializeDataTable() {
   if ($.fn.DataTable.isDataTable("#inventoryTable")) {
-      $('#inventoryTable').DataTable().destroy();
+    $('#inventoryTable').DataTable().destroy();
   }
   $('#inventoryTable').DataTable({
-      "paging": true,
-      "searching": true,
-      "ordering": true,
-      "language": {
-          "lengthMenu": "Mostrar _MENU_ registros",
-          "zeroRecords": "No se encontraron resultados",
-          "info": "Mostrando _START_ a _END_ de _TOTAL_ registros",
-          "infoFiltered": "(filtrado de _MAX_ total)",
-          "search": "Buscar:",
-          paginate: {
-              first: "Primero",
-              last: "Último",
-              next: "Siguiente",
-              previous: "Anterior"
-          }
+    scrollX: true,
+    destroy: true,
+    "paging": true,
+    "searching": true,
+    "ordering": true,
+    "language": {
+      "lengthMenu": "Mostrar _MENU_ registros",
+      "zeroRecords": "No se encontraron resultados",
+      "info": "Mostrando _START_ a _END_ de _TOTAL_ registros",
+      "infoFiltered": "(filtrado de _MAX_ total)",
+      "search": "Buscar:",
+      paginate: {
+        first: "Primero",
+        last: "Último",
+        next: "Siguiente",
+        previous: "Anterior"
       }
+    }
   });
 }
 
@@ -104,7 +106,7 @@ function showAddProductForm() {
 
 function hideAddProductForm() {
   document.getElementById('addProductForm').style.display = 'none';
-  document.querySelector('.inventory').removeAttribute("style",'display:none;');
+  document.querySelector('.inventory').removeAttribute("style", 'display:none;');
 }
 
 // Cargar inventario al inicio

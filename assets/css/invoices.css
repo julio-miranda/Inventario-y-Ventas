@@ -134,10 +134,6 @@ body {
 
 /* Estilos para el menú hamburguesa en dispositivos pequeños */
 @media screen and (max-width: 768px) {
-    .table-responsive {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch; /* Mejora la experiencia en móviles */
-    }
 
     #invoiceTable {
         width: 100%;

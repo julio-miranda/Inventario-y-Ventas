@@ -44,6 +44,8 @@ function initializeDataTable() {
         $('#attendanceTable').DataTable().destroy();
     }
     $('#attendanceTable').DataTable({
+        scrollX: true,
+        destroy: true,
         "paging": true,
         "searching": true,
         "ordering": true,

@@ -144,6 +144,8 @@ function loadSales() {
 
         // Inicializar DataTable
         $('#salesTable').DataTable({
+            scrollX: true,
+            destroy: true,
             responsive: true,
             pageLength: 5,
             language: {

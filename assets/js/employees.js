@@ -44,6 +44,8 @@ function initializeDataTable() {
         $('#employeeTable').DataTable().destroy();
     }
     $('#employeeTable').DataTable({
+        scrollX: true,
+        destroy: true,
         "paging": true,
         "searching": true,
         "ordering": true,

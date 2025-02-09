@@ -214,6 +214,8 @@ function initializeDataTable() {
         $('#invoiceTable').DataTable().destroy();
     }
     $('#invoiceTable').DataTable({
+        scrollX: true,
+        destroy: true,
         "paging": true,
         "searching": true,
         "ordering": true,

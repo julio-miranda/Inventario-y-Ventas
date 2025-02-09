@@ -98,6 +98,8 @@ function initializeDataTable() {
     $('#salesTable').DataTable().destroy();
   }
   $('#salesTable').DataTable({
+    scrollX: true,
+    destroy: true,
     "paging": true,
     "searching": true,
     "ordering": true,

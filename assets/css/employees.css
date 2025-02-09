@@ -224,11 +224,6 @@ button:focus {
         display: none;
     }
 
-    .table-responsive {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch; /* Mejora la experiencia en móviles */
-    }
-
     #employeeTable {
         width: 100%;
         min-width: 600px; /* Ajusta según el contenido */
