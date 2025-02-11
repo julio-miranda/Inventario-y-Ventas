@@ -227,7 +227,7 @@ h2 {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
 }
 
-#salesTable {
+table {
   width: 100%;
   border-collapse: collapse;
   margin: 20px 0;
@@ -237,35 +237,35 @@ h2 {
   overflow: hidden;
 }
 
-#salesTable th,
-#salesTable td {
+table th,
+table td {
   padding: 12px 15px;
   text-align: center;
   vertical-align: middle;
 }
 
-#salesTable th {
+table th {
   background-color: #4CAF50;
   color: white;
   font-size: 1rem;
   font-weight: bold;
 }
 
-#salesTable td {
+table td {
   color: #2c3e50;
   border-bottom: 1px solid #ddd;
 }
 
-#salesTable tr:nth-child(even) {
+table tr:nth-child(even) {
   background-color: #f2f2f2;
 }
 
-#salesTable tr:hover {
+table tr:hover {
   background-color: #f1f1f1;
 }
 
-#salesTable th,
-#salesTable td {
+table th,
+table td {
   font-size: 0.9rem;
 }
 /* =======================
@@ -347,6 +347,9 @@ h2 {
      Diseño Responsivo
      ======================= */
   @media (max-width: 768px) {
+    .dataTables_scrollHeadInner{
+      width: 100%;
+    }
     .login-container {
       padding: 30px;
     }

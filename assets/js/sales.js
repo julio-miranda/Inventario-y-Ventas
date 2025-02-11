@@ -145,9 +145,12 @@ function loadSales() {
         // Inicializar DataTable
         $('#salesTable').DataTable({
             scrollX: true,
-            destroy: true,
             responsive: true,
-            pageLength: 5,
+            Response: true,
+            autoWidth: false, 
+            "paging": true,
+            "searching": true,
+            "ordering": true,
             language: {
                 search: "Buscar:",
                 lengthMenu: "Mostrar _MENU_ registros",

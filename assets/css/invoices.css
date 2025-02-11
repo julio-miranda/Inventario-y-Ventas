@@ -135,7 +135,7 @@ body {
 /* Estilos para el menú hamburguesa en dispositivos pequeños */
 @media screen and (max-width: 768px) {
 
-    #invoiceTable {
+    table {
         width: 100%;
         min-width: 600px; /* Ajusta según el contenido */
         white-space: nowrap;
@@ -238,7 +238,7 @@ form select {
      Tabla de Facturas
      ======================= */
 
-#invoiceTable {
+table {
     width: 100%;
     border-collapse: collapse;
     margin-top: 20px;
@@ -248,24 +248,24 @@ form select {
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
 }
 
-#invoiceTable th,
-#invoiceTable td {
+table th,
+table td {
     padding: 12px;
     border: 1px solid #ddd;
     text-align: center;
 }
 
-#invoiceTable th {
+table th {
     background-color: #4CAF50;
     color: white;
     font-size: 1rem;
     font-weight: bold;
 }
 
-#invoiceTable tr:nth-child(even) {
+table tr:nth-child(even) {
     background-color: #f2f2f2;
 }
 
-#invoiceTable tr:hover {
+table tr:hover {
     background-color: #f1f1f1;
 }

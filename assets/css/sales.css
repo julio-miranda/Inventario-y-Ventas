@@ -1,15 +1,16 @@
 /* =======================
    Estilos Generales
    ======================= */
-   
-   body {
+
+body {
     font-family: Arial, sans-serif;
     background-color: #f4f4f9;
     margin: 0;
     padding: 0;
 }
 
-.sales{
+.sales {
+    width: 95%;
     margin: 20px;
 }
 
@@ -112,6 +113,26 @@
 
 /* Estilos para el menú hamburguesa en dispositivos pequeños */
 @media screen and (max-width: 768px) {
+    .sales{
+        width: 100%;
+    }
+    .navbar {
+        width: 100%;
+    }
+
+    #cartTable {
+        width: 100%;
+    }
+
+    #cartTable th,
+    #cartTable td {
+        padding: 15px;
+        border: 1px solid #ddd;
+        text-align: left;
+        font-size: auto;
+        width: auto;
+    }
+
     .navbar-links {
         display: none;
         flex-direction: column;
@@ -188,33 +209,34 @@
    Sales Section
    ======================= */
 
-#salesTable {
+#salesTable_wrapper table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 20px;
     background: white;
     border-radius: 8px;
     overflow: hidden;
 }
 
-#salesTable th,
-#salesTable td {
+#salesTable_wrapper table th,
+#salesTable_wrapper table td {
+    width: auto;
     padding: 12px;
     border: 1px solid #ddd;
     text-align: center;
 }
 
-#salesTable th {
+#salesTable_wrapper table th {
+    width: auto;
     background-color: #4CAF50;
     color: white;
     font-weight: bold;
 }
 
-#salesTable tr:nth-child(even) {
+#salesTable_wrapper table tr:nth-child(even) {
     background-color: #f2f2f2;
 }
 
-#salesTable tr:hover {
+#salesTable_wrapper table tr:hover {
     background-color: #f1f1f1;
 }
 
@@ -255,6 +277,7 @@ form button:hover {
    Tabla del Carrito de Ventas
    ======================= */
 #cartTable {
+    overflow-x: auto;
     width: 100%;
     border-collapse: collapse;
     margin-top: 20px;
@@ -268,7 +291,6 @@ form button:hover {
     padding: 15px;
     border: 1px solid #ddd;
     text-align: left;
-    font-size: 1.1rem;
 }
 
 #cartTable th {

@@ -251,12 +251,14 @@ table {
 
 th,
 td {
+    width: auto;
     padding: 12px 20px;
     text-align: left;
     border-bottom: 1px solid #ddd;
 }
 
 th {
+    width: auto;
     background-color: #34495e;
     color: white;
 }

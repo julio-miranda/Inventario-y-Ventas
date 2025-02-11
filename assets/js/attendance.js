@@ -46,6 +46,8 @@ function initializeDataTable() {
     $('#attendanceTable').DataTable({
         scrollX: true,
         destroy: true,
+        Response: true,
+        autoWidth: false, 
         "paging": true,
         "searching": true,
         "ordering": true,
