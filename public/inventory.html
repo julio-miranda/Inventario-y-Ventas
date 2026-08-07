@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Inventario - Sistema de Gestión</title>
+
+    <link rel="stylesheet" href="assets/css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
+</head>
+
+<body>
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
+        <div class="navbar-logo">
+            <a href="#">MiEmpresa</a>
+        </div>
+
+        <div class="navbar-right" id="navbarRight">
+            <div class="navbar-links" role="navigation" aria-label="Links principales">
+                <ul>
+                    <li><a href="dashboard.html">Inicio</a></li>
+                    <li><a href="inventory.html">Inventario</a></li>
+                    <li><a href="sales.html">Ventas</a></li>
+                    <li><a href="gastos.html">Gastos</a></li>
+                    <li><a href="attendance.html">Asistencia</a></li>
+                    <li><a href="employees.html">Empleados</a></li>
+                </ul>
+            </div>
+
+            <div class="navbar-user" role="region" aria-label="Usuario">
+                <span class="userGreeting">Hola, Usuario</span>
+                <button id="logoutButton" type="button">Cerrar sesión</button>
+            </div>
+        </div>
+
+        <button class="menu-toggle" id="menuToggle" type="button" aria-controls="fullscreenMenu" aria-expanded="false"
+            aria-label="Abrir menú">
+            <i class="fas fa-bars" aria-hidden="true"></i>
+            <span class="sr-only">Abrir menú</span>
+        </button>
+    </nav>
+
+    <div class="fullscreen-menu" id="fullscreenMenu" aria-hidden="true">
+        <button class="close-menu" id="closeMenu" type="button" aria-label="Cerrar menú">
+            <i class="fas fa-times"></i>
+        </button>
+
+        <ul class="menu-links">
+            <li><a href="dashboard.html">Inicio</a></li>
+            <li><a href="inventory.html">Inventario</a></li>
+            <li><a href="sales.html">Ventas</a></li>
+            <li><a href="gastos.html">Gastos</a></li>
+            <li><a href="attendance.html">Asistencia</a></li>
+            <li><a href="employees.html">Empleados</a></li>
+        </ul>
+
+        <div class="menu-user">
+            <span class="userGreeting">Hola, Usuario</span>
+            <button id="logoutButtonMobile" type="button">Cerrar sesión</button>
+        </div>
+    </div>
+
+    <main class="dashboard" role="main" aria-live="polite">
+        <section class="stats-container" aria-hidden="false">
+            <div class="stat-card">
+                <h3>Productos registrados</h3>
+                <p id="totalProductsCard">—</p>
+            </div>
+
+            <div class="stat-card">
+                <h3>Valor total inventario</h3>
+                <p id="totalValueCard">—</p>
+            </div>
+
+            <div class="stat-card">
+                <h3>Productos con stock bajo</h3>
+                <p id="lowStockCard">—</p>
+            </div>
+        </section>
+
+        <div class="inventory-toolbar">
+            <input id="salesSearch" type="search" class="inventory-search"
+                placeholder="Buscar producto, stock, precio o estado..." aria-label="Buscar productos" />
+
+            <div class="inventory-actions">
+                <button id="btnAdd" class="btn-primary" type="button">
+                    <i class="fas fa-plus"></i> Añadir / Reponer
+                </button>
+            </div>
+        </div>
+
+        <p class="inventory-hint">
+            Selecciona un producto existente para sumar cajas y unidades extra, o crea un producto nuevo desde el mismo
+            formulario.
+        </p>
+
+        <p class="small" style="margin:0 0 14px;">
+            El stock disponible se calcula restando las unidades vendidas del mes a las unidades registradas.
+        </p>
+
+        <section class="table-container" style="margin-bottom:16px;">
+            <table id="inventoryTable" class="table" aria-describedby="inventoryTableDesc">
+                <caption id="inventoryTableDesc" style="display:none;">Tabla de productos disponibles</caption>
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Stock</th>
+                        <th>Precio</th>
+                        <th>Vendido Mes (Unid.)</th>
+                        <th>Vendido Mes (Cajas)</th>
+                        <th>Costo por unidad</th>
+                        <th>Sugerido Compra (Unid.)</th>
+                        <th>Sugerido Compra (Cajas)</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <section id="lowStockPanel" class="low-stock-panel" aria-live="polite" style="display:none;"></section>
+    </main>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script src="assets/js/app.js"></script>
+    <script src="assets/js/inventory.js"></script>
+</body>
+
+</html>

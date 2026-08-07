@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Locales - Sistema de Gestión</title>
+
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
+</head>
+
+<body>
+  <nav class="navbar" role="navigation" aria-label="Barra principal">
+    <div class="navbar-logo">
+      <a href="locals.html">MiEmpresa · Locales</a>
+    </div>
+
+    <div class="navbar-right">
+      <div class="navbar-links">
+        <ul>
+          <li><a href="locals.html" class="active">Locales</a></li>
+        </ul>
+      </div>
+
+      <div class="navbar-user">
+        <span class="userGreeting">Hola, Usuario</span>
+        <button id="logoutButton" type="button">Cerrar sesión</button>
+      </div>
+    </div>
+
+    <button class="menu-toggle" id="menuToggle" type="button" aria-controls="fullscreenMenu" aria-expanded="false" aria-label="Abrir menú">
+      <i class="fas fa-bars"></i>
+    </button>
+  </nav>
+
+  <div class="fullscreen-menu" id="fullscreenMenu" aria-hidden="true">
+    <button class="close-menu" id="closeMenu" type="button" aria-label="Cerrar menú">
+      <i class="fas fa-times"></i>
+    </button>
+
+    <ul class="menu-links">
+      <li><a href="locals.html" class="active">Locales</a></li>
+    </ul>
+
+    <div class="menu-user">
+      <span class="userGreeting">Hola, Usuario</span>
+      <button id="logoutButtonMobile" type="button">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <main class="dashboard">
+    <section class="dashboard-hero">
+      <div>
+        <p class="eyebrow">Módulo de control</p>
+        <h1>Administración de locales y usuarios</h1>
+        <p class="hero-subtitle">Acceso exclusivo para el rol Desarrollador.</p>
+      </div>
+
+      <div class="hero-note" id="selectedLocalCard">
+        <p class="hero-subtitle" style="margin-top:0">
+          Selecciona un local para ver su información, sus usuarios y sus intentos fallidos.
+        </p>
+      </div>
+    </section>
+
+    <section class="stats-container">
+      <div class="stat-card">
+        <h3>Locales</h3>
+        <p id="statLocals">0</p>
+      </div>
+
+      <div class="stat-card">
+        <h3>Usuarios</h3>
+        <p id="statUsers">0</p>
+      </div>
+
+      <div class="stat-card">
+        <h3>Bloqueados</h3>
+        <p id="statBlocked">0</p>
+      </div>
+
+      <div class="stat-card">
+        <h3>Intentos fallidos</h3>
+        <p id="statFailed">0</p>
+      </div>
+    </section>
+
+    <section class="filter-panel">
+      <div class="section-header compact">
+        <div>
+          <h2>Filtros</h2>
+          <p>Filtra por local y busca dentro de todas las tablas.</p>
+        </div>
+      </div>
+
+      <div class="filter-grid">
+        <div class="filter-field">
+          <label for="localFilter">Local</label>
+          <select id="localFilter">
+            <option value="">Todos los locales</option>
+          </select>
+        </div>
+
+        <div class="filter-field filter-search">
+          <label for="globalSearch">Buscar</label>
+          <input type="text" id="globalSearch" placeholder="Nombre, documento, ubicación, correo, usuario...">
+        </div>
+
+        <div class="filter-field">
+          <label>&nbsp;</label>
+          <button type="button" id="btnRefresh" class="btn-outline">Actualizar</button>
+        </div>
+      </div>
+
+      <div class="filter-actions">
+        <button type="button" id="btnNewLocal" class="btn-primary">Nuevo local</button>
+        <button type="button" id="btnNewUser" class="btn-primary">Nuevo usuario</button>
+      </div>
+    </section>
+
+    <section class="table-section">
+      <div class="section-header">
+        <div>
+          <h2>Locales</h2>
+          <p>CRUD de locales, bloqueo y eliminación.</p>
+        </div>
+        <div class="small" id="localCountLabel">0 registros</div>
+      </div>
+
+      <div class="table-container">
+        <table id="localsTable">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Número documento</th>
+              <th>Ubicación</th>
+              <th>Estado</th>
+              <th>Usuarios</th>
+              <th>Último acceso</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="7">Cargando locales...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="table-section">
+      <div class="section-header">
+        <div>
+          <h2>Usuarios del local</h2>
+          <p>Bloqueo, edición y creación de usuarios por local.</p>
+        </div>
+        <div class="small" id="userCountLabel">0 registros</div>
+      </div>
+
+      <div class="table-container">
+        <table id="localUsersTable">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Correo</th>
+              <th>Posición</th>
+              <th>Teléfono</th>
+              <th>Local</th>
+              <th>Fallidos</th>
+              <th>Último acceso</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="9">Cargando usuarios...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="table-section">
+      <div class="section-header">
+        <div>
+          <h2>Intentos fallidos</h2>
+          <p>Registro de accesos fallidos y motivos de rechazo.</p>
+        </div>
+        <div class="small" id="attemptCountLabel">0 registros</div>
+      </div>
+
+      <div class="table-container">
+        <table id="loginAttemptsTable">
+          <thead>
+            <tr>
+              <th>Correo</th>
+              <th>Local</th>
+              <th>Resultado</th>
+              <th>Motivo</th>
+              <th>Fecha</th>
+              <th>Hora</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="6">Cargando intentos...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <script src="assets/js/app.js"></script>
+  <script src="assets/js/locals.js"></script>
+</body>
+</html>
