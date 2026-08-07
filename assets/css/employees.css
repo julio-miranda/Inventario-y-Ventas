@@ -1,0 +1,342 @@
+/* =======================
+   Estilos Generales
+   ======================= */
+   
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f9;
+    margin: 0;
+    padding: 0;
+}
+
+.employees{
+    margin: 20px;
+}
+
+#employeeSearch {
+    width: 30%;
+    padding: 10px;
+    margin: 10px 0;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+/* =======================
+   Navbar Styles
+   ======================= */
+
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 40px;
+    background-color: #2c3e50;
+    color: white;
+}
+
+.navbar-logo a {
+    font-size: 1.5rem;
+    font-weight: bold;
+    text-decoration: none;
+    color: white;
+}
+
+.navbar-links {
+    flex-grow: 1;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.navbar-links ul {
+    list-style: none;
+    display: flex;
+    gap: 20px;
+    margin: 0;
+    padding: 0;
+    align-items: center;
+}
+
+.navbar-links ul li a {
+    color: white;
+    text-decoration: none;
+    font-weight: 500;
+    padding: 8px 12px;
+    display: inline-block;
+    border-radius: 4px;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.navbar-user span {
+    font-size: 1rem;
+}
+
+.logout-btn {
+    background-color: #e74c3c;
+    border: none;
+    padding: 10px 20px;
+    color: white;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: background-color 0.3s ease;
+}
+
+.logout-btn:hover {
+    background-color: #c0392b;
+}
+
+/* =======================
+   Button Style Adjustments
+   ======================= */
+
+.navbar button {
+    padding: 12px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.navbar button:hover {
+    background-color: red;
+}
+
+/* =======================
+   Menu Toggle for Small Screens
+   ======================= */
+.menu-toggle {
+    display: none;
+}
+
+/* Efecto hover para los enlaces */
+.navbar-links li a:hover,
+.navbar-links li a:focus {
+    background-color: #3498db;
+    color: white;
+}
+
+/* Estilos para el menú hamburguesa en dispositivos pequeños */
+@media screen and (max-width: 768px) {
+    .navbar-links {
+        display: none;
+        flex-direction: column;
+        width: 100%;
+        text-align: center;
+        background-color: #2c3e50;
+        position: absolute;
+        top: 80px;
+        left: 0;
+        width: 100%;
+        padding: 10px 0;
+        border-radius: 0 0 10px 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .navbar-links.active {
+        display: flex;
+    }
+
+    .navbar-links ul {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 0;
+        margin: 0;
+        width: 100%;
+    }
+
+    .navbar-links ul li {
+        list-style: none;
+        width: 100%;
+        transition: background-color 0.3s ease;
+    }
+
+    .navbar-links ul li a {
+        display: block;
+        width: 100%;
+        padding: 12px 0;
+        /* Ajuste de tamaño */
+        text-align: center;
+        color: white;
+        text-decoration: none;
+        font-size: clamp(1rem, 2vw, 1.3rem);
+        /* Ajuste dinámico del tamaño del texto */
+        font-weight: bold;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        transition: background 0.3s ease, color 0.3s ease;
+    }
+
+    .navbar-links ul li:last-child a {
+        border-bottom: none;
+    }
+
+    .navbar-links ul li:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .navbar-links ul li a:hover {
+        color: #f39c12;
+    }
+
+    .menu-toggle {
+        display: block;
+        background-color: #4CAF50;
+        border: none;
+        color: white;
+        font-size: 1.8rem;
+        cursor: pointer;
+        transition: transform 0.3s ease;
+    }
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+th,
+td {
+    padding: 12px 20px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+th {
+    background-color: #34495e;
+    color: white;
+}
+
+td {
+    background-color: #ecf0f1;
+}
+
+button:focus {
+    outline: none;
+}
+
+/* Estilos para el botón de hamburguesa */
+@media screen and (max-width: 768px) {
+    .employees.active {
+        display: none;
+    }
+
+    #employeeTable {
+        width: 100%;
+        min-width: 600px; /* Ajusta según el contenido */
+        white-space: nowrap;
+    }
+
+    .navbar-links {
+        display: none;
+    }
+
+    .navbar-links.active {
+        display: flex;
+    }
+}
+
+/* =======================
+   Estilos del Formulario
+   ======================= */
+#editEmployeeForm, #newEmployeeForm {
+    margin-top: 20px;
+    padding: 20px;
+    background-color: #fff;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    display: none;
+}
+
+#editEmployeeForm h2, #newEmployeeForm h2 {
+    color: #2c3e50;
+}
+
+#editEmployeeForm label, #newEmployeeForm label{
+    font-size: 1rem;
+    color: #2c3e50;
+    margin-top: 10px;
+    display: block;
+}
+
+#editEmployeeForm input,#newEmployeeForm input{
+    width: 95%;
+    padding: 10px;
+    margin: 10px 0;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    font-size: 1rem;
+}
+
+#editEmployeeForm button, #newEmployeeForm button{
+    color: white;
+    width: 48%;
+    padding: 12px;
+    font-size: 1.1rem;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    margin-top: 20px;
+    transition: background-color 0.3s;
+}
+
+#newEmployeeForm .button-container, #editEmployeeForm .button-container {
+    display: flex;
+    justify-content: space-between;
+}
+
+#editEmployeeForm button:focus, #newEmployeeForm button:focus {
+    outline: none;
+}
+
+#updateEmployeeButton, #saveEmployeeButton{
+    background-color: #27ae60;
+}
+
+#cancelEditButton, #cancelButton {
+    background-color: #e74c3c;
+}
+
+button {
+    background-color: #3498db;
+    /* Color de fondo azul */
+    color: white;
+    /* Color del texto blanco */
+    padding: 10px 20px;
+    /* Espaciado interior */
+    border: none;
+    /* Sin borde */
+    cursor: pointer;
+    /* Cambio de cursor al pasar sobre el botón */
+    border-radius: 6px;
+    /* Bordes redondeados */
+    font-size: 1rem;
+    /* Tamaño de la fuente */
+    font-weight: 600;
+    /* Peso de la fuente */
+    transition: all 0.3s ease;
+    /* Transición suave para todos los estados */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    /* Sombra suave */
+}
+
+/* Efecto al pasar el cursor (hover) */
+button:hover {
+    background-color: #2980b9;
+    /* Cambio de color a un azul más oscuro */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    /* Sombra más prominente */
+}
+
+/* Efecto al hacer foco (focus) */
+button:focus {
+    outline: none;
+    /* Eliminar el contorno por defecto */
+    background-color: #2980b9;
+    /* Color de fondo al hacer foco */
+    box-shadow: 0 0 0 3px rgba(41, 128, 185, 0.5);
+    /* Resaltar con sombra azul */
+}
