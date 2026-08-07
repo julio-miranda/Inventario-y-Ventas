@@ -84,11 +84,11 @@ const ROLE_NAV = {
 };
 
 const ROLE_DEFAULT_PAGE = {
-  Administrador: "dashboard.html",
-  Cajero: "sales.html",
-  Vendedor: "sales.html",
-  Bodega: "inventory.html",
-  Desarrollador: "locales.html"
+  Administrador: "public/dashboard.html",
+  Cajero: "public/sales.html",
+  Vendedor: "public/sales.html",
+  Bodega: "public/inventory.html",
+  Desarrollador: "public/locales.html"
 };
 
 const ROLE_ALLOWED_PAGES = {
@@ -191,7 +191,7 @@ function bindLogoutButtons() {
         await auth.signOut();
       } finally {
         localStorage.removeItem("currentUser");
-        window.location.href = "index.html";
+        window.location.href = "../index.html";
       }
     });
   });
@@ -1063,7 +1063,7 @@ document.addEventListener("DOMContentLoaded", () => {
         currentPage !== "index.html" &&
         currentPage !== "login.html"
       ) {
-        window.location.href = "index.html";
+        window.location.href = "../index.html";
       }
 
       return;
