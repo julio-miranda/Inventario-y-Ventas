@@ -1,5 +1,6 @@
 // assets/js/gastos.js
-// Depende de `db`, `auth`, `getTodayBounds`, `getDailyFinancialSummary`, `formatMoney` definidos en assets/js/app.js
+// Depende de `db`, `auth`, `getTodayBounds`, `getDailyFinancialSummary`,
+// `formatMoney` y `getCurrentLocalId` definidos en assets/js/app.js
 
 const expenseConceptInput = document.getElementById("expenseConcept");
 const expenseCategoryInput = document.getElementById("expenseCategory");
@@ -16,7 +17,8 @@ const summaryNetEl = document.getElementById("summaryNet");
 let currentUserInfo = {
   uid: null,
   name: "Usuario",
-  role: ""
+  role: "",
+  id_local: ""
 };
 
 let expensesCache = [];
@@ -42,16 +44,32 @@ function numberOrZero(v) {
 
 function formatDateOnly(v) {
   if (!v) return "-";
-  const d = v.seconds ? new Date(v.seconds * 1000) : new Date(v);
+
+  const d = v.seconds
+    ? new Date(v.seconds * 1000)
+    : new Date(v);
+
   if (isNaN(d.getTime())) return "-";
+
   return d.toLocaleDateString("es-ES");
 }
 
 function formatTimeOnly(v) {
   if (!v) return "-";
-  const d = v.seconds ? new Date(v.seconds * 1000) : new Date(v);
+
+  const d = v.seconds
+    ? new Date(v.seconds * 1000)
+    : new Date(v);
+
   if (isNaN(d.getTime())) return "-";
-  return d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+
+  return d.toLocaleTimeString(
+    "es-ES",
+    {
+      hour: "2-digit",
+      minute: "2-digit"
+    }
+  );
 }
 
 function currency(value) {
@@ -65,48 +83,113 @@ function currency(value) {
   }).format(Number(value || 0));
 }
 
-/* Vendedor sí puede entrar al módulo.
-   Administrador, Cajero y Vendedor pueden registrar gastos.
-   La eliminación la valida Firestore por dueño o administrador. */
+/*
+ * Vendedor sí puede entrar al módulo.
+ * Administrador, Cajero y Vendedor pueden registrar gastos.
+ * La eliminación la valida Firestore por dueño o administrador.
+ */
 function canManageExpenses(role = "") {
-  const r = String(role || "").trim().toLowerCase();
-  return r === "administrador" || r === "admin" || r === "cajero" || r === "vendedor";
+  const r = String(role || "")
+    .trim()
+    .toLowerCase();
+
+  return (
+    r === "administrador" ||
+    r === "admin" ||
+    r === "cajero" ||
+    r === "vendedor"
+  );
 }
 
 function getStoredUser() {
   try {
-    return JSON.parse(localStorage.getItem("currentUser")) || null;
+    return (
+      JSON.parse(
+        localStorage.getItem("currentUser")
+      ) || null
+    );
   } catch {
     return null;
   }
 }
 
-function setSummary(sales = 0, expenses = 0) {
-  const net = Number(sales) - Number(expenses);
+function setSummary(
+  sales = 0,
+  expenses = 0
+) {
+  const net =
+    Number(sales) -
+    Number(expenses);
 
-  if (summarySalesEl) summarySalesEl.textContent = currency(sales);
-  if (summaryExpensesEl) summaryExpensesEl.textContent = currency(expenses);
-  if (summaryNetEl) summaryNetEl.textContent = currency(net);
+  if (summarySalesEl) {
+    summarySalesEl.textContent =
+      currency(sales);
+  }
+
+  if (summaryExpensesEl) {
+    summaryExpensesEl.textContent =
+      currency(expenses);
+  }
+
+  if (summaryNetEl) {
+    summaryNetEl.textContent =
+      currency(net);
+  }
 }
 
 function clearForm() {
-  if (expenseConceptInput) expenseConceptInput.value = "";
-  if (expenseCategoryInput) expenseCategoryInput.value = "Transporte";
-  if (expenseAmountInput) expenseAmountInput.value = "0";
-  if (expensePaymentInput) expensePaymentInput.value = "Efectivo";
-  if (expenseNotesInput) expenseNotesInput.value = "";
+  if (expenseConceptInput) {
+    expenseConceptInput.value = "";
+  }
+
+  if (expenseCategoryInput) {
+    expenseCategoryInput.value = "Transporte";
+  }
+
+  if (expenseAmountInput) {
+    expenseAmountInput.value = "0";
+  }
+
+  if (expensePaymentInput) {
+    expensePaymentInput.value = "Efectivo";
+  }
+
+  if (expenseNotesInput) {
+    expenseNotesInput.value = "";
+  }
 }
 
-function setExpenseButtonsDisabled(disabled) {
-  if (btnAddExpense) btnAddExpense.disabled = disabled;
-  if (btnClearExpenseForm) btnClearExpenseForm.disabled = disabled;
+function setExpenseButtonsDisabled(
+  disabled
+) {
+  if (btnAddExpense) {
+    btnAddExpense.disabled = disabled;
+  }
+
+  if (btnClearExpenseForm) {
+    btnClearExpenseForm.disabled =
+      disabled;
+  }
 }
 
 function canDeleteExpenseItem(item) {
-  const isAdmin = String(currentUserInfo.role || "").trim().toLowerCase() === "administrador" ||
-    String(currentUserInfo.role || "").trim().toLowerCase() === "admin";
+  const currentRole =
+    String(
+      currentUserInfo.role || ""
+    )
+      .trim()
+      .toLowerCase();
 
-  const isOwner = item && item.userId && currentUserInfo.uid && String(item.userId) === String(currentUserInfo.uid);
+  const isAdmin =
+    currentRole === "administrador" ||
+    currentRole === "admin";
+
+  const isOwner =
+    item &&
+    item.userId &&
+    currentUserInfo.uid &&
+    String(item.userId) ===
+      String(currentUserInfo.uid);
 
   return isAdmin || isOwner;
 }
@@ -117,12 +200,15 @@ function renderExpenses(list) {
   expensesTableBody.innerHTML = "";
 
   if (!list.length) {
-    expensesTableBody.innerHTML = "<tr><td colspan='8'>No hay gastos registrados hoy.</td></tr>";
+    expensesTableBody.innerHTML =
+      "<tr><td colspan='8'>No hay gastos registrados hoy.</td></tr>";
+
     return;
   }
 
   list.forEach(item => {
-    const tr = document.createElement("tr");
+    const tr =
+      document.createElement("tr");
 
     tr.innerHTML = `
       <td>${escapeHtml(item.concept || "-")}</td>
@@ -133,42 +219,104 @@ function renderExpenses(list) {
       <td>${escapeHtml(formatDateOnly(item.createdAt))}</td>
       <td>${escapeHtml(formatTimeOnly(item.createdAt))}</td>
       <td>
-        ${canDeleteExpenseItem(item)
-          ? `<button class="btn-delete" type="button" data-id="${item.id}">Eliminar</button>`
-          : "-"}
+        ${
+          canDeleteExpenseItem(item)
+            ? `<button class="btn-delete" type="button" data-id="${item.id}">Eliminar</button>`
+            : "-"
+        }
       </td>
     `;
 
     expensesTableBody.appendChild(tr);
   });
 
-  expensesTableBody.querySelectorAll("button[data-id]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      if (isDeletingExpense) return;
-      const id = btn.getAttribute("data-id");
-      await deleteExpense(id);
+  expensesTableBody
+    .querySelectorAll("button[data-id]")
+    .forEach(btn => {
+      btn.addEventListener(
+        "click",
+        async () => {
+          if (isDeletingExpense) return;
+
+          const id =
+            btn.getAttribute("data-id");
+
+          await deleteExpense(id);
+        }
+      );
     });
-  });
 }
 
 async function refreshDailySummary() {
   try {
-    if (typeof getDailyFinancialSummary === "function") {
-      const current = await getDailyFinancialSummary(new Date());
-      setSummary(current.sales, current.expenses);
+    if (
+      typeof getDailyFinancialSummary ===
+      "function"
+    ) {
+      const current =
+        await getDailyFinancialSummary(
+          new Date(),
+          currentUserInfo.id_local ||
+            (
+              typeof getCurrentLocalId ===
+              "function"
+                ? getCurrentLocalId()
+                : ""
+            )
+        );
+
+      setSummary(
+        current.sales,
+        current.expenses
+      );
+
       return;
     }
 
-    const { start, end } = getTodayBounds(new Date());
+    const {
+      start,
+      end
+    } = getTodayBounds(new Date());
 
-    const [salesSnap, expensesSnap] = await Promise.all([
+    const targetLocalId =
+      String(
+        currentUserInfo.id_local ||
+          (
+            typeof getCurrentLocalId ===
+            "function"
+              ? getCurrentLocalId()
+              : ""
+          )
+      ).trim();
+
+    const [
+      salesSnap,
+      expensesSnap
+    ] = await Promise.all([
       db.collection("ventas")
-        .where("createdAt", ">=", start)
-        .where("createdAt", "<=", end)
+        .where(
+          "createdAt",
+          ">=",
+          start
+        )
+        .where(
+          "createdAt",
+          "<=",
+          end
+        )
         .get(),
+
       db.collection("gastos")
-        .where("createdAt", ">=", start)
-        .where("createdAt", "<=", end)
+        .where(
+          "createdAt",
+          ">=",
+          start
+        )
+        .where(
+          "createdAt",
+          "<=",
+          end
+        )
         .get()
     ]);
 
@@ -176,102 +324,364 @@ async function refreshDailySummary() {
     let expenses = 0;
 
     salesSnap.forEach(doc => {
-      sales += Number(doc.data().total || 0);
+      const data = doc.data() || {};
+
+      const docLocalId =
+        String(
+          data.id_local ||
+            data.idLocal ||
+            data.localId ||
+            ""
+        ).trim();
+
+      if (
+        targetLocalId &&
+        docLocalId !== targetLocalId
+      ) {
+        return;
+      }
+
+      sales += Number(
+        data.total || 0
+      );
     });
 
     expensesSnap.forEach(doc => {
-      expenses += Number(doc.data().amount || 0);
+      const data = doc.data() || {};
+
+      const docLocalId =
+        String(
+          data.id_local ||
+            data.idLocal ||
+            data.localId ||
+            ""
+        ).trim();
+
+      if (
+        targetLocalId &&
+        docLocalId !== targetLocalId
+      ) {
+        return;
+      }
+
+      expenses += Number(
+        data.amount || 0
+      );
     });
 
-    setSummary(sales, expenses);
+    setSummary(
+      sales,
+      expenses
+    );
+
   } catch (err) {
-    console.error("Error cargando resumen diario:", err);
+    console.error(
+      "Error cargando resumen diario:",
+      err
+    );
+
     setSummary(0, 0);
   }
 }
 
 function listenTodaySales() {
-  const { start, end } = getTodayBounds(new Date());
+  const {
+    start,
+    end
+  } = getTodayBounds(new Date());
 
   if (unsubscribeSales) {
     unsubscribeSales();
     unsubscribeSales = null;
   }
 
-  unsubscribeSales = db.collection("ventas")
-    .where("createdAt", ">=", start)
-    .where("createdAt", "<=", end)
-    .onSnapshot(snapshot => {
-      let totalSales = 0;
+  unsubscribeSales =
+    db.collection("ventas")
+      .where(
+        "createdAt",
+        ">=",
+        start
+      )
+      .where(
+        "createdAt",
+        "<=",
+        end
+      )
+      .onSnapshot(
+        snapshot => {
+          const targetLocalId =
+            String(
+              currentUserInfo.id_local ||
+                (
+                  typeof getCurrentLocalId ===
+                  "function"
+                    ? getCurrentLocalId()
+                    : ""
+                )
+            ).trim();
 
-      snapshot.forEach(doc => {
-        totalSales += Number(doc.data().total || 0);
-      });
+          let totalSales = 0;
 
-      const totalExpenses = expensesCache.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-      setSummary(totalSales, totalExpenses);
-    }, err => {
-      console.error("Error escuchando ventas del día:", err);
-    });
+          snapshot.forEach(doc => {
+            const data =
+              doc.data() || {};
+
+            const docLocalId =
+              String(
+                data.id_local ||
+                  data.idLocal ||
+                  data.localId ||
+                  ""
+              ).trim();
+
+            if (
+              targetLocalId &&
+              docLocalId !==
+                targetLocalId
+            ) {
+              return;
+            }
+
+            totalSales += Number(
+              data.total || 0
+            );
+          });
+
+          const totalExpenses =
+            expensesCache.reduce(
+              (sum, item) =>
+                sum +
+                Number(
+                  item.amount || 0
+                ),
+              0
+            );
+
+          setSummary(
+            totalSales,
+            totalExpenses
+          );
+        },
+        err => {
+          console.error(
+            "Error escuchando ventas del día:",
+            err
+          );
+        }
+      );
 }
 
 function listenTodayExpenses() {
-  const { start, end } = getTodayBounds(new Date());
+  const {
+    start,
+    end
+  } = getTodayBounds(new Date());
 
   if (unsubscribeExpenses) {
     unsubscribeExpenses();
     unsubscribeExpenses = null;
   }
 
-  unsubscribeExpenses = db.collection("gastos")
-    .where("createdAt", ">=", start)
-    .where("createdAt", "<=", end)
-    .orderBy("createdAt", "desc")
-    .onSnapshot(snapshot => {
-      expensesCache = [];
+  unsubscribeExpenses =
+    db.collection("gastos")
+      .where(
+        "createdAt",
+        ">=",
+        start
+      )
+      .where(
+        "createdAt",
+        "<=",
+        end
+      )
+      .orderBy(
+        "createdAt",
+        "desc"
+      )
+      .onSnapshot(
+        snapshot => {
+          const targetLocalId =
+            String(
+              currentUserInfo.id_local ||
+                (
+                  typeof getCurrentLocalId ===
+                  "function"
+                    ? getCurrentLocalId()
+                    : ""
+                )
+            ).trim();
 
-      snapshot.forEach(doc => {
-        expensesCache.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
+          expensesCache = [];
 
-      renderExpenses(expensesCache);
+          snapshot.forEach(doc => {
+            const data =
+              doc.data() || {};
 
-      const totalExpenses = expensesCache.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-      refreshDailySummary().catch(() => {
-        const totalSales = 0;
-        setSummary(totalSales, totalExpenses);
-      });
-    }, err => {
-      console.error("Error escuchando gastos del día:", err);
-      expensesCache = [];
-      renderExpenses(expensesCache);
-    });
+            const docLocalId =
+              String(
+                data.id_local ||
+                  data.idLocal ||
+                  data.localId ||
+                  ""
+              ).trim();
+
+            /*
+             * Mostrar únicamente los gastos
+             * correspondientes al local actual.
+             */
+            if (
+              targetLocalId &&
+              docLocalId !==
+                targetLocalId
+            ) {
+              return;
+            }
+
+            expensesCache.push({
+              id: doc.id,
+              ...data
+            });
+          });
+
+          renderExpenses(
+            expensesCache
+          );
+
+          const totalExpenses =
+            expensesCache.reduce(
+              (sum, item) =>
+                sum +
+                Number(
+                  item.amount || 0
+                ),
+              0
+            );
+
+          refreshDailySummary().catch(
+            () => {
+              setSummary(
+                0,
+                totalExpenses
+              );
+            }
+          );
+        },
+        err => {
+          console.error(
+            "Error escuchando gastos del día:",
+            err
+          );
+
+          expensesCache = [];
+          renderExpenses(
+            expensesCache
+          );
+        }
+      );
 }
 
 async function addExpense() {
   if (isAddingExpense) return;
 
-  if (!canManageExpenses(currentUserInfo.role)) {
-    Swal.fire("No tienes permisos", "", "error");
+  if (
+    !canManageExpenses(
+      currentUserInfo.role
+    )
+  ) {
+    Swal.fire(
+      "No tienes permisos",
+      "",
+      "error"
+    );
+
     return;
   }
 
-  const concept = String(expenseConceptInput?.value || "").trim();
-  const category = String(expenseCategoryInput?.value || "").trim();
-  const amount = Number(expenseAmountInput?.value || 0);
-  const paymentMethod = String(expensePaymentInput?.value || "").trim();
-  const notes = String(expenseNotesInput?.value || "").trim();
+  /*
+   * Obtener el local asociado al usuario.
+   * Primero se utiliza currentUserInfo y,
+   * como respaldo, getCurrentLocalId().
+   */
+  const id_local = String(
+    currentUserInfo.id_local ||
+      (
+        typeof getCurrentLocalId ===
+        "function"
+          ? getCurrentLocalId()
+          : ""
+      ) ||
+      ""
+  ).trim();
+
+  /*
+   * No permitir registrar gastos sin local.
+   * Esto evita crear documentos huérfanos.
+   */
+  if (!id_local) {
+    console.error(
+      "No se encontró id_local para el usuario actual.",
+      currentUserInfo
+    );
+
+    Swal.fire(
+      "Error de configuración",
+      "El usuario actual no tiene un local asociado. No se puede registrar el gasto.",
+      "error"
+    );
+
+    return;
+  }
+
+  const concept =
+    String(
+      expenseConceptInput?.value ||
+        ""
+    ).trim();
+
+  const category =
+    String(
+      expenseCategoryInput?.value ||
+        ""
+    ).trim();
+
+  const amount =
+    Number(
+      expenseAmountInput?.value ||
+        0
+    );
+
+  const paymentMethod =
+    String(
+      expensePaymentInput?.value ||
+        ""
+    ).trim();
+
+  const notes =
+    String(
+      expenseNotesInput?.value ||
+        ""
+    ).trim();
 
   if (!concept) {
-    Swal.fire("Validación", "El concepto del gasto es obligatorio.", "warning");
+    Swal.fire(
+      "Validación",
+      "El concepto del gasto es obligatorio.",
+      "warning"
+    );
+
     return;
   }
 
-  if (!Number.isFinite(amount) || amount <= 0) {
-    Swal.fire("Validación", "Ingresa un monto válido mayor que cero.", "warning");
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    Swal.fire(
+      "Validación",
+      "Ingresa un monto válido mayor que cero.",
+      "warning"
+    );
+
     return;
   }
 
@@ -279,16 +689,41 @@ async function addExpense() {
   setExpenseButtonsDisabled(true);
 
   try {
+    /*
+     * El documento de gasto queda asociado
+     * directamente al local del usuario.
+     */
     await db.collection("gastos").add({
       concept,
       category,
       amount,
       paymentMethod,
       notes,
-      dayKey: getTodayBounds(new Date()).dayKey,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      userId: currentUserInfo.uid || null,
-      userName: currentUserInfo.name || "Usuario"
+
+      dayKey:
+        getTodayBounds(
+          new Date()
+        ).dayKey,
+
+      createdAt:
+        firebase.firestore
+          .FieldValue
+          .serverTimestamp(),
+
+      userId:
+        currentUserInfo.uid ||
+        null,
+
+      userName:
+        currentUserInfo.name ||
+        "Usuario",
+
+      /*
+       * NUEVO:
+       * Identificador del local al que
+       * pertenece el gasto.
+       */
+      id_local
     });
 
     Swal.fire({
@@ -301,10 +736,22 @@ async function addExpense() {
     });
 
     clearForm();
+
     await refreshDailySummary();
+
   } catch (err) {
-    console.error("Error agregando gasto:", err);
-    Swal.fire("Error", err.message || "No se pudo guardar el gasto.", "error");
+    console.error(
+      "Error agregando gasto:",
+      err
+    );
+
+    Swal.fire(
+      "Error",
+      err.message ||
+        "No se pudo guardar el gasto.",
+      "error"
+    );
+
   } finally {
     isAddingExpense = false;
     setExpenseButtonsDisabled(false);
@@ -314,36 +761,119 @@ async function addExpense() {
 async function deleteExpense(id) {
   if (isDeletingExpense) return;
 
-  if (!canManageExpenses(currentUserInfo.role)) {
-    Swal.fire("No tienes permisos", "No tienes permisos para eliminar gastos.", "error");
+  if (
+    !canManageExpenses(
+      currentUserInfo.role
+    )
+  ) {
+    Swal.fire(
+      "No tienes permisos",
+      "No tienes permisos para eliminar gastos.",
+      "error"
+    );
+
     return;
   }
 
-  const target = expensesCache.find(item => item.id === id);
-  const isAdmin = String(currentUserInfo.role || "").trim().toLowerCase() === "administrador" ||
-    String(currentUserInfo.role || "").trim().toLowerCase() === "admin";
-  const isOwner = target && target.userId && currentUserInfo.uid && String(target.userId) === String(currentUserInfo.uid);
+  const target =
+    expensesCache.find(
+      item => item.id === id
+    );
+
+  const currentRole =
+    String(
+      currentUserInfo.role || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const isAdmin =
+    currentRole === "administrador" ||
+    currentRole === "admin";
+
+  const isOwner =
+    target &&
+    target.userId &&
+    currentUserInfo.uid &&
+    String(
+      target.userId
+    ) ===
+      String(
+        currentUserInfo.uid
+      );
 
   if (!isAdmin && !isOwner) {
-    Swal.fire("No tienes permisos", "Solo el creador o el administrador pueden eliminar este gasto.", "error");
+    Swal.fire(
+      "No tienes permisos",
+      "Solo el creador o el administrador pueden eliminar este gasto.",
+      "error"
+    );
+
     return;
   }
 
-  const result = await Swal.fire({
-    title: "Eliminar gasto",
-    text: "Esta acción no se puede deshacer.",
-    icon: "warning",
-    showCancelButton: true,
-    confirmButtonText: "Eliminar",
-    cancelButtonText: "Cancelar"
-  });
+  /*
+   * Comprobación adicional del local.
+   * Un gasto de otro local no debe poder
+   * eliminarse desde este contexto.
+   */
+  const currentLocalId =
+    String(
+      currentUserInfo.id_local ||
+        (
+          typeof getCurrentLocalId ===
+          "function"
+            ? getCurrentLocalId()
+            : ""
+        )
+    ).trim();
 
-  if (!result.isConfirmed) return;
+  const expenseLocalId =
+    String(
+      target?.id_local ||
+        target?.idLocal ||
+        target?.localId ||
+        ""
+    ).trim();
+
+  if (
+    currentLocalId &&
+    expenseLocalId &&
+    currentLocalId !==
+      expenseLocalId &&
+    !isAdmin
+  ) {
+    Swal.fire(
+      "No tienes permisos",
+      "Este gasto pertenece a otro local.",
+      "error"
+    );
+
+    return;
+  }
+
+  const result =
+    await Swal.fire({
+      title: "Eliminar gasto",
+      text: "Esta acción no se puede deshacer.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Eliminar",
+      cancelButtonText: "Cancelar"
+    });
+
+  if (!result.isConfirmed) {
+    return;
+  }
 
   isDeletingExpense = true;
 
   try {
-    await db.collection("gastos").doc(id).delete();
+    await db
+      .collection("gastos")
+      .doc(id)
+      .delete();
+
     Swal.fire({
       toast: true,
       position: "top-end",
@@ -352,91 +882,227 @@ async function deleteExpense(id) {
       showConfirmButton: false,
       timer: 1400
     });
+
     await refreshDailySummary();
+
   } catch (err) {
-    console.error("Error eliminando gasto:", err);
-    Swal.fire("Error", err.message || "No se pudo eliminar el gasto.", "error");
+    console.error(
+      "Error eliminando gasto:",
+      err
+    );
+
+    Swal.fire(
+      "Error",
+      err.message ||
+        "No se pudo eliminar el gasto.",
+      "error"
+    );
+
   } finally {
     isDeletingExpense = false;
   }
 }
 
-auth.onAuthStateChanged(async (user) => {
-  if (!user) {
-    window.location.href = "index.html";
-    return;
-  }
+auth.onAuthStateChanged(
+  async (user) => {
+    if (!user) {
+      window.location.href =
+        "index.html";
 
-  const stored = getStoredUser();
+      return;
+    }
 
-  if (stored) {
-    currentUserInfo.uid = stored.uid || user.uid;
-    currentUserInfo.name = stored.name || user.email || "Usuario";
-    currentUserInfo.role = stored.role || "";
-  } else {
-    currentUserInfo.uid = user.uid;
-    currentUserInfo.name = user.email || "Usuario";
-    currentUserInfo.role = "";
-  }
+    /*
+     * Preferir el contexto completo que
+     * app.js ya resolvió durante el login.
+     */
+    const stored =
+      getStoredUser();
 
-  // Aquí está el cambio importante: vendedor sí entra.
-  if (!canManageExpenses(currentUserInfo.role)) {
-    Swal.fire({
-      icon: "error",
-      title: "Acceso denegado",
-      text: "No tienes permisos para administrar gastos."
-    }).then(() => {
-      window.location.href = "dashboard.html";
-    });
-    return;
-  }
+    if (stored) {
+      currentUserInfo.uid =
+        stored.uid ||
+        user.uid;
 
-  if (typeof renderNavigationForRole === "function") {
-    renderNavigationForRole(currentUserInfo.role);
-  }
+      currentUserInfo.name =
+        stored.name ||
+        user.email ||
+        "Usuario";
 
-  const greetingEls = document.querySelectorAll(".userGreeting");
-  greetingEls.forEach(el => {
-    el.textContent = `Hola, ${currentUserInfo.name} (${currentUserInfo.role || "Usuario"})`;
-  });
+      currentUserInfo.role =
+        stored.role ||
+        "";
 
-  await refreshDailySummary();
-  listenTodaySales();
-  listenTodayExpenses();
-});
+      currentUserInfo.id_local =
+        String(
+          stored.id_local ||
+            stored.idLocal ||
+            stored.localId ||
+            ""
+        ).trim();
 
-document.addEventListener("DOMContentLoaded", () => {
-  if (btnAddExpense) {
-    btnAddExpense.addEventListener("click", (e) => {
-      e.preventDefault();
-      addExpense();
-    });
-  }
+    } else {
+      currentUserInfo.uid =
+        user.uid;
 
-  if (btnClearExpenseForm) {
-    btnClearExpenseForm.addEventListener("click", (e) => {
-      e.preventDefault();
-      clearForm();
-    });
-  }
+      currentUserInfo.name =
+        user.email ||
+        "Usuario";
 
-  const logoutBtn = document.getElementById("logoutButton");
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", () => {
-      auth.signOut().then(() => {
-        localStorage.removeItem("currentUser");
-        window.location.href = "index.html";
+      currentUserInfo.role =
+        "";
+
+      currentUserInfo.id_local =
+        String(
+          typeof getCurrentLocalId ===
+          "function"
+            ? getCurrentLocalId()
+            : ""
+        ).trim();
+    }
+
+    /*
+     * Respaldo adicional para obtener
+     * el id_local directamente desde app.js.
+     */
+    if (
+      !currentUserInfo.id_local &&
+      typeof getCurrentLocalId ===
+        "function"
+    ) {
+      currentUserInfo.id_local =
+        String(
+          getCurrentLocalId() ||
+            ""
+        ).trim();
+    }
+
+    // Aquí está el cambio importante:
+    // vendedor sí entra.
+    if (
+      !canManageExpenses(
+        currentUserInfo.role
+      )
+    ) {
+      Swal.fire({
+        icon: "error",
+        title: "Acceso denegado",
+        text: "No tienes permisos para administrar gastos."
+      }).then(() => {
+        window.location.href =
+          "dashboard.html";
       });
-    });
-  }
 
-  const logoutBtnMobile = document.getElementById("logoutButtonMobile");
-  if (logoutBtnMobile) {
-    logoutBtnMobile.addEventListener("click", () => {
-      auth.signOut().then(() => {
-        localStorage.removeItem("currentUser");
-        window.location.href = "index.html";
+      return;
+    }
+
+    /*
+     * Aunque el usuario tenga permiso para
+     * administrar gastos, no puede registrar
+     * gastos si no tiene local asociado.
+     */
+    if (!currentUserInfo.id_local) {
+      Swal.fire({
+        icon: "error",
+        title: "Local no asignado",
+        text: "Tu usuario no tiene un local asociado. No puedes administrar gastos hasta que se le asigne uno."
+      }).then(() => {
+        window.location.href =
+          "dashboard.html";
       });
+
+      return;
+    }
+
+    if (
+      typeof renderNavigationForRole ===
+      "function"
+    ) {
+      renderNavigationForRole(
+        currentUserInfo.role
+      );
+    }
+
+    const greetingEls =
+      document.querySelectorAll(
+        ".userGreeting"
+      );
+
+    greetingEls.forEach(el => {
+      el.textContent =
+        `Hola, ${currentUserInfo.name} (${currentUserInfo.role || "Usuario"})`;
     });
+
+    await refreshDailySummary();
+
+    listenTodaySales();
+    listenTodayExpenses();
   }
-});
+);
+
+document.addEventListener(
+  "DOMContentLoaded",
+  () => {
+    if (btnAddExpense) {
+      btnAddExpense.addEventListener(
+        "click",
+        (e) => {
+          e.preventDefault();
+          addExpense();
+        }
+      );
+    }
+
+    if (btnClearExpenseForm) {
+      btnClearExpenseForm.addEventListener(
+        "click",
+        (e) => {
+          e.preventDefault();
+          clearForm();
+        }
+      );
+    }
+
+    const logoutBtn =
+      document.getElementById(
+        "logoutButton"
+      );
+
+    if (logoutBtn) {
+      logoutBtn.addEventListener(
+        "click",
+        () => {
+          auth.signOut().then(() => {
+            localStorage.removeItem(
+              "currentUser"
+            );
+
+            window.location.href =
+              "index.html";
+          });
+        }
+      );
+    }
+
+    const logoutBtnMobile =
+      document.getElementById(
+        "logoutButtonMobile"
+      );
+
+    if (logoutBtnMobile) {
+      logoutBtnMobile.addEventListener(
+        "click",
+        () => {
+          auth.signOut().then(() => {
+            localStorage.removeItem(
+              "currentUser"
+            );
+
+            window.location.href =
+              "index.html";
+          });
+        }
+      );
+    }
+  }
+);

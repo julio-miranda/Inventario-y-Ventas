@@ -145,6 +145,7 @@ function renderLinks(container, links, closeMenuAfterClick = false) {
       a.addEventListener("click", () => {
         const fullscreenMenu = document.getElementById("fullscreenMenu");
         const menuToggle = document.getElementById("menuToggle");
+
         if (fullscreenMenu) fullscreenMenu.classList.remove("active");
         if (menuToggle) menuToggle.setAttribute("aria-expanded", "false");
         if (fullscreenMenu) fullscreenMenu.setAttribute("aria-hidden", "true");
@@ -155,13 +156,24 @@ function renderLinks(container, links, closeMenuAfterClick = false) {
 
 function renderNavigationForRole(role = "") {
   const links = getNavByRole(role);
-  renderLinks(document.querySelector(".navbar-links ul"), links, false);
-  renderLinks(document.querySelector(".menu-links"), links, true);
+
+  renderLinks(
+    document.querySelector(".navbar-links ul"),
+    links,
+    false
+  );
+
+  renderLinks(
+    document.querySelector(".menu-links"),
+    links,
+    true
+  );
 }
 
 function setUserGreeting(name = "Usuario", role = "") {
   const greetingEls = document.querySelectorAll(".userGreeting");
   const roleText = role ? ` (${role})` : "";
+
   greetingEls.forEach(el => {
     el.textContent = `Hola, ${name}${roleText}`;
   });
@@ -201,7 +213,11 @@ function bindMobileMenu() {
   if (closeMenu && fullscreenMenu) {
     closeMenu.addEventListener("click", () => {
       fullscreenMenu.classList.remove("active");
-      if (menuToggle) menuToggle.setAttribute("aria-expanded", "false");
+
+      if (menuToggle) {
+        menuToggle.setAttribute("aria-expanded", "false");
+      }
+
       fullscreenMenu.setAttribute("aria-hidden", "true");
     });
 
@@ -233,7 +249,11 @@ function setStoredCurrentUser(next) {
 function patchStoredCurrentUser(patch = {}) {
   try {
     const current = getStoredCurrentUser() || {};
-    setStoredCurrentUser({ ...current, ...patch });
+
+    setStoredCurrentUser({
+      ...current,
+      ...patch
+    });
   } catch {
     // ignore
   }
@@ -247,6 +267,7 @@ function getLocalDayKey(date = new Date()) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
+
   return `${y}-${m}-${d}`;
 }
 
@@ -266,6 +287,7 @@ function getTodayBounds(date = new Date()) {
 
 function getCurrentLocalId() {
   const stored = getStoredCurrentUser();
+
   return String(
     stored?.id_local ||
     stored?.idLocal ||
@@ -277,6 +299,7 @@ function getCurrentLocalId() {
 
 function getCurrentLocalInfo() {
   const stored = getStoredCurrentUser() || {};
+
   return {
     id_local: String(
       stored.id_local ||
@@ -285,18 +308,21 @@ function getCurrentLocalInfo() {
       currentLocalContext.id_local ||
       ""
     ).trim(),
+
     nombre: String(
       stored.localNombre ||
       stored.localName ||
       currentLocalContext.nombre ||
       ""
     ).trim(),
+
     numeroDocumento: String(
       stored.localNumeroDocumento ||
       stored.localDocumentNumber ||
       currentLocalContext.numeroDocumento ||
       ""
     ).trim(),
+
     ubicacion: String(
       stored.localUbicacion ||
       stored.localLocation ||
@@ -307,7 +333,10 @@ function getCurrentLocalInfo() {
 }
 
 function matchesLocalContext(data = {}, localId = "") {
-  const target = String(localId || getCurrentLocalId()).trim();
+  const target = String(
+    localId || getCurrentLocalId()
+  ).trim();
+
   if (!target) return false;
 
   const docLocalId = String(
@@ -323,26 +352,39 @@ function matchesLocalContext(data = {}, localId = "") {
 
 async function loadLocalById(localId = "") {
   const target = String(localId).trim();
+
   if (!target) return null;
 
   try {
-    const direct = await db.collection(LOCAL_COLLECTION_NAME).doc(target).get();
+    const direct = await db
+      .collection(LOCAL_COLLECTION_NAME)
+      .doc(target)
+      .get();
+
     if (direct.exists) {
-      return { id: direct.id, ...(direct.data() || {}) };
+      return {
+        id: direct.id,
+        ...(direct.data() || {})
+      };
     }
   } catch {
     // ignore
   }
 
   try {
-    const byField = await db.collection(LOCAL_COLLECTION_NAME)
+    const byField = await db
+      .collection(LOCAL_COLLECTION_NAME)
       .where("id_local", "==", target)
       .limit(1)
       .get();
 
     if (!byField.empty) {
       const doc = byField.docs[0];
-      return { id: doc.id, ...(doc.data() || {}) };
+
+      return {
+        id: doc.id,
+        ...(doc.data() || {})
+      };
     }
   } catch {
     // ignore
@@ -355,23 +397,35 @@ async function loadEmployeeByUser(user) {
   if (!user) return null;
 
   try {
-    const direct = await db.collection(EMPLOYEE_COLLECTION_NAME).doc(user.uid).get();
+    const direct = await db
+      .collection(EMPLOYEE_COLLECTION_NAME)
+      .doc(user.uid)
+      .get();
+
     if (direct.exists) {
-      return { id: direct.id, ...(direct.data() || {}) };
+      return {
+        id: direct.id,
+        ...(direct.data() || {})
+      };
     }
   } catch {
     // ignore
   }
 
   try {
-    const byEmail = await db.collection(EMPLOYEE_COLLECTION_NAME)
+    const byEmail = await db
+      .collection(EMPLOYEE_COLLECTION_NAME)
       .where("email", "==", user.email)
       .limit(1)
       .get();
 
     if (!byEmail.empty) {
       const doc = byEmail.docs[0];
-      return { id: doc.id, ...(doc.data() || {}) };
+
+      return {
+        id: doc.id,
+        ...(doc.data() || {})
+      };
     }
   } catch {
     // ignore
@@ -387,7 +441,10 @@ function formatMoney(value) {
   }).format(Number(value || 0));
 }
 
-async function getDailyFinancialSummary(date = new Date(), localId = getCurrentLocalId()) {
+async function getDailyFinancialSummary(
+  date = new Date(),
+  localId = getCurrentLocalId()
+) {
   const { start, end } = getTodayBounds(date);
   const targetLocalId = String(localId || "").trim();
 
@@ -396,6 +453,7 @@ async function getDailyFinancialSummary(date = new Date(), localId = getCurrentL
       .where("createdAt", ">=", start)
       .where("createdAt", "<=", end)
       .get(),
+
     db.collection("gastos")
       .where("createdAt", ">=", start)
       .where("createdAt", "<=", end)
@@ -407,13 +465,27 @@ async function getDailyFinancialSummary(date = new Date(), localId = getCurrentL
 
   salesSnap.forEach(doc => {
     const data = doc.data() || {};
-    if (targetLocalId && !matchesLocalContext(data, targetLocalId)) return;
+
+    if (
+      targetLocalId &&
+      !matchesLocalContext(data, targetLocalId)
+    ) {
+      return;
+    }
+
     sales += Number(data.total || 0);
   });
 
   expensesSnap.forEach(doc => {
     const data = doc.data() || {};
-    if (targetLocalId && !matchesLocalContext(data, targetLocalId)) return;
+
+    if (
+      targetLocalId &&
+      !matchesLocalContext(data, targetLocalId)
+    ) {
+      return;
+    }
+
     expenses += Number(data.amount || 0);
   });
 
@@ -445,10 +517,13 @@ async function updateEmployeeAccess(employeeId = "", patch = {}) {
   if (!employeeId) return;
 
   try {
-    await db.collection(EMPLOYEE_COLLECTION_NAME).doc(employeeId).update({
-      ...patch,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    await db
+      .collection(EMPLOYEE_COLLECTION_NAME)
+      .doc(employeeId)
+      .update({
+        ...patch,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
   } catch {
     // ignore
   }
@@ -458,6 +533,7 @@ async function ensureCurrentUserContext(user) {
   if (!user) return null;
 
   const stored = getStoredCurrentUser();
+
   if (stored && stored.uid === user.uid) {
     currentLocalContext = {
       id_local: stored.id_local || "",
@@ -465,6 +541,7 @@ async function ensureCurrentUserContext(user) {
       numeroDocumento: stored.localNumeroDocumento || "",
       ubicacion: stored.localUbicacion || ""
     };
+
     return {
       uid: stored.uid || user.uid,
       name: stored.name || user.displayName || user.email || "Usuario",
@@ -481,8 +558,18 @@ async function ensureCurrentUserContext(user) {
 
   const employee = await loadEmployeeByUser(user);
 
-  const role = getCanonicalRole(employee?.position || employee?.role || "Vendedor");
-  const name = employee?.name || user.displayName || user.email || "Usuario";
+  const role = getCanonicalRole(
+    employee?.position ||
+    employee?.role ||
+    "Vendedor"
+  );
+
+  const name =
+    employee?.name ||
+    user.displayName ||
+    user.email ||
+    "Usuario";
+
   const id_local = String(
     employee?.id_local ||
     employee?.idLocal ||
@@ -499,15 +586,18 @@ async function ensureCurrentUserContext(user) {
 
   if (id_local) {
     const localDoc = await loadLocalById(id_local);
+
     if (localDoc) {
       localInfo = {
         id_local,
+
         nombre: String(
           localDoc.nombre ||
           localDoc.name ||
           localDoc.localName ||
           ""
         ).trim(),
+
         numeroDocumento: String(
           localDoc.numeroDocumento ||
           localDoc.numero_documento ||
@@ -515,6 +605,7 @@ async function ensureCurrentUserContext(user) {
           localDoc.nDocumento ||
           ""
         ).trim(),
+
         ubicacion: String(
           localDoc.ubicacion ||
           localDoc.location ||
@@ -526,7 +617,9 @@ async function ensureCurrentUserContext(user) {
     }
   }
 
-  currentLocalContext = { ...localInfo };
+  currentLocalContext = {
+    ...localInfo
+  };
 
   setStoredCurrentUser({
     uid: user.uid,
@@ -564,17 +657,36 @@ document.addEventListener("DOMContentLoaded", () => {
   const forgotPasswordLink = document.getElementById("forgotPasswordLink");
 
   const savedEmail = localStorage.getItem("savedEmail");
+
   if (savedEmail && document.getElementById("email")) {
     document.getElementById("email").value = savedEmail;
-    if (rememberCheckbox) rememberCheckbox.checked = true;
+
+    if (rememberCheckbox) {
+      rememberCheckbox.checked = true;
+    }
   }
 
   function setLoading(isLoading) {
     if (!btnLogin) return;
+
     btnLogin.disabled = isLoading;
-    btnLogin.setAttribute("aria-busy", isLoading ? "true" : "false");
-    if (btnText) btnText.textContent = isLoading ? "Validando..." : "Iniciar Sesión";
-    if (btnSpinner) btnSpinner.style.display = isLoading ? "inline-block" : "none";
+
+    btnLogin.setAttribute(
+      "aria-busy",
+      isLoading ? "true" : "false"
+    );
+
+    if (btnText) {
+      btnText.textContent = isLoading
+        ? "Validando..."
+        : "Iniciar Sesión";
+    }
+
+    if (btnSpinner) {
+      btnSpinner.style.display = isLoading
+        ? "inline-block"
+        : "none";
+    }
   }
 
   function showError(msg) {
@@ -616,7 +728,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function handlePasswordReset() {
-    const currentEmail = document.getElementById("email")?.value.trim() || "";
+    const currentEmail =
+      document.getElementById("email")?.value.trim() || "";
 
     const result = await Swal.fire({
       title: "Recuperar contraseña",
@@ -652,20 +765,26 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) {
       console.error("Error enviando recuperación:", error);
 
-      let mensaje = "No se pudo enviar el correo de recuperación.";
+      let mensaje =
+        "No se pudo enviar el correo de recuperación.";
 
       switch (error.code) {
         case "auth/invalid-email":
           mensaje = "El correo ingresado no es válido.";
           break;
+
         case "auth/user-not-found":
-          mensaje = "No existe una cuenta registrada con ese correo.";
+          mensaje =
+            "No existe una cuenta registrada con ese correo.";
           break;
+
         case "auth/missing-android-pkg-name":
         case "auth/missing-continue-uri":
         case "auth/unauthorized-continue-uri":
-          mensaje = "Revisa la configuración de dominios autorizados en Firebase.";
+          mensaje =
+            "Revisa la configuración de dominios autorizados en Firebase.";
           break;
+
         default:
           mensaje = error.message || mensaje;
       }
@@ -684,8 +803,11 @@ document.addEventListener("DOMContentLoaded", () => {
       e.preventDefault();
       clearError();
 
-      const email = document.getElementById("email")?.value.trim() || "";
-      const password = document.getElementById("password")?.value || "";
+      const email =
+        document.getElementById("email")?.value.trim() || "";
+
+      const password =
+        document.getElementById("password")?.value || "";
 
       if (!email || !password) {
         showError("Por favor completa todos los campos.");
@@ -695,7 +817,12 @@ document.addEventListener("DOMContentLoaded", () => {
       setLoading(true);
 
       try {
-        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const userCredential =
+          await auth.signInWithEmailAndPassword(
+            email,
+            password
+          );
+
         const user = userCredential.user;
 
         const employee = await loadEmployeeByUser(user);
@@ -707,13 +834,27 @@ document.addEventListener("DOMContentLoaded", () => {
             success: false,
             reason: "perfil_no_encontrado"
           });
+
           setLoading(false);
-          showError("El usuario no tiene perfil en la base de datos.");
+          showError(
+            "El usuario no tiene perfil en la base de datos."
+          );
+
           return;
         }
 
-        const role = getCanonicalRole(employee.position || employee.role || "Vendedor");
-        const id_local = String(employee.id_local || employee.idLocal || employee.localId || "").trim();
+        const role = getCanonicalRole(
+          employee.position ||
+          employee.role ||
+          "Vendedor"
+        );
+
+        const id_local = String(
+          employee.id_local ||
+          employee.idLocal ||
+          employee.localId ||
+          ""
+        ).trim();
 
         let localNombre = "";
         let localNumeroDocumento = "";
@@ -721,14 +862,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (id_local) {
           const localDoc = await loadLocalById(id_local);
+
           if (localDoc) {
-            localNombre = String(localDoc.nombre || localDoc.name || localDoc.localName || "").trim();
-            localNumeroDocumento = String(localDoc.numeroDocumento || localDoc.numero_documento || localDoc.documentNumber || localDoc.nDocumento || "").trim();
-            localUbicacion = String(localDoc.ubicacion || localDoc.location || localDoc.direccion || localDoc.address || "").trim();
+            localNombre = String(
+              localDoc.nombre ||
+              localDoc.name ||
+              localDoc.localName ||
+              ""
+            ).trim();
+
+            localNumeroDocumento = String(
+              localDoc.numeroDocumento ||
+              localDoc.numero_documento ||
+              localDoc.documentNumber ||
+              localDoc.nDocumento ||
+              ""
+            ).trim();
+
+            localUbicacion = String(
+              localDoc.ubicacion ||
+              localDoc.location ||
+              localDoc.direccion ||
+              localDoc.address ||
+              ""
+            ).trim();
           }
         }
 
-        if (employee.blocked === true || employee.active === false) {
+        if (
+          employee.blocked === true ||
+          employee.active === false
+        ) {
           await recordLoginAttempt({
             email: employee.email || user.email || email,
             uid: user.uid,
@@ -739,20 +903,34 @@ document.addEventListener("DOMContentLoaded", () => {
           });
 
           await updateEmployeeAccess(employee.id, {
-            failedLoginAttempts: (Number(employee.failedLoginAttempts) || 0) + 1,
-            lastFailedAt: firebase.firestore.FieldValue.serverTimestamp()
+            failedLoginAttempts:
+              (Number(employee.failedLoginAttempts) || 0) + 1,
+
+            lastFailedAt:
+              firebase.firestore.FieldValue.serverTimestamp()
           });
 
           await auth.signOut();
           localStorage.removeItem("currentUser");
+
           setLoading(false);
+
           showError("Tu usuario está bloqueado.");
           return;
         }
 
         if (id_local) {
           const localDoc = await loadLocalById(id_local);
-          if (localDoc && (localDoc.bloqueado === true || localDoc.blocked === true || localDoc.activo === false || localDoc.active === false)) {
+
+          if (
+            localDoc &&
+            (
+              localDoc.bloqueado === true ||
+              localDoc.blocked === true ||
+              localDoc.activo === false ||
+              localDoc.active === false
+            )
+          ) {
             await recordLoginAttempt({
               email: employee.email || user.email || email,
               uid: user.uid,
@@ -764,7 +942,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
             await auth.signOut();
             localStorage.removeItem("currentUser");
+
             setLoading(false);
+
             showError("El local asignado está bloqueado.");
             return;
           }
@@ -783,6 +963,7 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         setStoredCurrentUser(currentUser);
+
         currentLocalContext = {
           id_local,
           nombre: localNombre,
@@ -791,8 +972,12 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         await updateEmployeeAccess(employee.id, {
-          lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
-          lastAccessAt: firebase.firestore.FieldValue.serverTimestamp(),
+          lastLoginAt:
+            firebase.firestore.FieldValue.serverTimestamp(),
+
+          lastAccessAt:
+            firebase.firestore.FieldValue.serverTimestamp(),
+
           failedLoginAttempts: 0,
           lastFailedAt: null
         });
@@ -806,7 +991,10 @@ document.addEventListener("DOMContentLoaded", () => {
           reason: "login_ok"
         });
 
-        if (rememberCheckbox && rememberCheckbox.checked) {
+        if (
+          rememberCheckbox &&
+          rememberCheckbox.checked
+        ) {
           localStorage.setItem("savedEmail", email);
         } else {
           localStorage.removeItem("savedEmail");
@@ -817,27 +1005,39 @@ document.addEventListener("DOMContentLoaded", () => {
         setTimeout(() => {
           redirectAccordingToRole(currentUser.role);
         }, 800);
+
       } catch (error) {
         console.error("Error auth:", error);
+
         setLoading(false);
 
-        let mensajeError = "Ocurrió un error inesperado.";
+        let mensajeError =
+          "Ocurrió un error inesperado.";
 
         switch (error.code) {
           case "auth/user-not-found":
-            mensajeError = "El correo electrónico no está registrado.";
+            mensajeError =
+              "El correo electrónico no está registrado.";
             break;
+
           case "auth/wrong-password":
-            mensajeError = "La contraseña es incorrecta.";
+            mensajeError =
+              "La contraseña es incorrecta.";
             break;
+
           case "auth/invalid-email":
-            mensajeError = "El formato del correo no es válido.";
+            mensajeError =
+              "El formato del correo no es válido.";
             break;
+
           case "auth/user-disabled":
-            mensajeError = "La cuenta ha sido deshabilitada.";
+            mensajeError =
+              "La cuenta ha sido deshabilitada.";
             break;
+
           default:
-            mensajeError = error.message || mensajeError;
+            mensajeError =
+              error.message || mensajeError;
         }
 
         showError(mensajeError);
@@ -846,7 +1046,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   if (forgotPasswordLink) {
-    forgotPasswordLink.addEventListener("click", handlePasswordReset);
+    forgotPasswordLink.addEventListener(
+      "click",
+      handlePasswordReset
+    );
   }
 
   bindMobileMenu();
@@ -856,9 +1059,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const currentPage = getCurrentPageFile();
 
     if (!user) {
-      if (currentPage !== "index.html" && currentPage !== "login.html") {
+      if (
+        currentPage !== "index.html" &&
+        currentPage !== "login.html"
+      ) {
         window.location.href = "index.html";
       }
+
       return;
     }
 
@@ -866,45 +1073,104 @@ document.addEventListener("DOMContentLoaded", () => {
     let role = "";
 
     try {
-      const resolved = await ensureCurrentUserContext(user);
+      const resolved =
+        await ensureCurrentUserContext(user);
 
       if (resolved) {
-        displayName = resolved.name || "Usuario";
-        role = resolved.role || "";
+        displayName =
+          resolved.name || "Usuario";
+
+        role =
+          resolved.role || "";
       } else {
-        const storedUser = getStoredCurrentUser();
+        const storedUser =
+          getStoredCurrentUser();
 
         if (storedUser) {
-          displayName = storedUser.name || "Usuario";
-          role = getCanonicalRole(storedUser.role || "");
+          displayName =
+            storedUser.name || "Usuario";
+
+          role =
+            getCanonicalRole(
+              storedUser.role || ""
+            );
         }
       }
 
-      const roleForNav = getCanonicalRole(role);
-      setUserGreeting(displayName, roleForNav);
-      renderNavigationForRole(roleForNav);
+      const roleForNav =
+        getCanonicalRole(role);
 
-      if (currentPage !== "index.html" && currentPage !== "login.html") {
-        if (!canAccessPage(roleForNav, currentPage)) {
-          window.location.href = getDefaultPageForRole(roleForNav);
+      setUserGreeting(
+        displayName,
+        roleForNav
+      );
+
+      renderNavigationForRole(
+        roleForNav
+      );
+
+      if (
+        currentPage !== "index.html" &&
+        currentPage !== "login.html"
+      ) {
+        if (
+          !canAccessPage(
+            roleForNav,
+            currentPage
+          )
+        ) {
+          window.location.href =
+            getDefaultPageForRole(
+              roleForNav
+            );
         }
       }
+
     } catch (err) {
-      console.error("Error resolviendo contexto del usuario:", err);
+      console.error(
+        "Error resolviendo contexto del usuario:",
+        err
+      );
 
-      const storedUser = getStoredCurrentUser();
+      const storedUser =
+        getStoredCurrentUser();
+
       if (storedUser) {
-        displayName = storedUser.name || "Usuario";
-        role = getCanonicalRole(storedUser.role || "");
+        displayName =
+          storedUser.name || "Usuario";
+
+        role =
+          getCanonicalRole(
+            storedUser.role || ""
+          );
       }
 
-      const roleForNav = getCanonicalRole(role);
-      setUserGreeting(displayName, roleForNav);
-      renderNavigationForRole(roleForNav);
+      const roleForNav =
+        getCanonicalRole(role);
 
-      if (currentPage !== "index.html" && currentPage !== "login.html") {
-        if (!canAccessPage(roleForNav, currentPage)) {
-          window.location.href = getDefaultPageForRole(roleForNav);
+      setUserGreeting(
+        displayName,
+        roleForNav
+      );
+
+      renderNavigationForRole(
+        roleForNav
+      );
+
+      if (
+        currentPage !== "index.html" &&
+        currentPage !== "login.html"
+      ) {
+        if (
+          !canAccessPage(
+            roleForNav,
+            currentPage
+          )
+        ) {
+          window.location.href =
+            getDefaultPageForRole(
+              roleForNav
+            );
         }
       }
     }
