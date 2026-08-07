@@ -19,6 +19,9 @@
 // - El filtrado por fecha se hace en memoria para evitar índices compuestos
 
 document.addEventListener("DOMContentLoaded", () => {
+  const DEBUG_DASHBOARD = true;
+  const MAX_DEBUG_DOCS = 5;
+
   const greetingEls = document.querySelectorAll(".userGreeting");
   const logoutButtons = document.querySelectorAll("#logoutButton, #logoutButtonMobile");
 
@@ -93,9 +96,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
   injectDashboardStyles();
 
+  function debugLog(...args) {
+    if (DEBUG_DASHBOARD) console.log("[Dashboard][ventas]", ...args);
+  }
+
+  function debugWarn(...args) {
+    if (DEBUG_DASHBOARD) console.warn("[Dashboard][ventas]", ...args);
+  }
+
+  function debugError(...args) {
+    if (DEBUG_DASHBOARD) console.error("[Dashboard]", ...args);
+  }
+
   function numberOrZero(v) {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
+  }
+
+  function isPlainObject(value) {
+    return !!value && typeof value === "object" && !Array.isArray(value);
   }
 
   function escapeHtml(s) {
@@ -106,8 +125,8 @@ document.addEventListener("DOMContentLoaded", () => {
       '"': "&quot;",
       "'": "&#39;",
       "/": "&#x2F;",
-      "`": "&#x60;",
-      "=": "&#x3D;"
+      "`": "&#96;",
+      "=": "&#61;"
     }[c]));
   }
 
@@ -223,17 +242,6 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 
-  function getLocalDisplayText() {
-    const parts = [
-      currentLocalInfo.nombre,
-      currentLocalInfo.numeroDocumento,
-      currentLocalInfo.ubicacion
-    ].filter(Boolean);
-
-    if (!parts.length) return "Sin local asignado";
-    return parts.join(" · ");
-  }
-
   function renderLocalBanner() {
     if (!heroNote) return;
 
@@ -316,7 +324,7 @@ document.addEventListener("DOMContentLoaded", () => {
         employeeData = direct.data() || {};
       }
     } catch (err) {
-      console.warn("No se pudo leer el empleado por UID:", err);
+      // sin logs fuera de ventas
     }
 
     if (!employeeData) {
@@ -330,7 +338,7 @@ document.addEventListener("DOMContentLoaded", () => {
           employeeData = byEmail.docs[0].data() || {};
         }
       } catch (err) {
-        console.warn("No se pudo leer el empleado por email:", err);
+        // sin logs fuera de ventas
       }
     }
 
@@ -374,7 +382,7 @@ document.addEventListener("DOMContentLoaded", () => {
         localData = directLocal.data() || {};
       }
     } catch (err) {
-      console.warn("No se pudo leer el local por documento directo:", err);
+      // sin logs fuera de ventas
     }
 
     if (!localData) {
@@ -388,7 +396,7 @@ document.addEventListener("DOMContentLoaded", () => {
           localData = byField.docs[0].data() || {};
         }
       } catch (err) {
-        console.warn("No se pudo leer el local por id_local:", err);
+        // sin logs fuera de ventas
       }
     }
 
@@ -469,61 +477,380 @@ document.addEventListener("DOMContentLoaded", () => {
     return String(item && (item.mode || item.saleMode || item.saleType) || "unit").toLowerCase();
   }
 
-  function getSoldUnitsFromSaleProduct(p) {
-    if (!p || !p.productId) return 0;
-
-    const unitsPerBox = numberOrZero(p.unitsPerBox) > 0 ? numberOrZero(p.unitsPerBox) : 1;
-    const mode = getSaleMode(p);
-
-    if (Number.isFinite(Number(p.unitsTotal)) && Number(p.unitsTotal) > 0) {
-      return numberOrZero(p.unitsTotal);
-    }
-
-    if (mode === "box") {
-      const boxes = numberOrZero(p.quantity || p.boxes || 0);
-      if (boxes > 0) return boxes * unitsPerBox;
-    }
-
-    if (Number.isFinite(Number(p.boxes)) && Number(p.boxes) > 0) {
-      return numberOrZero(p.boxes) * unitsPerBox;
-    }
-
-    if (Number.isFinite(Number(p.totalUnits)) && Number(p.totalUnits) > 0) {
-      return numberOrZero(p.totalUnits);
-    }
-
-    return numberOrZero(p.quantity || 0);
+  function getSaleProducts(sale) {
+    return Array.isArray(sale && sale.products) ? sale.products : [];
   }
 
-  function getSoldBoxesFromSaleProduct(p) {
-    if (!p || !p.productId) return 0;
+  function getSalePrimaryProduct(sale) {
+    const products = getSaleProducts(sale);
+    return products.length ? (products[0] || {}) : {};
+  }
 
-    const unitsPerBox = numberOrZero(p.unitsPerBox) > 0 ? numberOrZero(p.unitsPerBox) : 1;
-    const mode = getSaleMode(p);
+  function getSaleProductPrice(product) {
+    if (!product) return 0;
 
-    if (Number.isFinite(Number(p.boxes)) && Number(p.boxes) > 0) {
-      return numberOrZero(p.boxes);
+    const direct = [
+      product.price,
+      product.salePrice,
+      product.precioVenta,
+      product.unitPrice,
+      product.unitSalePrice
+    ];
+
+    for (const candidate of direct) {
+      const n = Number(candidate);
+      if (Number.isFinite(n) && n > 0) return n;
     }
 
-    if (Number.isFinite(Number(p.unitsTotal)) && Number(p.unitsTotal) > 0 && unitsPerBox > 1) {
-      return numberOrZero(p.unitsTotal) / unitsPerBox;
-    }
-
-    if (mode === "box") {
-      return numberOrZero(p.quantity || 0);
+    const total = Number(product.total);
+    const units = getSaleProductUnits(product);
+    if (Number.isFinite(total) && total > 0 && units > 0) {
+      const byUnit = total / units;
+      if (Number.isFinite(byUnit) && byUnit > 0) return byUnit;
     }
 
     return 0;
   }
 
+  function getSaleProductUnits(product) {
+    if (!product) return 0;
+
+    const unitsTotal = Number(product.unitsTotal);
+    if (Number.isFinite(unitsTotal) && unitsTotal > 0) return unitsTotal;
+
+    const quantity = Number(product.quantity);
+    if (Number.isFinite(quantity) && quantity > 0) {
+      const mode = String(product.mode || product.saleMode || product.saleType || "unit").toLowerCase();
+      const unitsPerBox = getUnitsPerBox(product);
+      if (mode === "box") return quantity * unitsPerBox;
+      return quantity;
+    }
+
+    const boxes = Number(product.boxes);
+    if (Number.isFinite(boxes) && boxes > 0) {
+      return boxes * getUnitsPerBox(product);
+    }
+
+    return 0;
+  }
+
+  function getSoldUnitsFromSaleProduct(p) {
+    if (!p) return 0;
+    return getSaleProductUnits(p);
+  }
+
+  function getSoldBoxesFromSaleProduct(p) {
+    if (!p) return 0;
+
+    const unitsPerBox = getUnitsPerBox(p);
+    const units = getSaleProductUnits(p);
+
+    if (unitsPerBox > 1 && units > 0) {
+      return units / unitsPerBox;
+    }
+
+    return 0;
+  }
+
+  function normalizeLookupValue(v) {
+    return String(v || "").trim().toLowerCase();
+  }
+
+  function isSameDayMs(a, b) {
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return false;
+    const da = new Date(a);
+    const db = new Date(b);
+    return da.getFullYear() === db.getFullYear() &&
+      da.getMonth() === db.getMonth() &&
+      da.getDate() === db.getDate();
+  }
+
+  function pickSaleProductForMovement(sale, movement) {
+    const products = getSaleProducts(sale);
+    if (!products.length) return null;
+
+    const movementCode = normalizeLookupValue(
+      movement.productCode ||
+      movement.codigoProducto ||
+      movement.productId ||
+      movement.sku ||
+      movement.code ||
+      ""
+    );
+
+    const movementName = normalizeLookupValue(
+      movement.productName ||
+      movement.name ||
+      movement.nombre ||
+      ""
+    );
+
+    const matched = products.find(p => {
+      const pid = normalizeLookupValue(p.productId || p.codigoProducto || p.sku || p.code || "");
+      const pname = normalizeLookupValue(p.name || p.productName || p.nombre || "");
+      return (movementCode && pid && pid === movementCode) || (movementName && pname && pname === movementName);
+    });
+
+    return matched || products[0] || null;
+  }
+
+  function buildSalesIndex(salesDocs) {
+    const byReference = new Map();
+    const flatProducts = [];
+
+    salesDocs.forEach(({ id, data }) => {
+      const sale = { id, ...data, createdAtMs: getTimestampMs(data.createdAt) };
+
+      const aliases = [
+        id,
+        sale.docNumber,
+        sale.documentNumber,
+        sale.numeroDocumento,
+        sale.numeroDocumentoVenta,
+        sale.saleId,
+        sale.reference,
+        sale.referenceId,
+        sale.transactionId
+      ].filter(Boolean);
+
+      aliases.forEach(alias => {
+        byReference.set(normalizeLookupValue(alias), sale);
+      });
+
+      const products = getSaleProducts(sale);
+      products.forEach((product, productIndex) => {
+        flatProducts.push({
+          saleId: id,
+          sale,
+          product,
+          productIndex
+        });
+      });
+    });
+
+    return {
+      byReference,
+      flatProducts
+    };
+  }
+
+  function findRelatedSaleForMovement(movement, salesIndex) {
+    const possibleRefs = [
+      movement.docNumber,
+      movement.documentNumber,
+      movement.numeroDocumento,
+      movement.saleId,
+      movement.ventaId,
+      movement.referenceBook,
+      movement.reference,
+      movement.referenceId
+    ].filter(Boolean);
+
+    for (const ref of possibleRefs) {
+      const sale = salesIndex.byReference.get(normalizeLookupValue(ref));
+      if (sale) {
+        return {
+          sale,
+          product: pickSaleProductForMovement(sale, movement),
+          source: `ref:${ref}`
+        };
+      }
+    }
+
+    const movementCode = normalizeLookupValue(
+      movement.productCode ||
+      movement.codigoProducto ||
+      movement.productId ||
+      movement.sku ||
+      movement.code ||
+      ""
+    );
+
+    const movementName = normalizeLookupValue(
+      movement.productName ||
+      movement.name ||
+      movement.nombre ||
+      ""
+    );
+
+    const movementMs = getTimestampMs(movement.createdAt);
+
+    let hit = salesIndex.flatProducts.find(item => {
+      const pid = normalizeLookupValue(item.product && (item.product.productId || item.product.codigoProducto || item.product.sku || item.product.code || ""));
+      const pname = normalizeLookupValue(item.product && (item.product.name || item.product.productName || item.product.nombre || ""));
+      return (movementCode && pid && pid === movementCode) || (movementName && pname && pname === movementName);
+    });
+
+    if (!hit && movementMs > 0) {
+      const sameDay = salesIndex.flatProducts.filter(item => isSameDayMs(item.sale.createdAtMs, movementMs));
+      hit = sameDay.find(item => {
+        const pid = normalizeLookupValue(item.product && (item.product.productId || item.product.codigoProducto || item.product.sku || item.product.code || ""));
+        const pname = normalizeLookupValue(item.product && (item.product.name || item.product.productName || item.product.nombre || ""));
+        return (movementCode && pid && pid === movementCode) || (movementName && pname && pname === movementName);
+      }) || sameDay[0] || null;
+    }
+
+    if (hit) {
+      return {
+        sale: hit.sale,
+        product: hit.product,
+        source: hit.saleId ? `match:${hit.saleId}` : "match"
+      };
+    }
+
+    return {
+      sale: null,
+      product: null,
+      source: "none"
+    };
+  }
+
+  function getMovementPrimaryProduct(m) {
+    if (m && Array.isArray(m.products) && m.products.length > 0) {
+      const candidate = m.products[0];
+      if (isPlainObject(candidate)) return candidate;
+    }
+
+    const fallbackKeys = [
+      "product",
+      "producto",
+      "item",
+      "detalleProducto",
+      "movimiento",
+      "sale",
+      "venta"
+    ];
+
+    for (const key of fallbackKeys) {
+      if (isPlainObject(m?.[key])) return m[key];
+    }
+
+    return {};
+  }
+
+  function deepPickNumber(source, keys, defaultValue = 0, maxDepth = 3) {
+    const visited = new WeakSet();
+
+    function walk(value, depth) {
+      if (!value || depth < 0) return undefined;
+
+      if (typeof value === "object") {
+        if (visited.has(value)) return undefined;
+        visited.add(value);
+      }
+
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const found = walk(item, depth - 1);
+          if (found !== undefined) return found;
+        }
+        return undefined;
+      }
+
+      if (isPlainObject(value)) {
+        for (const key of keys) {
+          if (Object.prototype.hasOwnProperty.call(value, key)) {
+            const candidate = value[key];
+            const n = Number(candidate);
+            if (Number.isFinite(n)) return n;
+          }
+        }
+
+        for (const k of Object.keys(value)) {
+          const child = value[k];
+          const found = walk(child, depth - 1);
+          if (found !== undefined) return found;
+        }
+      }
+
+      return undefined;
+    }
+
+    const result = walk(source, maxDepth);
+    return Number.isFinite(result) ? result : defaultValue;
+  }
+
+  function deepPickString(source, keys, defaultValue = "—", maxDepth = 3) {
+    const visited = new WeakSet();
+
+    function walk(value, depth) {
+      if (!value || depth < 0) return undefined;
+
+      if (typeof value === "object") {
+        if (visited.has(value)) return undefined;
+        visited.add(value);
+      }
+
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const found = walk(item, depth - 1);
+          if (found !== undefined) return found;
+        }
+        return undefined;
+      }
+
+      if (isPlainObject(value)) {
+        for (const key of keys) {
+          if (Object.prototype.hasOwnProperty.call(value, key)) {
+            const candidate = value[key];
+            if (candidate !== null && candidate !== undefined && String(candidate).trim() !== "") {
+              return String(candidate);
+            }
+          }
+        }
+
+        for (const k of Object.keys(value)) {
+          const child = value[k];
+          const found = walk(child, depth - 1);
+          if (found !== undefined) return found;
+        }
+      }
+
+      return undefined;
+    }
+
+    const result = walk(source, maxDepth);
+    return result !== undefined ? result : defaultValue;
+  }
+
   function getMovementProductCode(m) {
+    const p = getMovementPrimaryProduct(m);
+
     return String(
-      m && (
-        m.codigoProducto ||
-        m.productCode ||
-        m.sku ||
-        m.code ||
-        m.codigo ||
+      deepPickString(
+        {
+          direct: m,
+          product: p
+        },
+        [
+          "codigoProducto",
+          "productCode",
+          "sku",
+          "code",
+          "codigo",
+          "productId"
+        ],
+        ""
+      )
+    ).trim() || "—";
+  }
+
+  function getMovementProductName(m) {
+    const p = getMovementPrimaryProduct(m);
+
+    return String(
+      deepPickString(
+        {
+          direct: m,
+          product: p
+        },
+        [
+          "productName",
+          "name",
+          "nombre",
+          "descripcion",
+          "description"
+        ],
         ""
       )
     ).trim() || "—";
@@ -531,32 +858,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function getMovementDocumentNumber(m) {
     return String(m && (m.numeroDocumento || m.documentNumber || m.docNumber || "—")) || "—";
-  }
-
-  function getMovementSalePrice(m) {
-    return numberOrZero(
-      m && (
-        m.precioVenta ??
-        m.salePrice ??
-        m.unitSalePrice ??
-        m.priceSale ??
-        m.price ??
-        0
-      )
-    );
-  }
-
-  function getMovementUnitsSold(m) {
-    return numberOrZero(
-      m && (
-        m.unidadesVendidas ??
-        m.unitsSold ??
-        m.soldUnits ??
-        m.quantitySold ??
-        m.qtySold ??
-        0
-      )
-    );
   }
 
   function getMovementEntry(m) {
@@ -631,8 +932,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function sortByCreatedAtDesc(a, b) {
-    const da = a && a.createdAt && a.createdAt.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt || 0).getTime();
-    const db = b && b.createdAt && b.createdAt.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt || 0).getTime();
+    const da = a && typeof a.createdAtMs === "number" ? a.createdAtMs : 0;
+    const db = b && typeof b.createdAtMs === "number" ? b.createdAtMs : 0;
     return db - da;
   }
 
@@ -650,6 +951,29 @@ document.addEventListener("DOMContentLoaded", () => {
     const docs = [];
     snap.forEach(doc => docs.push({ id: doc.id, data: doc.data() || {} }));
     return docs;
+  }
+
+  function logSalesDocumentInspection(saleDoc, index) {
+    if (!DEBUG_DASHBOARD || index >= MAX_DEBUG_DOCS) return;
+
+    const sale = saleDoc.data || {};
+    const products = getSaleProducts(sale);
+    const firstProduct = products[0] || null;
+
+    console.groupCollapsed(`[Dashboard][ventas] Documento #${index + 1}: ${saleDoc.id}`);
+    console.log("campos:", Object.keys(sale));
+    console.log("createdAt:", sale.createdAt);
+    console.log("id_local:", sale.id_local);
+    console.log("userName:", sale.userName);
+    console.log("products.length:", products.length);
+    console.log("products[0]:", firstProduct);
+
+    if (firstProduct) {
+      console.log("precio de venta detectado:", getSaleProductPrice(firstProduct));
+      console.log("unidades vendidas detectadas:", getSaleProductUnits(firstProduct));
+    }
+
+    console.groupEnd();
   }
 
   function aggregateSalesFromDocs(salesDocs) {
@@ -744,6 +1068,15 @@ document.addEventListener("DOMContentLoaded", () => {
       const movementsDocs = movementsDocsRaw.filter(item => matchesCurrentLocal(item.data) && isWithinSelectedRange(item.data.createdAt));
       const productsDocs = productsDocsRaw.filter(item => matchesCurrentLocal(item.data));
 
+      const salesIndex = buildSalesIndex(salesDocs);
+
+      debugLog("Consulta ventas:", {
+        rawCount: salesDocsRaw.length,
+        filteredCount: salesDocs.length
+      });
+
+      salesDocs.slice(0, MAX_DEBUG_DOCS).forEach(logSalesDocumentInspection);
+
       productsMap = new Map();
       const products = [];
 
@@ -776,7 +1109,7 @@ document.addEventListener("DOMContentLoaded", () => {
             sale.total ?? ""
           ].join(" ")
         };
-      }).sort((a, b) => sortByCreatedAtDesc({ createdAt: a.createdAtMs }, { createdAt: b.createdAtMs }));
+      }).sort((a, b) => b.createdAtMs - a.createdAtMs);
 
       cachedExpenses = expensesDocs.map(({ id, data }) => ({
         id,
@@ -799,38 +1132,53 @@ document.addEventListener("DOMContentLoaded", () => {
         ].join(" ")
       }));
 
-      cachedMovements = movementsDocs.map(({ id, data }) => ({
-        id,
-        productCode: getMovementProductCode(data),
-        productName: data.productName || data.name || "—",
-        salePrice: getMovementSalePrice(data),
-        unitsSold: getMovementUnitsSold(data),
-        docNumber: getMovementDocumentNumber(data),
-        entry: getMovementEntry(data),
-        exit: getMovementExit(data),
-        balanceBefore: getMovementBalanceBefore(data),
-        balanceAfter: getMovementBalanceAfter(data),
-        userName: data.userName || "—",
-        detail: getMovementDetail(data),
-        typeLabel: getMovementTypeLabel(data),
-        createdAtMs: buildMovementSortKey(data),
-        dateStr: getDisplayDate(data.createdAt),
-        timeStr: getDisplayTime(data.createdAt),
-        rawText: [
-          getMovementProductCode(data),
-          data.productName || data.name || "—",
-          getMovementSalePrice(data),
-          getMovementUnitsSold(data),
-          getMovementDocumentNumber(data),
-          getMovementEntry(data),
-          getMovementExit(data),
-          getMovementBalanceBefore(data),
-          getMovementBalanceAfter(data),
-          data.userName || "",
-          getMovementDetail(data),
-          getMovementTypeLabel(data)
-        ].join(" ")
-      })).sort((a, b) => sortByCreatedAtAsc(a, b));
+      cachedMovements = movementsDocs.map(({ id, data }) => {
+        const related = findRelatedSaleForMovement({
+          docNumber: getMovementDocumentNumber(data),
+          productCode: getMovementProductCode(data),
+          productName: getMovementProductName(data),
+          createdAt: data.createdAt
+        }, salesIndex);
+
+        const fallbackProduct = getMovementPrimaryProduct(data);
+        const saleProduct = related.product || fallbackProduct;
+
+        const extractedSalePrice = getSaleProductPrice(saleProduct) || numberOrZero(data.salePrice || data.precioVenta || data.price || 0);
+        const extractedUnitsSold = getSaleProductUnits(saleProduct) || numberOrZero(data.unidadesVendidas || data.unitsSold || data.soldUnits || data.quantity || data.unitsTotal || 0);
+
+        return {
+          id,
+          productCode: getMovementProductCode(data),
+          productName: getMovementProductName(data),
+          salePrice: extractedSalePrice,
+          unitsSold: extractedUnitsSold,
+          docNumber: getMovementDocumentNumber(data),
+          entry: getMovementEntry(data),
+          exit: getMovementExit(data),
+          balanceBefore: getMovementBalanceBefore(data),
+          balanceAfter: getMovementBalanceAfter(data),
+          userName: data.userName || "—",
+          detail: getMovementDetail(data),
+          typeLabel: getMovementTypeLabel(data),
+          createdAtMs: buildMovementSortKey(data),
+          dateStr: getDisplayDate(data.createdAt),
+          timeStr: getDisplayTime(data.createdAt),
+          rawText: [
+            getMovementProductCode(data),
+            getMovementProductName(data),
+            extractedSalePrice,
+            extractedUnitsSold,
+            getMovementDocumentNumber(data),
+            getMovementEntry(data),
+            getMovementExit(data),
+            getMovementBalanceBefore(data),
+            getMovementBalanceAfter(data),
+            data.userName || "",
+            getMovementDetail(data),
+            getMovementTypeLabel(data)
+          ].join(" ")
+        };
+      }).sort((a, b) => sortByCreatedAtAsc(a, b));
 
       visibleSales = [...cachedSales];
       visibleExpenses = [...cachedExpenses];
@@ -860,7 +1208,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       applySearchFilter();
     } catch (err) {
-      console.error("Error cargando dashboard por rango:", err);
+      debugError("Error cargando dashboard por rango:", err);
 
       if (salesTableBody) salesTableBody.innerHTML = "<tr><td colspan='6'>Error cargando ventas.</td></tr>";
       if (expensesTableBody) expensesTableBody.innerHTML = "<tr><td colspan='8'>Error cargando gastos.</td></tr>";
@@ -934,7 +1282,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    rows.forEach(item => {
+    rows.forEach((item, index) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${escapeHtml(item.dateStr)}</td>
@@ -1409,7 +1757,7 @@ document.addEventListener("DOMContentLoaded", () => {
           text: `Total del día: ${formatMoney(total)}`
         });
       } catch (err) {
-        console.error(err);
+        debugError(err);
         Swal.fire("Error", err.message || "No se pudo registrar el cierre.", "error");
       }
     });
@@ -1466,7 +1814,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       refreshLocalHeader();
     } catch (err) {
-      console.error("Error leyendo usuario o local:", err);
+      debugError("Error leyendo usuario o local:", err);
       throw err;
     }
   }
@@ -1482,7 +1830,7 @@ document.addEventListener("DOMContentLoaded", () => {
       setDefaultRangeToMonth();
       await refreshEverything();
     } catch (err) {
-      console.error("Error inicializando dashboard:", err);
+      debugError("Error inicializando dashboard:", err);
       Swal.fire({
         icon: "error",
         title: "Sin local asignado",

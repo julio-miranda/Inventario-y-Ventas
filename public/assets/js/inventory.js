@@ -112,6 +112,19 @@ function getUnitsPerBox(product) {
   return v > 0 ? v : 1;
 }
 
+function getProductCode(product) {
+  return String(
+    product &&
+      (
+        product.codigoProducto ||
+        product.productCode ||
+        product.code ||
+        product.sku ||
+        ""
+      )
+  ).trim();
+}
+
 function getCurrentStockUnits(product) {
   if (!product) return 0;
 
@@ -378,6 +391,7 @@ function buildRowData(product) {
 
   return {
     id: product.id,
+    code: getProductCode(product),
     name: product.name || "-",
     price: numberOrZero(product.price),
     quantity: getCurrentStockUnits(product),
@@ -634,6 +648,7 @@ function startRealtimeListeners() {
           localNombre: p.localNombre || currentLocalInfo.nombre || "",
           localNumeroDocumento: p.localNumeroDocumento || currentLocalInfo.numeroDocumento || "",
           localUbicacion: p.localUbicacion || currentLocalInfo.ubicacion || "",
+          codigoProducto: getProductCode(p),
           quantity: currentStockUnits,
           stockCurrentUnits: currentStockUnits,
           stockBaseUnits: numberOrZero(p.stockBaseUnits),
@@ -654,7 +669,12 @@ function startRealtimeListeners() {
 function findProductByName(name) {
   if (!name) return null;
   const lower = String(name).trim().toLowerCase();
-  return currentProductsList.find(p => String(p.name || "").trim().toLowerCase() === lower) || null;
+  return currentProductsList.find(p => {
+    const n = String(p.name || "").trim().toLowerCase();
+    const c = String(getProductCode(p) || "").trim().toLowerCase();
+    const id = String(p.id || "").trim().toLowerCase();
+    return n === lower || c === lower || id === lower;
+  }) || null;
 }
 
 function findProductById(id) {
@@ -664,15 +684,19 @@ function findProductById(id) {
 /* =======================
    Modal moderno para agregar / reponer
    ======================= */
-function buildExistingProductOptions(selectedId = "") {
+function buildExistingProductOptions(selectedValue = "") {
   const options = [`<option value="">Selecciona un producto</option>`];
 
   currentProductsList.forEach(p => {
+    const code = getProductCode(p);
     options.push(
-      `<option value="${escapeHtml(p.id)}" ${String(p.id) === String(selectedId) ? "selected" : ""}>
-        ${escapeHtml(p.name)} — ${numberOrZero(p.quantity)} unid.
-      </option>`
+      `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}${code ? ` — ${escapeHtml(code)}` : ""}</option>`
     );
+    if (code) {
+      options.push(
+        `<option value="${escapeHtml(code)}">${escapeHtml(code)}${p.name ? ` — ${escapeHtml(p.name)}` : ""}</option>`
+      );
+    }
   });
 
   return options.join("");
@@ -683,10 +707,9 @@ function buildStockFormHtml(initial = {}) {
   const defaultMode = initial.mode || (hasProducts ? "existing" : "new");
   const selectedProduct = initial.productName ? findProductByName(initial.productName) : null;
   const selectedUnitsPerBox = selectedProduct ? getUnitsPerBox(selectedProduct) : 1;
+  const selectedCode = selectedProduct ? getProductCode(selectedProduct) : "";
 
-  const productOptions = currentProductsList.map(p => {
-    return `<option value="${escapeHtml(p.name)}"></option>`;
-  }).join("");
+  const productOptions = buildExistingProductOptions();
 
   return `
     <div class="inv-modal">
@@ -705,8 +728,8 @@ function buildStockFormHtml(initial = {}) {
             id="p-existing"
             type="text"
             list="productList"
-            placeholder="Escribe para buscar un producto..."
-            value="${escapeHtml(initial.productName || "")}"
+            placeholder="Escribe para buscar un producto o su código..."
+            value="${escapeHtml(initial.productName || initial.codigoProducto || "")}"
             autocomplete="off"
           >
           <datalist id="productList">
@@ -720,13 +743,23 @@ function buildStockFormHtml(initial = {}) {
         </div>
 
         <div class="inv-field full">
+          <label for="p-code">Código del producto</label>
+          <input
+            id="p-code"
+            type="text"
+            placeholder="Ej. ACE-001"
+            value="${escapeHtml(initial.codigoProducto || selectedCode || "")}"
+          >
+        </div>
+
+        <div class="inv-field full">
           <label for="p-ref">Referencia a libro</label>
-          <select id="p-ref">
-            <option value="Compra" ${String(initial.referenciaLibro || "") === "Compra" ? "selected" : ""}>Compra</option>
-            <option value="Ajuste" ${String(initial.referenciaLibro || "") === "Ajuste" ? "selected" : ""}>Ajuste</option>
-            <option value="Devolución" ${String(initial.referenciaLibro || "") === "Devolución" ? "selected" : ""}>Devolución</option>
-            <option value="Inventario inicial" ${String(initial.referenciaLibro || "") === "Inventario inicial" ? "selected" : ""}>Inventario inicial</option>
-          </select>
+          <input
+            id="p-ref"
+            type="text"
+            placeholder="Ej. Compra, Ajuste, Inventario inicial"
+            value="${escapeHtml(initial.referenciaLibro || "")}"
+          >
         </div>
 
         <div class="inv-field full">
@@ -793,13 +826,15 @@ function syncStockModalState() {
   const nameGroup = document.getElementById("nameGroup");
   const existingEl = document.getElementById("p-existing");
   const nameEl = document.getElementById("p-name");
+  const codeEl = document.getElementById("p-code");
+  const refEl = document.getElementById("p-ref");
   const upbEl = document.getElementById("p-upb");
   const hintEl = document.getElementById("p-hint");
   const modeLabel = document.getElementById("p-mode-label");
   const totalUnitsEl = document.getElementById("p-total-units");
   const totalBoxesEl = document.getElementById("p-total-boxes");
 
-  if (!modeEl || !existingGroup || !nameGroup || !existingEl || !nameEl || !upbEl || !hintEl || !modeLabel || !totalUnitsEl || !totalBoxesEl) {
+  if (!modeEl || !existingGroup || !nameGroup || !existingEl || !nameEl || !codeEl || !refEl || !upbEl || !hintEl || !modeLabel || !totalUnitsEl || !totalBoxesEl) {
     return;
   }
 
@@ -819,11 +854,12 @@ function syncStockModalState() {
 
     if (!product) {
       upbEl.disabled = false;
-      hintEl.textContent = "Escribe el nombre exacto del producto o selecciónalo de las sugerencias.";
+      hintEl.textContent = "Escribe el nombre o el código exacto del producto, o selecciónalo de las sugerencias.";
       return;
     }
 
     nameEl.value = product.name || "";
+    codeEl.value = getProductCode(product) || codeEl.value || "";
     upbEl.value = getUnitsPerBox(product);
     upbEl.disabled = true;
     hintEl.innerHTML = `
@@ -874,7 +910,8 @@ function readStockFormValues() {
   const mode = document.getElementById("p-mode").value;
   const existingName = document.getElementById("p-existing") ? document.getElementById("p-existing").value.trim() : "";
   const name = document.getElementById("p-name") ? document.getElementById("p-name").value.trim() : "";
-  const referenciaLibro = document.getElementById("p-ref") ? document.getElementById("p-ref").value : "Compra";
+  const codigoProducto = document.getElementById("p-code") ? document.getElementById("p-code").value.trim() : "";
+  const referenciaLibro = document.getElementById("p-ref") ? document.getElementById("p-ref").value.trim() : "";
   const numeroDocumento = document.getElementById("p-doc") ? document.getElementById("p-doc").value.trim() : "";
   const boxes = Math.max(0, numberOrZero(document.getElementById("p-boxes").value));
   const unitsPerBox = Math.max(1, numberOrZero(document.getElementById("p-upb").value));
@@ -887,6 +924,7 @@ function readStockFormValues() {
     mode,
     existingName,
     name,
+    codigoProducto,
     boxes,
     unitsPerBox,
     extraUnits,
@@ -901,6 +939,7 @@ function readStockFormValues() {
 async function registrarMovimientoStock({
   productId,
   productName = "",
+  codigoProducto = "",
   tipoMovimiento = "entrada",
   referenciaLibro = "",
   numeroDocumento = "",
@@ -918,8 +957,12 @@ async function registrarMovimientoStock({
     await db.collection("stock_movimientos").add({
       productId,
       productName,
+      codigoProducto,
+      productCode: codigoProducto,
       tipoMovimiento,
       referenciaLibro,
+      referenceBook: referenciaLibro,
+      bookReference: referenciaLibro,
       numeroDocumento,
       entrada: numberOrZero(entrada),
       salida: numberOrZero(salida),
@@ -942,6 +985,8 @@ async function registrarMovimientoStock({
 async function createNewProduct(values) {
   const ref = await db.collection("productos").add({
     name: values.name,
+    codigoProducto: values.codigoProducto || "",
+    productCode: values.codigoProducto || "",
     quantity: values.quantity,
     stockCurrentUnits: values.quantity,
     stockBaseUnits: values.quantity,
@@ -961,6 +1006,7 @@ async function createNewProduct(values) {
   await registrarMovimientoStock({
     productId: ref.id,
     productName: values.name,
+    codigoProducto: values.codigoProducto || "",
     tipoMovimiento: "entrada",
     referenciaLibro: values.referenciaLibro || "Inventario inicial",
     numeroDocumento: values.numeroDocumento || ref.id,
@@ -1012,7 +1058,12 @@ async function addToExistingProduct(product, values) {
       ? values.price
       : numberOrZero(data.price);
 
+    const nextCodigoProducto = values.codigoProducto || getProductCode(data) || "";
+
     t.update(productRef, {
+      name: values.name || data.name || "",
+      codigoProducto: nextCodigoProducto,
+      productCode: nextCodigoProducto,
       quantity: nextQuantity,
       stockCurrentUnits: nextQuantity,
       boxes: nextBoxes,
@@ -1030,7 +1081,8 @@ async function addToExistingProduct(product, values) {
 
   await registrarMovimientoStock({
     productId: product.id,
-    productName: product.name || values.name || "",
+    productName: values.name || product.name || "",
+    codigoProducto: values.codigoProducto || getProductCode(product) || "",
     tipoMovimiento: "entrada",
     referenciaLibro: values.referenciaLibro || "Compra",
     numeroDocumento: values.numeroDocumento || "",
@@ -1064,7 +1116,8 @@ async function showAddProductModal() {
         lastCostPerBox: 0,
         price: 0,
         referenciaLibro: "Inventario inicial",
-        numeroDocumento: ""
+        numeroDocumento: "",
+        codigoProducto: ""
       }),
       showCancelButton: true,
       confirmButtonText: "Guardar",
@@ -1076,6 +1129,11 @@ async function showAddProductModal() {
 
         if (!values.name) {
           Swal.showValidationMessage("El nombre es obligatorio.");
+          return;
+        }
+
+        if (!values.codigoProducto) {
+          Swal.showValidationMessage("El código de producto es obligatorio.");
           return;
         }
 
@@ -1117,6 +1175,7 @@ async function showAddProductModal() {
       mode: defaultMode,
       productId: initialProduct ? initialProduct.id : "",
       productName: initialProduct ? initialProduct.name : "",
+      codigoProducto: initialProduct ? getProductCode(initialProduct) : "",
       boxes: 0,
       unitsPerBox: initialProduct ? getUnitsPerBox(initialProduct) : 1,
       extraUnits: 0,
@@ -1157,7 +1216,12 @@ async function showAddProductModal() {
         return;
       }
 
-      if (findProductByName(values.name)) {
+      if (!values.codigoProducto) {
+        Swal.showValidationMessage("El código de producto es obligatorio.");
+        return;
+      }
+
+      if (findProductByName(values.name) || findProductByName(values.codigoProducto)) {
         Swal.showValidationMessage("Ese producto ya existe. Usa la opción de producto existente.");
         return;
       }
@@ -1218,11 +1282,13 @@ async function showAddProductModal() {
 function buildProductFormHtml(initial = {}) {
   return `
     <input id="p-name" class="swal2-input" placeholder="Nombre del producto" value="${escapeHtml(initial.name || "")}">
+    <input id="p-code" class="swal2-input" placeholder="Código del producto" value="${escapeHtml(initial.codigoProducto || "")}">
     <input id="p-boxes" type="number" class="swal2-input" placeholder="Número de cajas" min="0" value="${numberOrZero(initial.boxes)}">
     <input id="p-upb" type="number" class="swal2-input" placeholder="Unidades por caja" min="1" value="${Math.max(1, numberOrZero(initial.unitsPerBox || 1))}">
     <input id="p-extra" type="number" class="swal2-input" placeholder="Unidades sueltas" min="0" value="${numberOrZero(initial.extraUnits)}">
     <input id="p-costbox" type="number" class="swal2-input" placeholder="Costo por caja" step="0.01" min="0" value="${numberOrZero(initial.lastCostPerBox)}">
     <input id="p-price" type="number" class="swal2-input" placeholder="Precio de venta" step="0.01" min="0" value="${numberOrZero(initial.price)}">
+    <input id="p-ref" class="swal2-input" placeholder="Referencia a libro" value="${escapeHtml(initial.referenciaLibro || "")}">
     <div style="text-align:left; margin-top:6px;">
       <small>La cantidad total se calcula con cajas × unidades por caja + unidades sueltas.</small>
     </div>
@@ -1231,19 +1297,23 @@ function buildProductFormHtml(initial = {}) {
 
 function readProductFormValues() {
   const name = document.getElementById("p-name").value.trim();
+  const codigoProducto = document.getElementById("p-code").value.trim();
   const boxes = Math.max(0, numberOrZero(document.getElementById("p-boxes").value));
   const unitsPerBox = Math.max(1, numberOrZero(document.getElementById("p-upb").value));
   const extraUnits = Math.max(0, numberOrZero(document.getElementById("p-extra").value));
   const lastCostPerBox = Math.max(0, numberOrZero(document.getElementById("p-costbox").value));
   const price = Math.max(0, numberOrZero(document.getElementById("p-price").value));
+  const referenciaLibro = document.getElementById("p-ref").value.trim();
 
   return {
     name,
+    codigoProducto,
     boxes,
     unitsPerBox,
     extraUnits,
     lastCostPerBox,
     price,
+    referenciaLibro,
     quantity: (boxes * unitsPerBox) + extraUnits
   };
 }
@@ -1277,11 +1347,13 @@ async function openEditModal(productId) {
       title: `Editar: ${product.name || ""}`,
       html: buildProductFormHtml({
         name: product.name || "",
+        codigoProducto: getProductCode(product),
         boxes: currentBoxes,
         unitsPerBox: currentUnitsPerBox,
         extraUnits,
         lastCostPerBox: numberOrZero(product.lastCostPerBox),
-        price: numberOrZero(product.price)
+        price: numberOrZero(product.price),
+        referenciaLibro: product.referenciaLibro || product.referenceBook || ""
       }),
       focusConfirm: false,
       showCancelButton: true,
@@ -1292,6 +1364,11 @@ async function openEditModal(productId) {
 
         if (!values.name) {
           Swal.showValidationMessage("El nombre es obligatorio.");
+          return;
+        }
+
+        if (!values.codigoProducto) {
+          Swal.showValidationMessage("El código de producto es obligatorio.");
           return;
         }
 
@@ -1306,6 +1383,10 @@ async function openEditModal(productId) {
 
     await db.collection("productos").doc(productId).update({
       name: values.name,
+      codigoProducto: values.codigoProducto,
+      productCode: values.codigoProducto,
+      referenciaLibro: values.referenciaLibro,
+      referenceBook: values.referenciaLibro,
       quantity: nextUnits,
       stockCurrentUnits: nextUnits,
       boxes: Math.floor(nextUnits / values.unitsPerBox),
@@ -1324,8 +1405,9 @@ async function openEditModal(productId) {
       await registrarMovimientoStock({
         productId,
         productName: values.name,
+        codigoProducto: values.codigoProducto,
         tipoMovimiento: "ajuste",
-        referenciaLibro: "Ajuste manual",
+        referenciaLibro: values.referenciaLibro || "Ajuste manual",
         numeroDocumento: `AJ-${Date.now()}`,
         entrada: Math.max(0, nextUnits - currentUnits),
         salida: Math.max(0, currentUnits - nextUnits),
