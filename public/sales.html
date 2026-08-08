@@ -97,6 +97,13 @@
                 <input type="number" id="saleQuantity" min="1" value="1" />
             </div>
 
+            <!-- NUEVO: Referencia al libro -->
+            <div style="width:220px; min-width:180px;">
+                <label for="referenciaLibro">Referencia a libro</label>
+                <input type="text" id="referenciaLibro" maxlength="100" placeholder="Ej. Libro 001 / Folio 25"
+                    autocomplete="off" />
+            </div>
+
             <div class="top-actions" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; width:100%;">
                 <button id="btnAddToCart" class="btn-primary">
                     <i class="fas fa-cart-plus"></i> Añadir
@@ -111,7 +118,8 @@
             <div class="section-header">
                 <div>
                     <h2>Carrito</h2>
-                    <p class="sales-table-note">Mantén <strong>Shift</strong> y haz clic en más de una columna para ordenar por varios campos.</p>
+                    <p class="sales-table-note">Mantén <strong>Shift</strong> y haz clic en más de una columna para
+                        ordenar por varios campos.</p>
                 </div>
             </div>
 

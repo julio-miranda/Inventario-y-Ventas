@@ -10,6 +10,7 @@
 // - Gráfico
 // - Utilidades
 // - Productos vendidos
+//
 // Vista predeterminada: mes actual
 //
 // Filtro por local:
@@ -17,6 +18,14 @@
 // - Se consulta la colección "local"
 // - Todas las vistas del dashboard se filtran por el local del usuario
 // - El filtrado por fecha se hace en memoria para evitar índices compuestos
+//
+// REPORTE DE MOVIMIENTOS:
+// - Precio de venta -> Costo unitario
+// - Unidades vendidas -> Valor del inventario en la transacción
+// - Valor inventario = costo unitario × saldo actual
+// - El saldo actual corresponde al saldo registrado por el movimiento
+// - Se incluye referencia a libro
+// - El valor NO se calcula usando el stock actual de la colección productos
 
 document.addEventListener("DOMContentLoaded", () => {
   const DEBUG_DASHBOARD = true;
@@ -131,7 +140,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function formatMoney(value) {
-    if (typeof appChartUtils !== "undefined" && typeof appChartUtils.formatCurrency === "function") {
+    if (
+      typeof appChartUtils !== "undefined" &&
+      typeof appChartUtils.formatCurrency === "function"
+    ) {
       return appChartUtils.formatCurrency(value);
     }
 
@@ -154,18 +166,30 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function endOfToday(date = new Date()) {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+    return new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+      23,
+      59,
+      59,
+      999
+    );
   }
 
   function startOfDay(dateStr) {
     if (!dateStr) return null;
+
     const d = new Date(`${dateStr}T00:00:00`);
+
     return isNaN(d.getTime()) ? null : d;
   }
 
   function endOfDay(dateStr) {
     if (!dateStr) return null;
+
     const d = new Date(`${dateStr}T23:59:59.999`);
+
     return isNaN(d.getTime()) ? null : d;
   }
 
@@ -179,7 +203,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function getStoredCurrentUser() {
     try {
-      return JSON.parse(localStorage.getItem("currentUser") || "null");
+      return JSON.parse(
+        localStorage.getItem("currentUser") || "null"
+      );
     } catch {
       return null;
     }
@@ -188,12 +214,16 @@ document.addEventListener("DOMContentLoaded", () => {
   function saveStoredCurrentUserPatch(patch) {
     try {
       const stored = getStoredCurrentUser();
+
       if (!stored) return;
 
-      localStorage.setItem("currentUser", JSON.stringify({
-        ...stored,
-        ...patch
-      }));
+      localStorage.setItem(
+        "currentUser",
+        JSON.stringify({
+          ...stored,
+          ...patch
+        })
+      );
     } catch {
       // ignore
     }
@@ -211,8 +241,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function normalizeLocalInfo(data = {}, idFallback = "") {
     return {
-      id: String(idFallback || data.id_local || data.idLocal || data.localId || "").trim(),
-      nombre: String(data.nombre || data.name || data.localName || data.nombre_local || "").trim(),
+      id: String(
+        idFallback ||
+        data.id_local ||
+        data.idLocal ||
+        data.localId ||
+        ""
+      ).trim(),
+
+      nombre: String(
+        data.nombre ||
+        data.name ||
+        data.localName ||
+        data.nombre_local ||
+        ""
+      ).trim(),
+
       numeroDocumento: String(
         data.numeroDocumento ||
         data.numero_documento ||
@@ -221,6 +265,7 @@ document.addEventListener("DOMContentLoaded", () => {
         data.n_documento ||
         ""
       ).trim(),
+
       ubicacion: String(
         data.ubicacion ||
         data.location ||
@@ -229,6 +274,7 @@ document.addEventListener("DOMContentLoaded", () => {
         data.sede ||
         ""
       ).trim(),
+
       contribuyente: String(
         data.contribuyente ||
         data.nombreContribuyente ||
@@ -261,6 +307,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <strong>Contribuyente:</strong> ${escapeHtml(currentLocalInfo.contribuyente || "—")}<br>
         <strong>Ubicación:</strong> ${escapeHtml(currentLocalInfo.ubicacion || "—")}
       </p>
+
       <p class="hero-subtitle">
         La vista se filtra automáticamente por este local.
       </p>
@@ -268,7 +315,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function setDocumentTitle() {
-    const localName = currentLocalInfo.nombre ? ` - ${currentLocalInfo.nombre}` : "";
+    const localName = currentLocalInfo.nombre
+      ? ` - ${currentLocalInfo.nombre}`
+      : "";
+
     document.title = `Dashboard${localName}`;
   }
 
@@ -283,7 +333,9 @@ document.addEventListener("DOMContentLoaded", () => {
     currentUserInfo.email = user.email || "";
     currentUserInfo.name = "Usuario";
     currentUserInfo.role = "Empleado";
+
     currentLocalId = "";
+
     currentLocalInfo = {
       id: "",
       nombre: "",
@@ -295,11 +347,19 @@ document.addEventListener("DOMContentLoaded", () => {
     const stored = getStoredCurrentUser();
 
     if (stored && stored.uid === user.uid) {
-      currentUserInfo.name = stored.name || currentUserInfo.name;
-      currentUserInfo.role = stored.role || currentUserInfo.role;
+      currentUserInfo.name =
+        stored.name || currentUserInfo.name;
 
-      if (stored.email) currentUserInfo.email = stored.email;
-      if (stored.id_local) currentLocalId = String(stored.id_local).trim();
+      currentUserInfo.role =
+        stored.role || currentUserInfo.role;
+
+      if (stored.email) {
+        currentUserInfo.email = stored.email;
+      }
+
+      if (stored.id_local) {
+        currentLocalId = String(stored.id_local).trim();
+      }
 
       if (
         stored.localNombre ||
@@ -307,29 +367,37 @@ document.addEventListener("DOMContentLoaded", () => {
         stored.localUbicacion ||
         stored.localContribuyente
       ) {
-        currentLocalInfo = normalizeLocalInfo({
-          nombre: stored.localNombre || "",
-          numeroDocumento: stored.localNumeroDocumento || "",
-          ubicacion: stored.localUbicacion || "",
-          contribuyente: stored.localContribuyente || ""
-        }, currentLocalId);
+        currentLocalInfo = normalizeLocalInfo(
+          {
+            nombre: stored.localNombre || "",
+            numeroDocumento: stored.localNumeroDocumento || "",
+            ubicacion: stored.localUbicacion || "",
+            contribuyente: stored.localContribuyente || ""
+          },
+          currentLocalId
+        );
       }
     }
 
     let employeeData = null;
 
     try {
-      const direct = await db.collection(EMPLOYEE_COLLECTION_NAME).doc(user.uid).get();
+      const direct = await db
+        .collection(EMPLOYEE_COLLECTION_NAME)
+        .doc(user.uid)
+        .get();
+
       if (direct.exists) {
         employeeData = direct.data() || {};
       }
     } catch (err) {
-      // sin logs fuera de ventas
+      // ignore
     }
 
     if (!employeeData) {
       try {
-        const byEmail = await db.collection(EMPLOYEE_COLLECTION_NAME)
+        const byEmail = await db
+          .collection(EMPLOYEE_COLLECTION_NAME)
           .where("email", "==", user.email)
           .limit(1)
           .get();
@@ -338,13 +406,19 @@ document.addEventListener("DOMContentLoaded", () => {
           employeeData = byEmail.docs[0].data() || {};
         }
       } catch (err) {
-        // sin logs fuera de ventas
+        // ignore
       }
     }
 
     if (employeeData) {
-      currentUserInfo.name = employeeData.name || currentUserInfo.name;
-      currentUserInfo.role = employeeData.position || employeeData.role || currentUserInfo.role;
+      currentUserInfo.name =
+        employeeData.name || currentUserInfo.name;
+
+      currentUserInfo.role =
+        employeeData.position ||
+        employeeData.role ||
+        currentUserInfo.role;
+
       currentLocalId = String(
         employeeData.id_local ||
         employeeData.idLocal ||
@@ -370,24 +444,33 @@ document.addEventListener("DOMContentLoaded", () => {
         ubicacion: "",
         contribuyente: ""
       };
+
       refreshLocalHeader();
-      throw new Error("El usuario autenticado no tiene un id_local asignado.");
+
+      throw new Error(
+        "El usuario autenticado no tiene un id_local asignado."
+      );
     }
 
     let localData = null;
 
     try {
-      const directLocal = await db.collection(LOCAL_COLLECTION_NAME).doc(currentLocalId).get();
+      const directLocal = await db
+        .collection(LOCAL_COLLECTION_NAME)
+        .doc(currentLocalId)
+        .get();
+
       if (directLocal.exists) {
         localData = directLocal.data() || {};
       }
     } catch (err) {
-      // sin logs fuera de ventas
+      // ignore
     }
 
     if (!localData) {
       try {
-        const byField = await db.collection(LOCAL_COLLECTION_NAME)
+        const byField = await db
+          .collection(LOCAL_COLLECTION_NAME)
           .where("id_local", "==", currentLocalId)
           .limit(1)
           .get();
@@ -396,94 +479,244 @@ document.addEventListener("DOMContentLoaded", () => {
           localData = byField.docs[0].data() || {};
         }
       } catch (err) {
-        // sin logs fuera de ventas
+        // ignore
       }
     }
 
-    currentLocalInfo = normalizeLocalInfo(localData || {}, currentLocalId);
+    currentLocalInfo = normalizeLocalInfo(
+      localData || {},
+      currentLocalId
+    );
 
     saveStoredCurrentUserPatch({
       id_local: currentLocalId,
       localNombre: currentLocalInfo.nombre || "",
-      localNumeroDocumento: currentLocalInfo.numeroDocumento || "",
-      localUbicacion: currentLocalInfo.ubicacion || "",
-      localContribuyente: currentLocalInfo.contribuyente || ""
+      localNumeroDocumento:
+        currentLocalInfo.numeroDocumento || "",
+      localUbicacion:
+        currentLocalInfo.ubicacion || "",
+      localContribuyente:
+        currentLocalInfo.contribuyente || ""
     });
 
     refreshLocalHeader();
   }
 
   function getUnitsPerBox(product) {
-    const v = numberOrZero(product && product.unitsPerBox);
+    const v = numberOrZero(
+      product && product.unitsPerBox
+    );
+
     return v > 0 ? v : 1;
   }
 
   function getStockUnits(product) {
-    const qty = numberOrZero(product && product.quantity);
+    const qty = numberOrZero(
+      product && product.quantity
+    );
+
     if (qty > 0) return qty;
 
-    const boxes = numberOrZero(product && product.boxes);
+    const boxes = numberOrZero(
+      product && product.boxes
+    );
+
     const upb = getUnitsPerBox(product);
+
     return boxes > 0 ? boxes * upb : 0;
   }
 
   function getStockBoxes(product) {
-    const boxes = numberOrZero(product && product.boxes);
+    const boxes = numberOrZero(
+      product && product.boxes
+    );
+
     if (boxes > 0) return boxes;
 
     const units = getStockUnits(product);
     const upb = getUnitsPerBox(product);
+
     return upb > 0 ? units / upb : 0;
   }
 
   function getDisplayDate(createdAt) {
     if (!createdAt) return "—";
-    if (createdAt.seconds) return new Date(createdAt.seconds * 1000).toLocaleDateString("es-ES");
+
+    if (createdAt.seconds) {
+      return new Date(
+        createdAt.seconds * 1000
+      ).toLocaleDateString("es-ES");
+    }
+
     const d = new Date(createdAt);
-    return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("es-ES");
+
+    return isNaN(d.getTime())
+      ? "—"
+      : d.toLocaleDateString("es-ES");
   }
 
   function getDisplayTime(createdAt) {
     if (!createdAt) return "—";
-    const d = createdAt.seconds ? new Date(createdAt.seconds * 1000) : new Date(createdAt);
+
+    const d = createdAt.seconds
+      ? new Date(createdAt.seconds * 1000)
+      : new Date(createdAt);
+
     return isNaN(d.getTime())
       ? "—"
-      : d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+      : d.toLocaleTimeString("es-ES", {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
   }
 
   function getTextFromProducts(products) {
-    if (!Array.isArray(products) || !products.length) return "—";
+    if (!Array.isArray(products) || !products.length) {
+      return "—";
+    }
+
     return products
-      .map(p => `${p.name || "Producto"} x${numberOrZero(p.quantity || p.unitsTotal || 0)}`)
+      .map(
+        p =>
+          `${p.name || "Producto"} x${numberOrZero(
+            p.quantity || p.unitsTotal || 0
+          )}`
+      )
       .join(" | ");
   }
 
+  /*
+   * Obtiene el costo unitario de un producto.
+   *
+   * IMPORTANTE:
+   * No utiliza precio de venta para calcular el costo.
+   *
+   * Orden de prioridad:
+   * 1. costo unitario almacenado directamente.
+   * 2. costo por unidad equivalente.
+   * 3. costo de caja / unidades por caja.
+   */
   function getProductUnitCost(product) {
+    if (!product) return 0;
+
     const upb = getUnitsPerBox(product);
 
-    const lastCostPerUnit = numberOrZero(product && product.lastCostPerUnit);
-    if (lastCostPerUnit > 0) return lastCostPerUnit;
+    const directUnitCost = [
+      product.unitCost,
+      product.costoUnitario,
+      product.costPerUnit,
+      product.costoPorUnidad,
+      product.lastCostPerUnit,
+      product.ultimoCostoUnitario
+    ];
 
-    const lastCostPerBox = numberOrZero(product && product.lastCostPerBox);
-    if (lastCostPerBox > 0 && upb > 0) return lastCostPerBox / upb;
+    for (const candidate of directUnitCost) {
+      const n = Number(candidate);
 
-    const price = numberOrZero(product && product.price);
-    if (price > 0) return price * 0.7;
+      if (Number.isFinite(n) && n > 0) {
+        return n;
+      }
+    }
+
+    const directCost = [
+      product.cost,
+      product.costo,
+      product.unitCostValue,
+      product.costValue
+    ];
+
+    for (const candidate of directCost) {
+      const n = Number(candidate);
+
+      if (Number.isFinite(n) && n > 0) {
+        return n;
+      }
+    }
+
+    const boxCost = [
+      product.costPerBox,
+      product.costoPorCaja,
+      product.lastCostPerBox,
+      product.ultimoCostoPorCaja
+    ];
+
+    for (const candidate of boxCost) {
+      const n = Number(candidate);
+
+      if (
+        Number.isFinite(n) &&
+        n > 0 &&
+        upb > 0
+      ) {
+        return n / upb;
+      }
+    }
 
     return 0;
   }
 
+  /*
+   * Obtiene el costo unitario directamente desde el
+   * movimiento, producto relacionado o venta relacionada.
+   */
+  function getMovementUnitCost(movement, product, saleProduct) {
+    const candidates = [
+      movement && movement.costoUnitario,
+      movement && movement.unitCost,
+      movement && movement.costPerUnit,
+      movement && movement.costoPorUnidad,
+      movement && movement.lastCostPerUnit,
+
+      saleProduct && saleProduct.costoUnitario,
+      saleProduct && saleProduct.unitCost,
+      saleProduct && saleProduct.costPerUnit,
+      saleProduct && saleProduct.costoPorUnidad,
+      saleProduct && saleProduct.lastCostPerUnit,
+
+      product && product.costoUnitario,
+      product && product.unitCost,
+      product && product.costPerUnit,
+      product && product.costoPorUnidad,
+      product && product.lastCostPerUnit
+    ];
+
+    for (const candidate of candidates) {
+      const n = Number(candidate);
+
+      if (Number.isFinite(n) && n > 0) {
+        return n;
+      }
+    }
+
+    /*
+     * Si el movimiento/producto no tiene costo unitario directo,
+     * se utiliza la función centralizada de costo del producto.
+     */
+    return getProductUnitCost(product);
+  }
+
   function getSaleMode(item) {
-    return String(item && (item.mode || item.saleMode || item.saleType) || "unit").toLowerCase();
+    return String(
+      item &&
+      (item.mode ||
+        item.saleMode ||
+        item.saleType) ||
+      "unit"
+    ).toLowerCase();
   }
 
   function getSaleProducts(sale) {
-    return Array.isArray(sale && sale.products) ? sale.products : [];
+    return Array.isArray(sale && sale.products)
+      ? sale.products
+      : [];
   }
 
   function getSalePrimaryProduct(sale) {
     const products = getSaleProducts(sale);
-    return products.length ? (products[0] || {}) : {};
+
+    return products.length
+      ? products[0] || {}
+      : {};
   }
 
   function getSaleProductPrice(product) {
@@ -499,14 +732,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
     for (const candidate of direct) {
       const n = Number(candidate);
-      if (Number.isFinite(n) && n > 0) return n;
+
+      if (Number.isFinite(n) && n > 0) {
+        return n;
+      }
     }
 
     const total = Number(product.total);
     const units = getSaleProductUnits(product);
-    if (Number.isFinite(total) && total > 0 && units > 0) {
+
+    if (
+      Number.isFinite(total) &&
+      total > 0 &&
+      units > 0
+    ) {
       const byUnit = total / units;
-      if (Number.isFinite(byUnit) && byUnit > 0) return byUnit;
+
+      if (
+        Number.isFinite(byUnit) &&
+        byUnit > 0
+      ) {
+        return byUnit;
+      }
     }
 
     return 0;
@@ -516,18 +763,43 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!product) return 0;
 
     const unitsTotal = Number(product.unitsTotal);
-    if (Number.isFinite(unitsTotal) && unitsTotal > 0) return unitsTotal;
+
+    if (
+      Number.isFinite(unitsTotal) &&
+      unitsTotal > 0
+    ) {
+      return unitsTotal;
+    }
 
     const quantity = Number(product.quantity);
-    if (Number.isFinite(quantity) && quantity > 0) {
-      const mode = String(product.mode || product.saleMode || product.saleType || "unit").toLowerCase();
-      const unitsPerBox = getUnitsPerBox(product);
-      if (mode === "box") return quantity * unitsPerBox;
+
+    if (
+      Number.isFinite(quantity) &&
+      quantity > 0
+    ) {
+      const mode = String(
+        product.mode ||
+        product.saleMode ||
+        product.saleType ||
+        "unit"
+      ).toLowerCase();
+
+      const unitsPerBox =
+        getUnitsPerBox(product);
+
+      if (mode === "box") {
+        return quantity * unitsPerBox;
+      }
+
       return quantity;
     }
 
     const boxes = Number(product.boxes);
-    if (Number.isFinite(boxes) && boxes > 0) {
+
+    if (
+      Number.isFinite(boxes) &&
+      boxes > 0
+    ) {
       return boxes * getUnitsPerBox(product);
     }
 
@@ -536,16 +808,23 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function getSoldUnitsFromSaleProduct(p) {
     if (!p) return 0;
+
     return getSaleProductUnits(p);
   }
 
   function getSoldBoxesFromSaleProduct(p) {
     if (!p) return 0;
 
-    const unitsPerBox = getUnitsPerBox(p);
-    const units = getSaleProductUnits(p);
+    const unitsPerBox =
+      getUnitsPerBox(p);
 
-    if (unitsPerBox > 1 && units > 0) {
+    const units =
+      getSaleProductUnits(p);
+
+    if (
+      unitsPerBox > 1 &&
+      units > 0
+    ) {
       return units / unitsPerBox;
     }
 
@@ -553,42 +832,86 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function normalizeLookupValue(v) {
-    return String(v || "").trim().toLowerCase();
+    return String(v || "")
+      .trim()
+      .toLowerCase();
   }
 
   function isSameDayMs(a, b) {
-    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return false;
+    if (
+      !Number.isFinite(a) ||
+      !Number.isFinite(b) ||
+      a <= 0 ||
+      b <= 0
+    ) {
+      return false;
+    }
+
     const da = new Date(a);
     const db = new Date(b);
-    return da.getFullYear() === db.getFullYear() &&
+
+    return (
+      da.getFullYear() === db.getFullYear() &&
       da.getMonth() === db.getMonth() &&
-      da.getDate() === db.getDate();
+      da.getDate() === db.getDate()
+    );
   }
 
-  function pickSaleProductForMovement(sale, movement) {
-    const products = getSaleProducts(sale);
-    if (!products.length) return null;
+  function pickSaleProductForMovement(
+    sale,
+    movement
+  ) {
+    const products =
+      getSaleProducts(sale);
 
-    const movementCode = normalizeLookupValue(
-      movement.productCode ||
-      movement.codigoProducto ||
-      movement.productId ||
-      movement.sku ||
-      movement.code ||
-      ""
-    );
+    if (!products.length) {
+      return null;
+    }
 
-    const movementName = normalizeLookupValue(
-      movement.productName ||
-      movement.name ||
-      movement.nombre ||
-      ""
-    );
+    const movementCode =
+      normalizeLookupValue(
+        movement.productCode ||
+        movement.codigoProducto ||
+        movement.productId ||
+        movement.sku ||
+        movement.code ||
+        ""
+      );
+
+    const movementName =
+      normalizeLookupValue(
+        movement.productName ||
+        movement.name ||
+        movement.nombre ||
+        ""
+      );
 
     const matched = products.find(p => {
-      const pid = normalizeLookupValue(p.productId || p.codigoProducto || p.sku || p.code || "");
-      const pname = normalizeLookupValue(p.name || p.productName || p.nombre || "");
-      return (movementCode && pid && pid === movementCode) || (movementName && pname && pname === movementName);
+      const pid =
+        normalizeLookupValue(
+          p.productId ||
+          p.codigoProducto ||
+          p.sku ||
+          p.code ||
+          ""
+        );
+
+      const pname =
+        normalizeLookupValue(
+          p.name ||
+          p.productName ||
+          p.nombre ||
+          ""
+        );
+
+      return (
+        (movementCode &&
+          pid &&
+          pid === movementCode) ||
+        (movementName &&
+          pname &&
+          pname === movementName)
+      );
     });
 
     return matched || products[0] || null;
@@ -599,7 +922,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const flatProducts = [];
 
     salesDocs.forEach(({ id, data }) => {
-      const sale = { id, ...data, createdAtMs: getTimestampMs(data.createdAt) };
+      const sale = {
+        id,
+        ...data,
+        createdAtMs:
+          getTimestampMs(data.createdAt)
+      };
 
       const aliases = [
         id,
@@ -614,18 +942,25 @@ document.addEventListener("DOMContentLoaded", () => {
       ].filter(Boolean);
 
       aliases.forEach(alias => {
-        byReference.set(normalizeLookupValue(alias), sale);
+        byReference.set(
+          normalizeLookupValue(alias),
+          sale
+        );
       });
 
-      const products = getSaleProducts(sale);
-      products.forEach((product, productIndex) => {
-        flatProducts.push({
-          saleId: id,
-          sale,
-          product,
-          productIndex
-        });
-      });
+      const products =
+        getSaleProducts(sale);
+
+      products.forEach(
+        (product, productIndex) => {
+          flatProducts.push({
+            saleId: id,
+            sale,
+            product,
+            productIndex
+          });
+        }
+      );
     });
 
     return {
@@ -634,7 +969,10 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 
-  function findRelatedSaleForMovement(movement, salesIndex) {
+  function findRelatedSaleForMovement(
+    movement,
+    salesIndex
+  ) {
     const possibleRefs = [
       movement.docNumber,
       movement.documentNumber,
@@ -642,59 +980,146 @@ document.addEventListener("DOMContentLoaded", () => {
       movement.saleId,
       movement.ventaId,
       movement.referenceBook,
+      movement.libro,
+      movement.referenciaLibro,
       movement.reference,
       movement.referenceId
     ].filter(Boolean);
 
     for (const ref of possibleRefs) {
-      const sale = salesIndex.byReference.get(normalizeLookupValue(ref));
+      const sale =
+        salesIndex.byReference.get(
+          normalizeLookupValue(ref)
+        );
+
       if (sale) {
         return {
           sale,
-          product: pickSaleProductForMovement(sale, movement),
+          product:
+            pickSaleProductForMovement(
+              sale,
+              movement
+            ),
           source: `ref:${ref}`
         };
       }
     }
 
-    const movementCode = normalizeLookupValue(
-      movement.productCode ||
-      movement.codigoProducto ||
-      movement.productId ||
-      movement.sku ||
-      movement.code ||
-      ""
-    );
+    const movementCode =
+      normalizeLookupValue(
+        movement.productCode ||
+        movement.codigoProducto ||
+        movement.productId ||
+        movement.sku ||
+        movement.code ||
+        ""
+      );
 
-    const movementName = normalizeLookupValue(
-      movement.productName ||
-      movement.name ||
-      movement.nombre ||
-      ""
-    );
+    const movementName =
+      normalizeLookupValue(
+        movement.productName ||
+        movement.name ||
+        movement.nombre ||
+        ""
+      );
 
-    const movementMs = getTimestampMs(movement.createdAt);
+    const movementMs =
+      getTimestampMs(
+        movement.createdAt
+      );
 
-    let hit = salesIndex.flatProducts.find(item => {
-      const pid = normalizeLookupValue(item.product && (item.product.productId || item.product.codigoProducto || item.product.sku || item.product.code || ""));
-      const pname = normalizeLookupValue(item.product && (item.product.name || item.product.productName || item.product.nombre || ""));
-      return (movementCode && pid && pid === movementCode) || (movementName && pname && pname === movementName);
-    });
+    let hit =
+      salesIndex.flatProducts.find(
+        item => {
+          const pid =
+            normalizeLookupValue(
+              item.product &&
+              (
+                item.product.productId ||
+                item.product.codigoProducto ||
+                item.product.sku ||
+                item.product.code ||
+                ""
+              )
+            );
+
+          const pname =
+            normalizeLookupValue(
+              item.product &&
+              (
+                item.product.name ||
+                item.product.productName ||
+                item.product.nombre ||
+                ""
+              )
+            );
+
+          return (
+            (movementCode &&
+              pid &&
+              pid === movementCode) ||
+            (movementName &&
+              pname &&
+              pname === movementName)
+          );
+        }
+      );
 
     if (!hit && movementMs > 0) {
-      const sameDay = salesIndex.flatProducts.filter(item => isSameDayMs(item.sale.createdAtMs, movementMs));
-      hit = sameDay.find(item => {
-        const pid = normalizeLookupValue(item.product && (item.product.productId || item.product.codigoProducto || item.product.sku || item.product.code || ""));
-        const pname = normalizeLookupValue(item.product && (item.product.name || item.product.productName || item.product.nombre || ""));
-        return (movementCode && pid && pid === movementCode) || (movementName && pname && pname === movementName);
-      }) || sameDay[0] || null;
+      const sameDay =
+        salesIndex.flatProducts.filter(
+          item =>
+            isSameDayMs(
+              item.sale.createdAtMs,
+              movementMs
+            )
+        );
+
+      hit =
+        sameDay.find(item => {
+          const pid =
+            normalizeLookupValue(
+              item.product &&
+              (
+                item.product.productId ||
+                item.product.codigoProducto ||
+                item.product.sku ||
+                item.product.code ||
+                ""
+              )
+            );
+
+          const pname =
+            normalizeLookupValue(
+              item.product &&
+              (
+                item.product.name ||
+                item.product.productName ||
+                item.product.nombre ||
+                ""
+              )
+            );
+
+          return (
+            (movementCode &&
+              pid &&
+              pid === movementCode) ||
+            (movementName &&
+              pname &&
+              pname === movementName)
+          );
+        }) ||
+        sameDay[0] ||
+        null;
     }
 
     if (hit) {
       return {
         sale: hit.sale,
         product: hit.product,
-        source: hit.saleId ? `match:${hit.saleId}` : "match"
+        source: hit.saleId
+          ? `match:${hit.saleId}`
+          : "match"
       };
     }
 
@@ -706,9 +1131,17 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function getMovementPrimaryProduct(m) {
-    if (m && Array.isArray(m.products) && m.products.length > 0) {
-      const candidate = m.products[0];
-      if (isPlainObject(candidate)) return candidate;
+    if (
+      m &&
+      Array.isArray(m.products) &&
+      m.products.length > 0
+    ) {
+      const candidate =
+        m.products[0];
+
+      if (isPlainObject(candidate)) {
+        return candidate;
+      }
     }
 
     const fallbackKeys = [
@@ -722,78 +1155,140 @@ document.addEventListener("DOMContentLoaded", () => {
     ];
 
     for (const key of fallbackKeys) {
-      if (isPlainObject(m?.[key])) return m[key];
+      if (isPlainObject(m?.[key])) {
+        return m[key];
+      }
     }
 
     return {};
   }
 
-  function deepPickNumber(source, keys, defaultValue = 0, maxDepth = 3) {
+  function deepPickNumber(
+    source,
+    keys,
+    defaultValue = 0,
+    maxDepth = 3
+  ) {
     const visited = new WeakSet();
 
     function walk(value, depth) {
-      if (!value || depth < 0) return undefined;
+      if (!value || depth < 0) {
+        return undefined;
+      }
 
       if (typeof value === "object") {
-        if (visited.has(value)) return undefined;
+        if (visited.has(value)) {
+          return undefined;
+        }
+
         visited.add(value);
       }
 
       if (Array.isArray(value)) {
         for (const item of value) {
-          const found = walk(item, depth - 1);
-          if (found !== undefined) return found;
+          const found =
+            walk(item, depth - 1);
+
+          if (found !== undefined) {
+            return found;
+          }
         }
+
         return undefined;
       }
 
       if (isPlainObject(value)) {
         for (const key of keys) {
-          if (Object.prototype.hasOwnProperty.call(value, key)) {
-            const candidate = value[key];
+          if (
+            Object.prototype.hasOwnProperty.call(
+              value,
+              key
+            )
+          ) {
+            const candidate =
+              value[key];
+
             const n = Number(candidate);
-            if (Number.isFinite(n)) return n;
+
+            if (Number.isFinite(n)) {
+              return n;
+            }
           }
         }
 
         for (const k of Object.keys(value)) {
           const child = value[k];
-          const found = walk(child, depth - 1);
-          if (found !== undefined) return found;
+
+          const found =
+            walk(child, depth - 1);
+
+          if (found !== undefined) {
+            return found;
+          }
         }
       }
 
       return undefined;
     }
 
-    const result = walk(source, maxDepth);
-    return Number.isFinite(result) ? result : defaultValue;
+    const result =
+      walk(source, maxDepth);
+
+    return Number.isFinite(result)
+      ? result
+      : defaultValue;
   }
 
-  function deepPickString(source, keys, defaultValue = "—", maxDepth = 3) {
+  function deepPickString(
+    source,
+    keys,
+    defaultValue = "—",
+    maxDepth = 3
+  ) {
     const visited = new WeakSet();
 
     function walk(value, depth) {
-      if (!value || depth < 0) return undefined;
+      if (!value || depth < 0) {
+        return undefined;
+      }
 
       if (typeof value === "object") {
-        if (visited.has(value)) return undefined;
+        if (visited.has(value)) {
+          return undefined;
+        }
+
         visited.add(value);
       }
 
       if (Array.isArray(value)) {
         for (const item of value) {
-          const found = walk(item, depth - 1);
-          if (found !== undefined) return found;
+          const found =
+            walk(item, depth - 1);
+
+          if (found !== undefined) {
+            return found;
+          }
         }
+
         return undefined;
       }
 
       if (isPlainObject(value)) {
         for (const key of keys) {
-          if (Object.prototype.hasOwnProperty.call(value, key)) {
-            const candidate = value[key];
-            if (candidate !== null && candidate !== undefined && String(candidate).trim() !== "") {
+          if (
+            Object.prototype.hasOwnProperty.call(
+              value,
+              key
+            )
+          ) {
+            const candidate =
+              value[key];
+
+            if (
+              candidate !== null &&
+              candidate !== undefined &&
+              String(candidate).trim() !== ""
+            ) {
               return String(candidate);
             }
           }
@@ -801,20 +1296,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
         for (const k of Object.keys(value)) {
           const child = value[k];
-          const found = walk(child, depth - 1);
-          if (found !== undefined) return found;
+
+          const found =
+            walk(child, depth - 1);
+
+          if (found !== undefined) {
+            return found;
+          }
         }
       }
 
       return undefined;
     }
 
-    const result = walk(source, maxDepth);
-    return result !== undefined ? result : defaultValue;
+    const result =
+      walk(source, maxDepth);
+
+    return result !== undefined
+      ? result
+      : defaultValue;
   }
 
   function getMovementProductCode(m) {
-    const p = getMovementPrimaryProduct(m);
+    const p =
+      getMovementPrimaryProduct(m);
 
     return String(
       deepPickString(
@@ -836,7 +1341,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function getMovementProductName(m) {
-    const p = getMovementPrimaryProduct(m);
+    const p =
+      getMovementPrimaryProduct(m);
 
     return String(
       deepPickString(
@@ -857,148 +1363,400 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function getMovementDocumentNumber(m) {
-    return String(m && (m.numeroDocumento || m.documentNumber || m.docNumber || "—")) || "—";
+    return String(
+      m &&
+      (
+        m.numeroDocumento ||
+        m.documentNumber ||
+        m.docNumber ||
+        "—"
+      )
+    ) || "—";
+  }
+
+  /*
+   * Referencia al libro.
+   *
+   * Se aceptan diferentes nombres para mantener
+   * compatibilidad con documentos existentes.
+   */
+  function getMovementBookReference(m) {
+    return String(
+      m &&
+      (
+        m.libro ||
+        m.referenceBook ||
+        m.referenciaLibro ||
+        m.bookReference ||
+        m.libroReferencia ||
+        m.referenciaLibroInventario ||
+        ""
+      )
+    ).trim() || "—";
   }
 
   function getMovementEntry(m) {
-    return numberOrZero(m && (m.entrada ?? m.entry ?? m.unitsIn ?? 0));
+    return numberOrZero(
+      m &&
+      (
+        m.entrada ??
+        m.entry ??
+        m.unitsIn ??
+        0
+      )
+    );
   }
 
   function getMovementExit(m) {
-    return numberOrZero(m && (m.salida ?? m.exit ?? m.unitsOut ?? 0));
+    return numberOrZero(
+      m &&
+      (
+        m.salida ??
+        m.exit ??
+        m.unitsOut ??
+        0
+      )
+    );
   }
 
   function getMovementBalanceBefore(m) {
-    return numberOrZero(m && (m.saldoAnterior ?? m.balanceBefore ?? m.previousBalance ?? 0));
+    return numberOrZero(
+      m &&
+      (
+        m.saldoAnterior ??
+        m.balanceBefore ??
+        m.previousBalance ??
+        0
+      )
+    );
   }
 
   function getMovementBalanceAfter(m) {
-    return numberOrZero(m && (m.saldoActual ?? m.balance ?? m.saldo ?? m.currentBalance ?? 0));
+    return numberOrZero(
+      m &&
+      (
+        m.saldoActual ??
+        m.balance ??
+        m.saldo ??
+        m.currentBalance ??
+        0
+      )
+    );
+  }
+
+  /*
+   * El valor del inventario de la transacción
+   * SIEMPRE se calcula usando el saldo actual
+   * registrado por el movimiento.
+   *
+   * Fórmula:
+   *
+   * valorInventario = costoUnitario × saldoActual
+   */
+  function calculateTransactionInventoryValue(
+    unitCost,
+    balanceAfter
+  ) {
+    const cost = numberOrZero(unitCost);
+    const balance =
+      numberOrZero(balanceAfter);
+
+    return cost * balance;
   }
 
   function getMovementDetail(m) {
-    return String(m && (m.detalle || m.detail || m.notes || "")) || "";
+    return String(
+      m &&
+      (
+        m.detalle ||
+        m.detail ||
+        m.notes ||
+        ""
+      )
+    ) || "";
   }
 
   function getMovementTypeLabel(m) {
-    const type = String(m && (m.tipoMovimiento || m.type || "")).toLowerCase();
-    if (type === "entrada") return "Entrada";
-    if (type === "salida") return "Salida";
-    if (type === "ajuste") return "Ajuste";
+    const type = String(
+      m &&
+      (
+        m.tipoMovimiento ||
+        m.type ||
+        ""
+      )
+    ).toLowerCase();
+
+    if (type === "entrada") {
+      return "Entrada";
+    }
+
+    if (type === "salida") {
+      return "Salida";
+    }
+
+    if (type === "ajuste") {
+      return "Ajuste";
+    }
+
     return "Movimiento";
   }
 
   function getTimestampMs(createdAt) {
     if (!createdAt) return 0;
-    if (createdAt.seconds) return createdAt.seconds * 1000;
+
+    if (createdAt.seconds) {
+      return createdAt.seconds * 1000;
+    }
 
     const d = new Date(createdAt);
-    return isNaN(d.getTime()) ? 0 : d.getTime();
+
+    return isNaN(d.getTime())
+      ? 0
+      : d.getTime();
   }
 
   function buildMovementSortKey(data = {}) {
-    const createdAtMs = getTimestampMs(data.createdAt);
+    const createdAtMs =
+      getTimestampMs(data.createdAt);
 
     const datePart =
-      String(data.fecha || data.date || data.fechaMovimiento || "").trim();
+      String(
+        data.fecha ||
+        data.date ||
+        data.fechaMovimiento ||
+        ""
+      ).trim();
 
     const timePart =
-      String(data.hora || data.time || data.horaMovimiento || "").trim();
+      String(
+        data.hora ||
+        data.time ||
+        data.horaMovimiento ||
+        ""
+      ).trim();
 
-    if (createdAtMs > 0) return createdAtMs;
+    if (createdAtMs > 0) {
+      return createdAtMs;
+    }
 
     if (datePart) {
-      const parsed = new Date(`${datePart}T${timePart || "00:00:00"}`);
-      if (!isNaN(parsed.getTime())) return parsed.getTime();
+      const parsed = new Date(
+        `${datePart}T${timePart || "00:00:00"}`
+      );
+
+      if (!isNaN(parsed.getTime())) {
+        return parsed.getTime();
+      }
     }
 
     return 0;
   }
 
   function matchesCurrentLocal(data = {}) {
-    if (!currentLocalId) return false;
-    return getLocalFieldValue(data) === String(currentLocalId).trim();
+    if (!currentLocalId) {
+      return false;
+    }
+
+    return (
+      getLocalFieldValue(data) ===
+      String(currentLocalId).trim()
+    );
   }
 
   function isWithinSelectedRange(createdAt) {
-    if (!selectedRange.from || !selectedRange.to) return true;
+    if (
+      !selectedRange.from ||
+      !selectedRange.to
+    ) {
+      return true;
+    }
 
     const date = createdAt?.seconds
       ? new Date(createdAt.seconds * 1000)
       : new Date(createdAt);
 
-    if (isNaN(date.getTime())) return false;
-    return date >= selectedRange.from && date <= selectedRange.to;
+    if (isNaN(date.getTime())) {
+      return false;
+    }
+
+    return (
+      date >= selectedRange.from &&
+      date <= selectedRange.to
+    );
   }
 
   function sortByCreatedAtDesc(a, b) {
-    const da = a && typeof a.createdAtMs === "number" ? a.createdAtMs : 0;
-    const db = b && typeof b.createdAtMs === "number" ? b.createdAtMs : 0;
+    const da =
+      a &&
+        typeof a.createdAtMs === "number"
+        ? a.createdAtMs
+        : 0;
+
+    const db =
+      b &&
+        typeof b.createdAtMs === "number"
+        ? b.createdAtMs
+        : 0;
+
     return db - da;
   }
 
   function sortByCreatedAtAsc(a, b) {
-    const da = a && typeof a.createdAtMs === "number" ? a.createdAtMs : getTimestampMs(a?.createdAt);
-    const db = b && typeof b.createdAtMs === "number" ? b.createdAtMs : getTimestampMs(b?.createdAt);
+    const da =
+      a &&
+        typeof a.createdAtMs === "number"
+        ? a.createdAtMs
+        : getTimestampMs(a?.createdAt);
+
+    const db =
+      b &&
+        typeof b.createdAtMs === "number"
+        ? b.createdAtMs
+        : getTimestampMs(b?.createdAt);
+
     return da - db;
   }
 
-  async function loadCollectionDocs(collectionName) {
-    const snap = await db.collection(collectionName)
+  async function loadCollectionDocs(
+    collectionName
+  ) {
+    const snap = await db
+      .collection(collectionName)
       .orderBy("createdAt", "desc")
       .get();
 
     const docs = [];
-    snap.forEach(doc => docs.push({ id: doc.id, data: doc.data() || {} }));
+
+    snap.forEach(doc => {
+      docs.push({
+        id: doc.id,
+        data: doc.data() || {}
+      });
+    });
+
     return docs;
   }
 
-  function logSalesDocumentInspection(saleDoc, index) {
-    if (!DEBUG_DASHBOARD || index >= MAX_DEBUG_DOCS) return;
+  function logSalesDocumentInspection(
+    saleDoc,
+    index
+  ) {
+    if (
+      !DEBUG_DASHBOARD ||
+      index >= MAX_DEBUG_DOCS
+    ) {
+      return;
+    }
 
-    const sale = saleDoc.data || {};
-    const products = getSaleProducts(sale);
-    const firstProduct = products[0] || null;
+    const sale =
+      saleDoc.data || {};
 
-    console.groupCollapsed(`[Dashboard][ventas] Documento #${index + 1}: ${saleDoc.id}`);
-    console.log("campos:", Object.keys(sale));
-    console.log("createdAt:", sale.createdAt);
-    console.log("id_local:", sale.id_local);
-    console.log("userName:", sale.userName);
-    console.log("products.length:", products.length);
-    console.log("products[0]:", firstProduct);
+    const products =
+      getSaleProducts(sale);
+
+    const firstProduct =
+      products[0] || null;
+
+    console.groupCollapsed(
+      `[Dashboard][ventas] Documento #${index + 1}: ${saleDoc.id}`
+    );
+
+    console.log(
+      "campos:",
+      Object.keys(sale)
+    );
+
+    console.log(
+      "createdAt:",
+      sale.createdAt
+    );
+
+    console.log(
+      "id_local:",
+      sale.id_local
+    );
+
+    console.log(
+      "userName:",
+      sale.userName
+    );
+
+    console.log(
+      "products.length:",
+      products.length
+    );
+
+    console.log(
+      "products[0]:",
+      firstProduct
+    );
 
     if (firstProduct) {
-      console.log("precio de venta detectado:", getSaleProductPrice(firstProduct));
-      console.log("unidades vendidas detectadas:", getSaleProductUnits(firstProduct));
+      console.log(
+        "precio de venta detectado:",
+        getSaleProductPrice(firstProduct)
+      );
+
+      console.log(
+        "unidades vendidas detectadas:",
+        getSaleProductUnits(firstProduct)
+      );
     }
 
     console.groupEnd();
   }
 
-  function aggregateSalesFromDocs(salesDocs) {
+  function aggregateSalesFromDocs(
+    salesDocs
+  ) {
     const unitsMap = {};
     const boxesMap = {};
+
     let totalSales = 0;
     let totalUnitsSold = 0;
 
-    salesDocs.forEach(({ data: sale }) => {
-      totalSales += numberOrZero(sale.total);
+    salesDocs.forEach(
+      ({ data: sale }) => {
+        totalSales += numberOrZero(
+          sale.total
+        );
 
-      const products = Array.isArray(sale.products) ? sale.products : [];
-      products.forEach(p => {
-        if (!p || !p.productId) return;
+        const products =
+          Array.isArray(sale.products)
+            ? sale.products
+            : [];
 
-        const soldUnits = getSoldUnitsFromSaleProduct(p);
-        const soldBoxes = getSoldBoxesFromSaleProduct(p);
+        products.forEach(p => {
+          if (!p || !p.productId) {
+            return;
+          }
 
-        unitsMap[p.productId] = (unitsMap[p.productId] || 0) + soldUnits;
-        boxesMap[p.productId] = (boxesMap[p.productId] || 0) + soldBoxes;
-        totalUnitsSold += soldUnits;
-      });
-    });
+          const soldUnits =
+            getSoldUnitsFromSaleProduct(p);
 
-    const distinctProductsSold = Object.keys(unitsMap).filter(productId => numberOrZero(unitsMap[productId]) > 0).length;
+          const soldBoxes =
+            getSoldBoxesFromSaleProduct(p);
+
+          unitsMap[p.productId] =
+            (unitsMap[p.productId] || 0) +
+            soldUnits;
+
+          boxesMap[p.productId] =
+            (boxesMap[p.productId] || 0) +
+            soldBoxes;
+
+          totalUnitsSold += soldUnits;
+        });
+      }
+    );
+
+    const distinctProductsSold =
+      Object.keys(unitsMap).filter(
+        productId =>
+          numberOrZero(
+            unitsMap[productId]
+          ) > 0
+      ).length;
 
     return {
       unitsMap,
@@ -1011,191 +1769,638 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function setDefaultRangeToMonth() {
     const today = new Date();
-    const from = startOfMonth(today);
+
+    const from =
+      startOfMonth(today);
+
     const to = today;
 
-    selectedRange = { from, to };
+    selectedRange = {
+      from,
+      to
+    };
 
-    if (rangeFrom) rangeFrom.value = toLocalInputDate(from);
-    if (rangeTo) rangeTo.value = toLocalInputDate(to);
+    if (rangeFrom) {
+      rangeFrom.value =
+        toLocalInputDate(from);
+    }
+
+    if (rangeTo) {
+      rangeTo.value =
+        toLocalInputDate(to);
+    }
 
     updateRangeLabels();
   }
 
   function updateRangeLabels() {
-    const fromText = selectedRange.from ? selectedRange.from.toLocaleDateString("es-ES") : "inicio";
-    const toText = selectedRange.to ? selectedRange.to.toLocaleDateString("es-ES") : "hoy";
-    const localText = currentLocalInfo.nombre ? ` del local ${currentLocalInfo.nombre}` : "";
+    const fromText =
+      selectedRange.from
+        ? selectedRange.from.toLocaleDateString(
+          "es-ES"
+        )
+        : "inicio";
 
-    if (salesRangeLabel) salesRangeLabel.textContent = `Mostrando resultados${localText} desde ${fromText} hasta ${toText}.`;
-    if (expenseRangeLabel) expenseRangeLabel.textContent = `Mostrando resultados${localText} desde ${fromText} hasta ${toText}.`;
-    if (movementRangeLabel) movementRangeLabel.textContent = `Mostrando resultados${localText} desde ${fromText} hasta ${toText}.`;
+    const toText =
+      selectedRange.to
+        ? selectedRange.to.toLocaleDateString(
+          "es-ES"
+        )
+        : "hoy";
+
+    const localText =
+      currentLocalInfo.nombre
+        ? ` del local ${currentLocalInfo.nombre}`
+        : "";
+
+    if (salesRangeLabel) {
+      salesRangeLabel.textContent =
+        `Mostrando resultados${localText} desde ${fromText} hasta ${toText}.`;
+    }
+
+    if (expenseRangeLabel) {
+      expenseRangeLabel.textContent =
+        `Mostrando resultados${localText} desde ${fromText} hasta ${toText}.`;
+    }
+
+    if (movementRangeLabel) {
+      movementRangeLabel.textContent =
+        `Mostrando resultados${localText} desde ${fromText} hasta ${toText}.`;
+    }
   }
 
   async function loadDashboardForRange() {
     try {
       if (!currentLocalId) {
-        throw new Error("No hay local asociado al usuario autenticado.");
+        throw new Error(
+          "No hay local asociado al usuario autenticado."
+        );
       }
 
       const range = {
-        from: rangeFrom?.value ? startOfDay(rangeFrom.value) : startOfMonth(new Date()),
-        to: rangeTo?.value ? endOfDay(rangeTo.value) : endOfToday(new Date())
+        from: rangeFrom?.value
+          ? startOfDay(rangeFrom.value)
+          : startOfMonth(new Date()),
+
+        to: rangeTo?.value
+          ? endOfDay(rangeTo.value)
+          : endOfToday(new Date())
       };
 
-      if (!range.from || !range.to) {
-        Swal.fire("Fecha inválida", "Revisa el rango seleccionado.", "warning");
+      if (
+        !range.from ||
+        !range.to
+      ) {
+        Swal.fire(
+          "Fecha inválida",
+          "Revisa el rango seleccionado.",
+          "warning"
+        );
+
         return;
       }
 
       if (range.from > range.to) {
-        Swal.fire("Rango inválido", "La fecha inicial no puede ser mayor que la fecha final.", "warning");
+        Swal.fire(
+          "Rango inválido",
+          "La fecha inicial no puede ser mayor que la fecha final.",
+          "warning"
+        );
+
         return;
       }
 
       selectedRange = range;
+
       updateRangeLabels();
 
-      const [salesDocsRaw, expensesDocsRaw, movementsDocsRaw, productsDocsRaw] = await Promise.all([
+      const [
+        salesDocsRaw,
+        expensesDocsRaw,
+        movementsDocsRaw,
+        productsDocsRaw
+      ] = await Promise.all([
         loadCollectionDocs("ventas"),
         loadCollectionDocs("gastos"),
         loadCollectionDocs("stock_movimientos"),
         loadCollectionDocs("productos")
       ]);
 
-      const salesDocs = salesDocsRaw.filter(item => matchesCurrentLocal(item.data) && isWithinSelectedRange(item.data.createdAt));
-      const expensesDocs = expensesDocsRaw.filter(item => matchesCurrentLocal(item.data) && isWithinSelectedRange(item.data.createdAt));
-      const movementsDocs = movementsDocsRaw.filter(item => matchesCurrentLocal(item.data) && isWithinSelectedRange(item.data.createdAt));
-      const productsDocs = productsDocsRaw.filter(item => matchesCurrentLocal(item.data));
+      const salesDocs =
+        salesDocsRaw.filter(
+          item =>
+            matchesCurrentLocal(item.data) &&
+            isWithinSelectedRange(
+              item.data.createdAt
+            )
+        );
 
-      const salesIndex = buildSalesIndex(salesDocs);
+      const expensesDocs =
+        expensesDocsRaw.filter(
+          item =>
+            matchesCurrentLocal(item.data) &&
+            isWithinSelectedRange(
+              item.data.createdAt
+            )
+        );
 
-      debugLog("Consulta ventas:", {
-        rawCount: salesDocsRaw.length,
-        filteredCount: salesDocs.length
-      });
+      const movementsDocs =
+        movementsDocsRaw.filter(
+          item =>
+            matchesCurrentLocal(item.data) &&
+            isWithinSelectedRange(
+              item.data.createdAt
+            )
+        );
 
-      salesDocs.slice(0, MAX_DEBUG_DOCS).forEach(logSalesDocumentInspection);
+      const productsDocs =
+        productsDocsRaw.filter(
+          item =>
+            matchesCurrentLocal(item.data)
+        );
+
+      const salesIndex =
+        buildSalesIndex(salesDocs);
+
+      debugLog(
+        "Consulta ventas:",
+        {
+          rawCount:
+            salesDocsRaw.length,
+          filteredCount:
+            salesDocs.length
+        }
+      );
+
+      salesDocs
+        .slice(0, MAX_DEBUG_DOCS)
+        .forEach(
+          logSalesDocumentInspection
+        );
 
       productsMap = new Map();
+
       const products = [];
 
-      productsDocs.forEach(({ id, data }) => {
-        const p = { id, ...data };
-        products.push(p);
-        productsMap.set(id, p);
-      });
+      productsDocs.forEach(
+        ({ id, data }) => {
+          const p = {
+            id,
+            ...data
+          };
 
-      products.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+          products.push(p);
 
-      const salesAgg = aggregateSalesFromDocs(salesDocs);
+          productsMap.set(
+            id,
+            p
+          );
+        }
+      );
 
-      cachedSales = salesDocs.map(({ id, data: sale }) => {
-        const saleProducts = Array.isArray(sale.products) ? sale.products : [];
+      products.sort(
+        (a, b) =>
+          String(
+            a.name || ""
+          ).localeCompare(
+            String(
+              b.name || ""
+            )
+          )
+      );
 
-        return {
-          id,
-          customerName: sale.customerName || sale.userName || sale.userId || "—",
-          products: getTextFromProducts(saleProducts),
-          total: numberOrZero(sale.total),
-          userName: sale.userName || "—",
-          dateStr: getDisplayDate(sale.createdAt),
-          timeStr: getDisplayTime(sale.createdAt),
-          createdAtMs: getTimestampMs(sale.createdAt),
-          rawText: [
-            sale.customerName || "",
-            sale.userName || "",
-            getTextFromProducts(saleProducts),
-            sale.total ?? ""
-          ].join(" ")
-        };
-      }).sort((a, b) => b.createdAtMs - a.createdAtMs);
+      const salesAgg =
+        aggregateSalesFromDocs(
+          salesDocs
+        );
 
-      cachedExpenses = expensesDocs.map(({ id, data }) => ({
-        id,
-        concept: data.concept || "",
-        category: data.category || "",
-        amount: numberOrZero(data.amount),
-        paymentMethod: data.paymentMethod || "",
-        userName: data.userName || "—",
-        notes: data.notes || "",
-        dateStr: getDisplayDate(data.createdAt),
-        timeStr: getDisplayTime(data.createdAt),
-        createdAtMs: getTimestampMs(data.createdAt),
-        rawText: [
-          data.concept || "",
-          data.category || "",
-          data.paymentMethod || "",
-          data.userName || "",
-          data.notes || "",
-          data.amount ?? ""
-        ].join(" ")
-      }));
+      cachedSales =
+        salesDocs
+          .map(
+            ({ id, data: sale }) => {
+              const saleProducts =
+                Array.isArray(
+                  sale.products
+                )
+                  ? sale.products
+                  : [];
 
-      cachedMovements = movementsDocs.map(({ id, data }) => {
-        const related = findRelatedSaleForMovement({
-          docNumber: getMovementDocumentNumber(data),
-          productCode: getMovementProductCode(data),
-          productName: getMovementProductName(data),
-          createdAt: data.createdAt
-        }, salesIndex);
+              return {
+                id,
 
-        const fallbackProduct = getMovementPrimaryProduct(data);
-        const saleProduct = related.product || fallbackProduct;
+                customerName:
+                  sale.customerName ||
+                  sale.userName ||
+                  sale.userId ||
+                  "—",
 
-        const extractedSalePrice = getSaleProductPrice(saleProduct) || numberOrZero(data.salePrice || data.precioVenta || data.price || 0);
-        const extractedUnitsSold = getSaleProductUnits(saleProduct) || numberOrZero(data.unidadesVendidas || data.unitsSold || data.soldUnits || data.quantity || data.unitsTotal || 0);
+                products:
+                  getTextFromProducts(
+                    saleProducts
+                  ),
 
-        return {
-          id,
-          productCode: getMovementProductCode(data),
-          productName: getMovementProductName(data),
-          salePrice: extractedSalePrice,
-          unitsSold: extractedUnitsSold,
-          docNumber: getMovementDocumentNumber(data),
-          entry: getMovementEntry(data),
-          exit: getMovementExit(data),
-          balanceBefore: getMovementBalanceBefore(data),
-          balanceAfter: getMovementBalanceAfter(data),
-          userName: data.userName || "—",
-          detail: getMovementDetail(data),
-          typeLabel: getMovementTypeLabel(data),
-          createdAtMs: buildMovementSortKey(data),
-          dateStr: getDisplayDate(data.createdAt),
-          timeStr: getDisplayTime(data.createdAt),
-          rawText: [
-            getMovementProductCode(data),
-            getMovementProductName(data),
-            extractedSalePrice,
-            extractedUnitsSold,
-            getMovementDocumentNumber(data),
-            getMovementEntry(data),
-            getMovementExit(data),
-            getMovementBalanceBefore(data),
-            getMovementBalanceAfter(data),
-            data.userName || "",
-            getMovementDetail(data),
-            getMovementTypeLabel(data)
-          ].join(" ")
-        };
-      }).sort((a, b) => sortByCreatedAtAsc(a, b));
+                total:
+                  numberOrZero(
+                    sale.total
+                  ),
 
-      visibleSales = [...cachedSales];
-      visibleExpenses = [...cachedExpenses];
-      visibleMovements = [...cachedMovements];
+                userName:
+                  sale.userName ||
+                  "—",
 
-      renderSalesTable(visibleSales);
-      renderExpensesTable(visibleExpenses);
-      renderMovementsTable(visibleMovements);
+                dateStr:
+                  getDisplayDate(
+                    sale.createdAt
+                  ),
 
-      if (salesCountLabel) salesCountLabel.textContent = `${visibleSales.length} registros`;
-      if (expenseCountLabel) expenseCountLabel.textContent = `${visibleExpenses.length} registros`;
-      if (movementCountLabel) movementCountLabel.textContent = `${visibleMovements.length} registros`;
+                timeStr:
+                  getDisplayTime(
+                    sale.createdAt
+                  ),
 
-      const totalExpenses = cachedExpenses.reduce((sum, item) => sum + numberOrZero(item.amount), 0);
-      const totalSales = salesAgg.totalSales;
-      const totalUnitsSold = salesAgg.totalUnitsSold;
-      const distinctProductsSold = salesAgg.distinctProductsSold;
+                createdAtMs:
+                  getTimestampMs(
+                    sale.createdAt
+                  ),
+
+                rawText: [
+                  sale.customerName ||
+                  "",
+
+                  sale.userName ||
+                  "",
+
+                  getTextFromProducts(
+                    saleProducts
+                  ),
+
+                  sale.total ??
+                  ""
+                ].join(" ")
+              };
+            }
+          )
+          .sort(
+            (a, b) =>
+              b.createdAtMs -
+              a.createdAtMs
+          );
+
+      cachedExpenses =
+        expensesDocs.map(
+          ({ id, data }) => ({
+            id,
+
+            concept:
+              data.concept || "",
+
+            category:
+              data.category || "",
+
+            amount:
+              numberOrZero(
+                data.amount
+              ),
+
+            paymentMethod:
+              data.paymentMethod ||
+              "",
+
+            userName:
+              data.userName ||
+              "—",
+
+            notes:
+              data.notes || "",
+
+            dateStr:
+              getDisplayDate(
+                data.createdAt
+              ),
+
+            timeStr:
+              getDisplayTime(
+                data.createdAt
+              ),
+
+            createdAtMs:
+              getTimestampMs(
+                data.createdAt
+              ),
+
+            rawText: [
+              data.concept ||
+              "",
+
+              data.category ||
+              "",
+
+              data.paymentMethod ||
+              "",
+
+              data.userName ||
+              "",
+
+              data.notes ||
+              "",
+
+              data.amount ??
+              ""
+            ].join(" ")
+          })
+        );
+
+      /*
+       * Construcción del reporte de movimientos.
+       *
+       * IMPORTANTE:
+       * inventoryValue NO utiliza el stock actual
+       * de productos.
+       *
+       * Utiliza:
+       *
+       * costoUnitario × saldoActual
+       *
+       * donde saldoActual es el saldo registrado
+       * en ese movimiento.
+       */
+      cachedMovements =
+        movementsDocs
+          .map(({ id, data }) => {
+            const movementForRelation = {
+              docNumber:
+                getMovementDocumentNumber(
+                  data
+                ),
+
+              productCode:
+                getMovementProductCode(
+                  data
+                ),
+
+              productName:
+                getMovementProductName(
+                  data
+                ),
+
+              createdAt:
+                data.createdAt,
+
+              libro:
+                getMovementBookReference(
+                  data
+                )
+            };
+
+            const related =
+              findRelatedSaleForMovement(
+                movementForRelation,
+                salesIndex
+              );
+
+            const fallbackProduct =
+              getMovementPrimaryProduct(
+                data
+              );
+
+            const saleProduct =
+              related.product ||
+              fallbackProduct;
+
+            /*
+             * Buscar el producto real en la colección
+             * productos cuando exista productId.
+             */
+            const productId =
+              String(
+                saleProduct?.productId ||
+                saleProduct?.codigoProducto ||
+                data.productId ||
+                data.codigoProducto ||
+                ""
+              ).trim();
+
+            const product =
+              productsMap.get(
+                productId
+              ) ||
+              fallbackProduct ||
+              {};
+
+            const unitCost =
+              getMovementUnitCost(
+                data,
+                product,
+                saleProduct
+              );
+
+            const balanceAfter =
+              getMovementBalanceAfter(
+                data
+              );
+
+            /*
+             * VALOR DEL INVENTARIO EN EL MOMENTO
+             * DE LA TRANSACCIÓN.
+             *
+             * costo unitario × saldo actual
+             */
+            const inventoryValue =
+              calculateTransactionInventoryValue(
+                unitCost,
+                balanceAfter
+              );
+
+            const bookReference =
+              getMovementBookReference(
+                data
+              );
+
+            return {
+              id,
+
+              productCode:
+                getMovementProductCode(
+                  data
+                ),
+
+              productName:
+                getMovementProductName(
+                  data
+                ),
+
+              unitCost,
+
+              balanceBefore:
+                getMovementBalanceBefore(
+                  data
+                ),
+
+              balanceAfter,
+
+              inventoryValue,
+
+              bookReference,
+
+              docNumber:
+                getMovementDocumentNumber(
+                  data
+                ),
+
+              entry:
+                getMovementEntry(
+                  data
+                ),
+
+              exit:
+                getMovementExit(
+                  data
+                ),
+
+              userName:
+                data.userName ||
+                "—",
+
+              detail:
+                getMovementDetail(
+                  data
+                ),
+
+              typeLabel:
+                getMovementTypeLabel(
+                  data
+                ),
+
+              createdAtMs:
+                buildMovementSortKey(
+                  data
+                ),
+
+              dateStr:
+                getDisplayDate(
+                  data.createdAt
+                ),
+
+              timeStr:
+                getDisplayTime(
+                  data.createdAt
+                ),
+
+              rawText: [
+                getMovementProductCode(
+                  data
+                ),
+
+                getMovementProductName(
+                  data
+                ),
+
+                unitCost,
+
+                balanceAfter,
+
+                inventoryValue,
+
+                bookReference,
+
+                getMovementDocumentNumber(
+                  data
+                ),
+
+                getMovementEntry(
+                  data
+                ),
+
+                getMovementExit(
+                  data
+                ),
+
+                getMovementBalanceBefore(
+                  data
+                ),
+
+                getMovementBalanceAfter(
+                  data
+                ),
+
+                data.userName ||
+                "",
+
+                getMovementDetail(
+                  data
+                ),
+
+                getMovementTypeLabel(
+                  data
+                )
+              ].join(" ")
+            };
+          })
+          .sort(
+            (a, b) =>
+              sortByCreatedAtAsc(
+                a,
+                b
+              )
+          );
+
+      visibleSales = [
+        ...cachedSales
+      ];
+
+      visibleExpenses = [
+        ...cachedExpenses
+      ];
+
+      visibleMovements = [
+        ...cachedMovements
+      ];
+
+      renderSalesTable(
+        visibleSales
+      );
+
+      renderExpensesTable(
+        visibleExpenses
+      );
+
+      renderMovementsTable(
+        visibleMovements
+      );
+
+      if (salesCountLabel) {
+        salesCountLabel.textContent =
+          `${visibleSales.length} registros`;
+      }
+
+      if (expenseCountLabel) {
+        expenseCountLabel.textContent =
+          `${visibleExpenses.length} registros`;
+      }
+
+      if (movementCountLabel) {
+        movementCountLabel.textContent =
+          `${visibleMovements.length} registros`;
+      }
+
+      const totalExpenses =
+        cachedExpenses.reduce(
+          (sum, item) =>
+            sum +
+            numberOrZero(
+              item.amount
+            ),
+          0
+        );
+
+      const totalSales =
+        salesAgg.totalSales;
+
+      const totalUnitsSold =
+        salesAgg.totalUnitsSold;
+
+      const distinctProductsSold =
+        salesAgg.distinctProductsSold;
 
       recalcGlobalIndicators({
         totalSales,
@@ -1207,17 +2412,35 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       applySearchFilter();
-    } catch (err) {
-      debugError("Error cargando dashboard por rango:", err);
 
-      if (salesTableBody) salesTableBody.innerHTML = "<tr><td colspan='6'>Error cargando ventas.</td></tr>";
-      if (expensesTableBody) expensesTableBody.innerHTML = "<tr><td colspan='8'>Error cargando gastos.</td></tr>";
-      if (movementsTableBody) movementsTableBody.innerHTML = "<tr><td colspan='13'>Error cargando movimientos.</td></tr>";
+    } catch (err) {
+      debugError(
+        "Error cargando dashboard por rango:",
+        err
+      );
+
+      if (salesTableBody) {
+        salesTableBody.innerHTML =
+          "<tr><td colspan='6'>Error cargando ventas.</td></tr>";
+      }
+
+      if (expensesTableBody) {
+        expensesTableBody.innerHTML =
+          "<tr><td colspan='8'>Error cargando gastos.</td></tr>";
+      }
+
+      if (movementsTableBody) {
+        movementsTableBody.innerHTML =
+          "<tr><td colspan='14'>Error cargando movimientos.</td></tr>";
+      }
 
       Swal.fire({
         icon: "error",
-        title: "No se pudo cargar el dashboard",
-        text: err.message || "Revisa el local asignado al usuario y las reglas de Firestore."
+        title:
+          "No se pudo cargar el dashboard",
+        text:
+          err.message ||
+          "Revisa el local asignado al usuario y las reglas de Firestore."
       });
     }
   }
@@ -1228,12 +2451,16 @@ document.addEventListener("DOMContentLoaded", () => {
     salesTableBody.innerHTML = "";
 
     if (!rows.length) {
-      salesTableBody.innerHTML = "<tr><td colspan='6'>No hay ventas en el rango seleccionado.</td></tr>";
+      salesTableBody.innerHTML =
+        "<tr><td colspan='6'>No hay ventas en el rango seleccionado.</td></tr>";
+
       return;
     }
 
     rows.forEach(row => {
-      const tr = document.createElement("tr");
+      const tr =
+        document.createElement("tr");
+
       tr.innerHTML = `
         <td>${escapeHtml(row.customerName)}</td>
         <td>${escapeHtml(row.products)}</td>
@@ -1242,6 +2469,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(row.dateStr)}</td>
         <td>${escapeHtml(row.timeStr)}</td>
       `;
+
       salesTableBody.appendChild(tr);
     });
   }
@@ -1252,12 +2480,16 @@ document.addEventListener("DOMContentLoaded", () => {
     expensesTableBody.innerHTML = "";
 
     if (!rows.length) {
-      expensesTableBody.innerHTML = "<tr><td colspan='8'>No hay gastos en el rango seleccionado.</td></tr>";
+      expensesTableBody.innerHTML =
+        "<tr><td colspan='8'>No hay gastos en el rango seleccionado.</td></tr>";
+
       return;
     }
 
     rows.forEach(item => {
-      const tr = document.createElement("tr");
+      const tr =
+        document.createElement("tr");
+
       tr.innerHTML = `
         <td>${escapeHtml(item.concept || "—")}</td>
         <td>${escapeHtml(item.category || "—")}</td>
@@ -1268,6 +2500,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(item.timeStr)}</td>
         <td>${escapeHtml(item.notes || "—")}</td>
       `;
+
       expensesTableBody.appendChild(tr);
     });
   }
@@ -1278,241 +2511,591 @@ document.addEventListener("DOMContentLoaded", () => {
     movementsTableBody.innerHTML = "";
 
     if (!rows.length) {
-      movementsTableBody.innerHTML = "<tr><td colspan='13'>No hay movimientos en el rango seleccionado.</td></tr>";
+      movementsTableBody.innerHTML =
+        "<tr><td colspan='14'>No hay movimientos en el rango seleccionado.</td></tr>";
+
       return;
     }
 
-    rows.forEach((item, index) => {
-      const tr = document.createElement("tr");
+    rows.forEach(item => {
+      const tr =
+        document.createElement("tr");
+
       tr.innerHTML = `
         <td>${escapeHtml(item.dateStr)}</td>
         <td>${escapeHtml(item.timeStr)}</td>
         <td>${escapeHtml(item.productName || "—")}</td>
         <td>${escapeHtml(item.productCode || "—")}</td>
         <td>${escapeHtml(item.docNumber || "—")}</td>
-        <td>${formatMoney(item.salePrice || 0)}</td>
-        <td>${numberOrZero(item.unitsSold)}</td>
+        <td>${formatMoney(item.unitCost || 0)}</td>
+        <td>${formatMoney(item.inventoryValue || 0)}</td>
         <td>${numberOrZero(item.entry)}</td>
         <td>${numberOrZero(item.exit)}</td>
-        <td>${numberOrZero(item.balanceBefore)}</td>
         <td>${numberOrZero(item.balanceAfter)}</td>
+        <td>${numberOrZero(item.balanceBefore)}</td>
         <td>${escapeHtml(item.userName || "—")}</td>
         <td>${escapeHtml(item.detail || "—")}</td>
       `;
+
       movementsTableBody.appendChild(tr);
     });
   }
 
   function applySearchFilter() {
-    const q = String(rangeSearch?.value || "").toLowerCase().trim();
+    const q =
+      String(
+        rangeSearch?.value || ""
+      )
+        .toLowerCase()
+        .trim();
 
     if (!q) {
-      visibleSales = [...cachedSales];
-      visibleExpenses = [...cachedExpenses];
-      visibleMovements = [...cachedMovements];
+      visibleSales = [
+        ...cachedSales
+      ];
+
+      visibleExpenses = [
+        ...cachedExpenses
+      ];
+
+      visibleMovements = [
+        ...cachedMovements
+      ];
     } else {
-      visibleSales = cachedSales.filter(row => {
-        const haystack = `${row.customerName} ${row.products} ${row.total} ${row.userName} ${row.dateStr} ${row.timeStr} ${row.rawText}`.toLowerCase();
-        return haystack.includes(q);
-      });
+      visibleSales =
+        cachedSales.filter(row => {
+          const haystack =
+            `${row.customerName} ${row.products} ${row.total} ${row.userName} ${row.dateStr} ${row.timeStr} ${row.rawText}`
+              .toLowerCase();
 
-      visibleExpenses = cachedExpenses.filter(row => {
-        const haystack = `${row.concept} ${row.category} ${row.amount} ${row.paymentMethod} ${row.userName} ${row.dateStr} ${row.timeStr} ${row.notes} ${row.rawText}`.toLowerCase();
-        return haystack.includes(q);
-      });
+          return haystack.includes(q);
+        });
 
-      visibleMovements = cachedMovements.filter(row => {
-        const haystack = `${row.productCode} ${row.productName} ${row.salePrice} ${row.unitsSold} ${row.docNumber} ${row.entry} ${row.exit} ${row.balanceBefore} ${row.balanceAfter} ${row.userName} ${row.dateStr} ${row.timeStr} ${row.detail} ${row.typeLabel} ${row.rawText}`.toLowerCase();
-        return haystack.includes(q);
-      });
+      visibleExpenses =
+        cachedExpenses.filter(row => {
+          const haystack =
+            `${row.concept} ${row.category} ${row.amount} ${row.paymentMethod} ${row.userName} ${row.dateStr} ${row.timeStr} ${row.notes} ${row.rawText}`
+              .toLowerCase();
+
+          return haystack.includes(q);
+        });
+
+      visibleMovements =
+        cachedMovements.filter(row => {
+          const haystack =
+            `${row.productCode} ${row.productName} ${row.unitCost} ${row.balanceAfter} ${row.inventoryValue} ${row.bookReference} ${row.docNumber} ${row.entry} ${row.exit} ${row.balanceBefore} ${row.userName} ${row.dateStr} ${row.timeStr} ${row.detail} ${row.typeLabel} ${row.rawText}`
+              .toLowerCase();
+
+          return haystack.includes(q);
+        });
     }
 
-    renderSalesTable(visibleSales);
-    renderExpensesTable(visibleExpenses);
-    renderMovementsTable(visibleMovements);
+    renderSalesTable(
+      visibleSales
+    );
 
-    if (salesCountLabel) salesCountLabel.textContent = `${visibleSales.length} registros`;
-    if (expenseCountLabel) expenseCountLabel.textContent = `${visibleExpenses.length} registros`;
-    if (movementCountLabel) movementCountLabel.textContent = `${visibleMovements.length} registros`;
-  }
+    renderExpensesTable(
+      visibleExpenses
+    );
 
-  function updateChartAndStats({ totalSales, totalExpenses, totalUnitsSold, distinctProductsSold, salesAgg, products }) {
-    if (typeof appChartUtils !== "undefined" && typeof appChartUtils.drawSalesChart === "function") {
-      appChartUtils.drawSalesChart("salesChart", totalSales, 0, totalExpenses);
+    renderMovementsTable(
+      visibleMovements
+    );
+
+    if (salesCountLabel) {
+      salesCountLabel.textContent =
+        `${visibleSales.length} registros`;
     }
 
-    if (statSalesEl) statSalesEl.textContent = formatMoney(totalSales);
-    if (statExpensesEl) statExpensesEl.textContent = formatMoney(totalExpenses);
-    if (statNetEl) statNetEl.textContent = formatMoney(totalSales - totalExpenses);
-    if (statUnitsSoldEl) statUnitsSoldEl.textContent = numberOrZero(totalUnitsSold);
-    if (statProductsSoldEl) statProductsSoldEl.textContent = numberOrZero(distinctProductsSold);
+    if (expenseCountLabel) {
+      expenseCountLabel.textContent =
+        `${visibleExpenses.length} registros`;
+    }
 
-    renderGoalInfo(products, totalSales, totalExpenses);
-    renderProfitStatus(products, totalSales, totalExpenses, salesAgg);
-    renderLowStockAlerts(products, salesAgg);
+    if (movementCountLabel) {
+      movementCountLabel.textContent =
+        `${visibleMovements.length} registros`;
+    }
   }
 
-  function recalcGlobalIndicators(payload) {
-    updateChartAndStats(payload);
+  function updateChartAndStats({
+    totalSales,
+    totalExpenses,
+    totalUnitsSold,
+    distinctProductsSold,
+    salesAgg,
+    products
+  }) {
+    if (
+      typeof appChartUtils !==
+      "undefined" &&
+      typeof appChartUtils.drawSalesChart ===
+      "function"
+    ) {
+      appChartUtils.drawSalesChart(
+        "salesChart",
+        totalSales,
+        0,
+        totalExpenses
+      );
+    }
+
+    if (statSalesEl) {
+      statSalesEl.textContent =
+        formatMoney(totalSales);
+    }
+
+    if (statExpensesEl) {
+      statExpensesEl.textContent =
+        formatMoney(totalExpenses);
+    }
+
+    if (statNetEl) {
+      statNetEl.textContent =
+        formatMoney(
+          totalSales -
+          totalExpenses
+        );
+    }
+
+    if (statUnitsSoldEl) {
+      statUnitsSoldEl.textContent =
+        numberOrZero(
+          totalUnitsSold
+        );
+    }
+
+    if (statProductsSoldEl) {
+      statProductsSoldEl.textContent =
+        numberOrZero(
+          distinctProductsSold
+        );
+    }
+
+    renderGoalInfo(
+      products,
+      totalSales,
+      totalExpenses
+    );
+
+    renderProfitStatus(
+      products,
+      totalSales,
+      totalExpenses,
+      salesAgg
+    );
+
+    renderLowStockAlerts(
+      products,
+      salesAgg
+    );
   }
 
-  function renderGoalInfo(products, totalSales, totalExpenses) {
-    const goalInfo = document.getElementById("goalInfo");
+  function recalcGlobalIndicators(
+    payload
+  ) {
+    updateChartAndStats(
+      payload
+    );
+  }
+
+  function renderGoalInfo(
+    products,
+    totalSales,
+    totalExpenses
+  ) {
+    const goalInfo =
+      document.getElementById(
+        "goalInfo"
+      );
+
     if (!goalInfo) return;
 
     let initialInventoryUnits = 0;
     let initialInventoryValue = 0;
 
     products.forEach(p => {
-      const stockUnits = getStockUnits(p);
-      const price = numberOrZero(p.price);
+      const stockUnits =
+        getStockUnits(p);
 
-      initialInventoryUnits += stockUnits;
-      initialInventoryValue += stockUnits * price;
+      const price =
+        numberOrZero(p.price);
+
+      initialInventoryUnits +=
+        stockUnits;
+
+      initialInventoryValue +=
+        stockUnits * price;
     });
 
-    const monthlyGoal = Math.round(initialInventoryValue);
-    const remaining = Math.max(0, monthlyGoal - totalSales);
+    const monthlyGoal =
+      Math.round(
+        initialInventoryValue
+      );
+
+    const remaining =
+      Math.max(
+        0,
+        monthlyGoal -
+        totalSales
+      );
 
     goalInfo.innerHTML = `
-      <div class="info-card__title">Meta automática del período</div>
-      <div class="info-card__amount">${formatMoney(monthlyGoal)}</div>
+      <div class="info-card__title">
+        Meta automática del período
+      </div>
+
+      <div class="info-card__amount">
+        ${formatMoney(monthlyGoal)}
+      </div>
+
       <div class="info-card__meta">
-        <span>Inventario actual: <strong>${initialInventoryUnits} unidades</strong></span>
-        <span>Valor actual: <strong>${formatMoney(initialInventoryValue)}</strong></span>
-        <span>Ventas: <strong>${formatMoney(totalSales)}</strong></span>
-        <span>Gastos: <strong>${formatMoney(totalExpenses)}</strong></span>
-        <span>Falta para meta: <strong>${formatMoney(remaining)}</strong></span>
+        <span>
+          Inventario actual:
+          <strong>
+            ${initialInventoryUnits} unidades
+          </strong>
+        </span>
+
+        <span>
+          Valor actual:
+          <strong>
+            ${formatMoney(initialInventoryValue)}
+          </strong>
+        </span>
+
+        <span>
+          Ventas:
+          <strong>
+            ${formatMoney(totalSales)}
+          </strong>
+        </span>
+
+        <span>
+          Gastos:
+          <strong>
+            ${formatMoney(totalExpenses)}
+          </strong>
+        </span>
+
+        <span>
+          Falta para meta:
+          <strong>
+            ${formatMoney(remaining)}
+          </strong>
+        </span>
       </div>
     `;
   }
 
-  function renderProfitStatus(products, totalSales, totalExpenses, salesAgg) {
-    const profitEl = document.getElementById("profitStatus");
+  function renderProfitStatus(
+    products,
+    totalSales,
+    totalExpenses,
+    salesAgg
+  ) {
+    const profitEl =
+      document.getElementById(
+        "profitStatus"
+      );
+
     if (!profitEl) return;
 
     let estimatedCostOfSales = 0;
 
-    Object.entries(salesAgg.unitsMap).forEach(([productId, unitsSold]) => {
-      const product = productsMap.get(productId);
-      const unitCost = getProductUnitCost(product);
-      estimatedCostOfSales += numberOrZero(unitsSold) * unitCost;
-    });
+    Object.entries(
+      salesAgg.unitsMap
+    ).forEach(
+      ([productId, unitsSold]) => {
+        const product =
+          productsMap.get(
+            productId
+          );
 
-    const grossProfit = totalSales - estimatedCostOfSales;
-    const netProfit = totalSales - totalExpenses;
+        const unitCost =
+          getProductUnitCost(
+            product
+          );
+
+        estimatedCostOfSales +=
+          numberOrZero(
+            unitsSold
+          ) * unitCost;
+      }
+    );
+
+    const grossProfit =
+      totalSales -
+      estimatedCostOfSales;
+
+    const netProfit =
+      totalSales -
+      totalExpenses;
 
     let tone = "success";
-    let message = `Neto positivo del período: ${formatMoney(netProfit)}`;
+
+    let message =
+      `Neto positivo del período: ${formatMoney(netProfit)}`;
 
     if (netProfit < 0) {
       tone = "danger";
-      message = `Pérdida neta del período: ${formatMoney(netProfit)}`;
-    } else if (netProfit < grossProfit * 0.4) {
+
+      message =
+        `Pérdida neta del período: ${formatMoney(netProfit)}`;
+    } else if (
+      netProfit <
+      grossProfit * 0.4
+    ) {
       tone = "warning";
-      message = `Neto por debajo de lo esperado: ${formatMoney(netProfit)}`;
+
+      message =
+        `Neto por debajo de lo esperado: ${formatMoney(netProfit)}`;
     }
 
-    profitEl.className = `info-card status-panel status-panel--${tone}`;
+    profitEl.className =
+      `info-card status-panel status-panel--${tone}`;
+
     profitEl.innerHTML = `
-      <div class="status-panel__label">Utilidad del período</div>
-      <div class="status-panel__value">${escapeHtml(message)}</div>
+      <div class="status-panel__label">
+        Utilidad del período
+      </div>
+
+      <div class="status-panel__value">
+        ${escapeHtml(message)}
+      </div>
+
       <div class="small" style="margin-top:8px;">
-        Costo estimado: <strong>${formatMoney(estimatedCostOfSales)}</strong> ·
-        Bruto estimado: <strong>${formatMoney(grossProfit)}</strong> ·
-        Neto: <strong>${formatMoney(netProfit)}</strong>
+        Costo estimado:
+        <strong>
+          ${formatMoney(estimatedCostOfSales)}
+        </strong>
+        ·
+
+        Bruto estimado:
+        <strong>
+          ${formatMoney(grossProfit)}
+        </strong>
+        ·
+
+        Neto:
+        <strong>
+          ${formatMoney(netProfit)}
+        </strong>
       </div>
     `;
   }
 
-  function renderLowStockAlerts(products, salesAgg) {
+  function renderLowStockAlerts(
+    products,
+    salesAgg
+  ) {
     if (!lowStockPanel) return;
 
     const lowStock = [];
 
     products.forEach(p => {
-      const stockUnits = getStockUnits(p);
-      const stockBoxes = getStockBoxes(p);
-      const soldUnitsMonth = numberOrZero(salesAgg.unitsMap[p.id]);
+      const stockUnits =
+        getStockUnits(p);
+
+      const stockBoxes =
+        getStockBoxes(p);
+
+      const soldUnitsMonth =
+        numberOrZero(
+          salesAgg.unitsMap[p.id]
+        );
+
       let daysLeft = "-";
 
       if (soldUnitsMonth > 0) {
-        const dailyRate = soldUnitsMonth / 30;
-        daysLeft = dailyRate > 0 ? Math.floor(stockUnits / dailyRate) : "-";
+        const dailyRate =
+          soldUnitsMonth / 30;
+
+        daysLeft =
+          dailyRate > 0
+            ? Math.floor(
+              stockUnits /
+              dailyRate
+            )
+            : "-";
       }
 
-      if (stockUnits <= LOW_STOCK_THRESHOLD) {
+      if (
+        stockUnits <=
+        LOW_STOCK_THRESHOLD
+      ) {
         lowStock.push({
-          name: p.name || "Sin nombre",
+          name:
+            p.name ||
+            "Sin nombre",
+
           stockUnits,
+
           stockBoxes,
-          unitsPerBox: getUnitsPerBox(p),
+
+          unitsPerBox:
+            getUnitsPerBox(p),
+
           daysLeft
         });
       }
     });
 
-    lowStock.sort((a, b) => a.stockUnits - b.stockUnits);
+    lowStock.sort(
+      (a, b) =>
+        a.stockUnits -
+        b.stockUnits
+    );
 
-    if (statLowStockEl) statLowStockEl.textContent = lowStock.length;
+    if (statLowStockEl) {
+      statLowStockEl.textContent =
+        lowStock.length;
+    }
 
     lowStockPanel.innerHTML = "";
 
     if (!lowStock.length) {
-      lowStockPanel.innerHTML = "<div class='no-alerts'>No hay productos en stock crítico.</div>";
+      lowStockPanel.innerHTML =
+        "<div class='no-alerts'>No hay productos en stock crítico.</div>";
+
       return;
     }
 
-    lowStock.slice(0, 10).forEach(item => {
-      const el = document.createElement("div");
-      el.className = "low-stock-item low-stock-item--rich";
+    lowStock
+      .slice(0, 10)
+      .forEach(item => {
+        const el =
+          document.createElement(
+            "div"
+          );
 
-      el.innerHTML = `
-        <div class="low-stock-item__left">
-          <strong>${escapeHtml(item.name)}</strong>
-          <div class="low-stock-item__muted">Stock crítico detectado</div>
-        </div>
-        <div class="low-stock-item__right">
-          <div><span>Stock</span><strong>${item.stockUnits}</strong></div>
-          <div><span>Cajas</span><strong>${item.stockBoxes.toFixed(2)}</strong></div>
-          <div><span>U/caja</span><strong>${item.unitsPerBox}</strong></div>
-          <div><span>Se agota en</span><strong>${item.daysLeft} días</strong></div>
-        </div>
-      `;
+        el.className =
+          "low-stock-item low-stock-item--rich";
 
-      lowStockPanel.appendChild(el);
-    });
+        el.innerHTML = `
+          <div class="low-stock-item__left">
+            <strong>
+              ${escapeHtml(item.name)}
+            </strong>
+
+            <div class="low-stock-item__muted">
+              Stock crítico detectado
+            </div>
+          </div>
+
+          <div class="low-stock-item__right">
+            <div>
+              <span>Stock</span>
+              <strong>
+                ${item.stockUnits}
+              </strong>
+            </div>
+
+            <div>
+              <span>Cajas</span>
+              <strong>
+                ${item.stockBoxes.toFixed(2)}
+              </strong>
+            </div>
+
+            <div>
+              <span>U/caja</span>
+              <strong>
+                ${item.unitsPerBox}
+              </strong>
+            </div>
+
+            <div>
+              <span>Se agota en</span>
+              <strong>
+                ${item.daysLeft} días
+              </strong>
+            </div>
+          </div>
+        `;
+
+        lowStockPanel.appendChild(
+          el
+        );
+      });
   }
 
   function toCSVCell(value) {
-    const text = String(value ?? "");
-    return `"${text.replace(/"/g, '""')}"`;
+    const text =
+      String(value ?? "");
+
+    return `"${text.replace(
+      /"/g,
+      '""'
+    )}"`;
   }
 
-  function downloadCSV(filename, headers, rows) {
+  function downloadCSV(
+    filename,
+    headers,
+    rows
+  ) {
     const delimiter = ";";
+
     const csvLines = [
-      headers.map(toCSVCell).join(delimiter),
-      ...rows.map(row => row.map(toCSVCell).join(delimiter))
+      headers
+        .map(toCSVCell)
+        .join(delimiter),
+
+      ...rows.map(
+        row =>
+          row
+            .map(toCSVCell)
+            .join(delimiter)
+      )
     ];
 
-    const blob = new Blob(["\uFEFF" + csvLines.join("\n")], {
-      type: "text/csv;charset=utf-8;"
-    });
+    const blob =
+      new Blob(
+        [
+          "\uFEFF" +
+          csvLines.join(
+            "\n"
+          )
+        ],
+        {
+          type:
+            "text/csv;charset=utf-8;"
+        }
+      );
 
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+    const url =
+      URL.createObjectURL(
+        blob
+      );
+
+    const a =
+      document.createElement(
+        "a"
+      );
+
     a.href = url;
     a.download = filename;
     a.click();
-    URL.revokeObjectURL(url);
+
+    URL.revokeObjectURL(
+      url
+    );
   }
 
   function exportSalesCSV() {
-    const source = visibleSales.length ? visibleSales : cachedSales;
+    const source =
+      visibleSales.length
+        ? visibleSales
+        : cachedSales;
 
     if (!source.length) {
-      Swal.fire("Sin datos", "No hay ventas para exportar.", "info");
+      Swal.fire(
+        "Sin datos",
+        "No hay ventas para exportar.",
+        "info"
+      );
+
       return;
     }
 
@@ -1528,30 +3111,67 @@ document.addEventListener("DOMContentLoaded", () => {
       "Hora"
     ];
 
-    const rows = source.map(r => [
-      currentLocalInfo.nombre || "",
-      currentLocalInfo.numeroDocumento || "",
-      currentLocalInfo.ubicacion || "",
-      r.customerName,
-      r.products,
-      formatMoney(r.total),
-      r.userName,
-      r.dateStr,
-      r.timeStr
-    ]);
+    const rows =
+      source.map(r => [
+        currentLocalInfo.nombre ||
+        "",
 
-    const fromTag = rangeFrom?.value || "inicio";
-    const toTag = rangeTo?.value || "fin";
-    const localTag = sanitizeFilePart(currentLocalInfo.nombre || currentLocalInfo.id || "local");
+        currentLocalInfo.numeroDocumento ||
+        "",
 
-    downloadCSV(`${localTag}_ventas_${fromTag}_a_${toTag}.csv`, headers, rows);
+        currentLocalInfo.ubicacion ||
+        "",
+
+        r.customerName,
+
+        r.products,
+
+        formatMoney(
+          r.total
+        ),
+
+        r.userName,
+
+        r.dateStr,
+
+        r.timeStr
+      ]);
+
+    const fromTag =
+      rangeFrom?.value ||
+      "inicio";
+
+    const toTag =
+      rangeTo?.value ||
+      "fin";
+
+    const localTag =
+      sanitizeFilePart(
+        currentLocalInfo.nombre ||
+        currentLocalInfo.id ||
+        "local"
+      );
+
+    downloadCSV(
+      `${localTag}_ventas_${fromTag}_a_${toTag}.csv`,
+      headers,
+      rows
+    );
   }
 
   function exportExpensesCSV() {
-    const source = visibleExpenses.length ? visibleExpenses : cachedExpenses;
+    const source =
+      visibleExpenses.length
+        ? visibleExpenses
+        : cachedExpenses;
 
     if (!source.length) {
-      Swal.fire("Sin datos", "No hay gastos para exportar.", "info");
+      Swal.fire(
+        "Sin datos",
+        "No hay gastos para exportar.",
+        "info"
+      );
+
       return;
     }
 
@@ -1569,108 +3189,275 @@ document.addEventListener("DOMContentLoaded", () => {
       "Observación"
     ];
 
-    const rows = source.map(item => [
-      currentLocalInfo.nombre || "",
-      currentLocalInfo.numeroDocumento || "",
-      currentLocalInfo.ubicacion || "",
-      item.concept || "",
-      item.category || "",
-      formatMoney(item.amount || 0),
-      item.paymentMethod || "",
-      item.userName || "",
-      item.dateStr || "",
-      item.timeStr || "",
-      item.notes || ""
-    ]);
+    const rows =
+      source.map(item => [
+        currentLocalInfo.nombre ||
+        "",
 
-    const fromTag = rangeFrom?.value || "inicio";
-    const toTag = rangeTo?.value || "fin";
-    const localTag = sanitizeFilePart(currentLocalInfo.nombre || currentLocalInfo.id || "local");
+        currentLocalInfo.numeroDocumento ||
+        "",
 
-    downloadCSV(`${localTag}_gastos_${fromTag}_a_${toTag}.csv`, headers, rows);
+        currentLocalInfo.ubicacion ||
+        "",
+
+        item.concept ||
+        "",
+
+        item.category ||
+        "",
+
+        formatMoney(
+          item.amount || 0
+        ),
+
+        item.paymentMethod ||
+        "",
+
+        item.userName ||
+        "",
+
+        item.dateStr ||
+        "",
+
+        item.timeStr ||
+        "",
+
+        item.notes ||
+        ""
+      ]);
+
+    const fromTag =
+      rangeFrom?.value ||
+      "inicio";
+
+    const toTag =
+      rangeTo?.value ||
+      "fin";
+
+    const localTag =
+      sanitizeFilePart(
+        currentLocalInfo.nombre ||
+        currentLocalInfo.id ||
+        "local"
+      );
+
+    downloadCSV(
+      `${localTag}_gastos_${fromTag}_a_${toTag}.csv`,
+      headers,
+      rows
+    );
   }
 
-  function getMovementExportFileName(source) {
-    const fromTag = rangeFrom?.value || "inicio";
-    const toTag = rangeTo?.value || "fin";
-    const localTag = sanitizeFilePart(currentLocalInfo.nombre || currentLocalInfo.id || "local");
-    const companyDocTag = sanitizeFilePart(currentLocalInfo.numeroDocumento || "sin_documento");
+  function getMovementExportFileName(
+    source
+  ) {
+    const fromTag =
+      rangeFrom?.value ||
+      "inicio";
 
-    const first = source[0] || {};
-    const codeTag = sanitizeFilePart(first.productCode || "codigo_producto");
-    const nameTag = sanitizeFilePart(first.productName || "nombre_producto");
+    const toTag =
+      rangeTo?.value ||
+      "fin";
+
+    const localTag =
+      sanitizeFilePart(
+        currentLocalInfo.nombre ||
+        currentLocalInfo.id ||
+        "local"
+      );
+
+    const companyDocTag =
+      sanitizeFilePart(
+        currentLocalInfo.numeroDocumento ||
+        "sin_documento"
+      );
+
+    const first =
+      source[0] || {};
+
+    const codeTag =
+      sanitizeFilePart(
+        first.productCode ||
+        "codigo_producto"
+      );
+
+    const nameTag =
+      sanitizeFilePart(
+        first.productName ||
+        "nombre_producto"
+      );
 
     return `${localTag}_${companyDocTag}_${codeTag}_${nameTag}_inventario_${fromTag}_a_${toTag}.csv`;
   }
 
   function exportMovementsCSV() {
-    const source = visibleMovements.length ? visibleMovements : cachedMovements;
+    const source =
+      visibleMovements.length
+        ? visibleMovements
+        : cachedMovements;
 
     if (!source.length) {
-      Swal.fire("Sin datos", "No hay movimientos de inventario para exportar.", "info");
+      Swal.fire(
+        "Sin datos",
+        "No hay movimientos de inventario para exportar.",
+        "info"
+      );
+
       return;
     }
 
-    const first = source[0] || {};
+    const first =
+      source[0] || {};
 
     const reportHeaderRows = [
       ["Reporte de inventario"],
-      ["Nombre del local", currentLocalInfo.nombre || ""],
-      ["Nombre del contribuyente", currentLocalInfo.contribuyente || currentLocalInfo.nombre || ""],
-      ["Número de documento de la empresa", currentLocalInfo.numeroDocumento || ""],
-      ["Código de producto", first.productCode || ""],
-      ["Nombre de producto", first.productName || ""],
+
+      [
+        "Nombre del local",
+        currentLocalInfo.nombre || ""
+      ],
+
+      [
+        "Nombre del contribuyente",
+        currentLocalInfo.contribuyente ||
+        currentLocalInfo.nombre ||
+        ""
+      ],
+
+      [
+        "Número de documento de la empresa",
+        currentLocalInfo.numeroDocumento ||
+        ""
+      ],
+
+      [
+        "Código de producto",
+        first.productCode || ""
+      ],
+
+      [
+        "Nombre de producto",
+        first.productName || ""
+      ],
+
       []
     ];
 
+    /*
+     * CSV DEL REPORTE DE MOVIMIENTOS
+     *
+     * El valor del inventario corresponde al
+     * momento de cada transacción:
+     *
+     * Costo unitario × Saldo actual
+     */
     const tableHeaders = [
       "Fecha",
       "Hora",
       "Producto",
       "Código producto",
       "Número documento",
-      "Precio de venta",
-      "Unidades vendidas",
+      "Referencia libro",
+      "Costo unitario",
+      "Saldo actual",
+      "Valor inventario",
       "Entrada",
       "Salida",
       "Saldo anterior",
-      "Saldo actual",
       "Usuario",
       "Detalle"
     ];
 
-    const tableRows = source.map(item => [
-      item.dateStr || "",
-      item.timeStr || "",
-      item.productName || "",
-      item.productCode || "",
-      item.docNumber || "",
-      formatMoney(item.salePrice || 0),
-      item.unitsSold || 0,
-      item.entry || 0,
-      item.exit || 0,
-      item.balanceBefore || 0,
-      item.balanceAfter || 0,
-      item.userName || "",
-      item.detail || ""
-    ]);
+    const tableRows =
+      source.map(item => [
+        item.dateStr || "",
+
+        item.timeStr || "",
+
+        item.productName || "",
+
+        item.productCode || "",
+
+        item.docNumber || "",
+
+        item.bookReference || "",
+
+        formatMoney(
+          item.unitCost || 0
+        ),
+
+        item.balanceAfter || 0,
+
+        formatMoney(
+          item.inventoryValue || 0
+        ),
+
+        item.entry || 0,
+
+        item.exit || 0,
+
+        item.balanceBefore || 0,
+
+        item.userName || "",
+
+        item.detail || ""
+      ]);
 
     const csvLines = [
-      ...reportHeaderRows.map(row => row.map(toCSVCell).join(";")),
-      tableHeaders.map(toCSVCell).join(";"),
-      ...tableRows.map(row => row.map(toCSVCell).join(";"))
+      ...reportHeaderRows.map(
+        row =>
+          row
+            .map(toCSVCell)
+            .join(";")
+      ),
+
+      tableHeaders
+        .map(toCSVCell)
+        .join(";"),
+
+      ...tableRows.map(
+        row =>
+          row
+            .map(toCSVCell)
+            .join(";")
+      )
     ];
 
-    const blob = new Blob(["\uFEFF" + csvLines.join("\n")], {
-      type: "text/csv;charset=utf-8;"
-    });
+    const blob =
+      new Blob(
+        [
+          "\uFEFF" +
+          csvLines.join(
+            "\n"
+          )
+        ],
+        {
+          type:
+            "text/csv;charset=utf-8;"
+        }
+      );
 
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+    const url =
+      URL.createObjectURL(
+        blob
+      );
+
+    const a =
+      document.createElement(
+        "a"
+      );
+
     a.href = url;
-    a.download = getMovementExportFileName(source);
+    a.download =
+      getMovementExportFileName(
+        source
+      );
+
     a.click();
-    URL.revokeObjectURL(url);
+
+    URL.revokeObjectURL(
+      url
+    );
   }
 
   async function refreshEverything() {
@@ -1678,15 +3465,35 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function applyRange() {
-    const fromStr = rangeFrom?.value || "";
-    const toStr = rangeTo?.value || "";
+    const fromStr =
+      rangeFrom?.value ||
+      "";
 
-    if (fromStr && toStr) {
-      const from = new Date(`${fromStr}T00:00:00`);
-      const to = new Date(`${toStr}T23:59:59.999`);
+    const toStr =
+      rangeTo?.value ||
+      "";
+
+    if (
+      fromStr &&
+      toStr
+    ) {
+      const from =
+        new Date(
+          `${fromStr}T00:00:00`
+        );
+
+      const to =
+        new Date(
+          `${toStr}T23:59:59.999`
+        );
 
       if (from > to) {
-        Swal.fire("Rango inválido", "La fecha inicial no puede ser mayor que la fecha final.", "warning");
+        Swal.fire(
+          "Rango inválido",
+          "La fecha inicial no puede ser mayor que la fecha final.",
+          "warning"
+        );
+
         return;
       }
     }
@@ -1696,201 +3503,463 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function resetRange() {
     setDefaultRangeToMonth();
-    if (rangeSearch) rangeSearch.value = "";
+
+    if (rangeSearch) {
+      rangeSearch.value = "";
+    }
+
     await refreshEverything();
   }
 
   function closeDay() {
-    const now = new Date();
+    const now =
+      new Date();
 
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const start =
+      new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        0,
+        0,
+        0,
+        0
+      );
+
+    const end =
+      new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
 
     Swal.fire({
-      title: "¿Registrar cierre de caja?",
-      html: "Se calcularán solo las ventas registradas hoy y del local actual.",
-      icon: "question",
-      showCancelButton: true,
-      confirmButtonText: "Sí, registrar",
-      cancelButtonText: "Cancelar"
-    }).then(async (res) => {
-      if (!res.isConfirmed) return;
+      title:
+        "¿Registrar cierre de caja?",
 
-      try {
-        if (!currentLocalId) {
-          throw new Error("No hay local asociado al usuario autenticado.");
+      html:
+        "Se calcularán solo las ventas registradas hoy y del local actual.",
+
+      icon: "question",
+
+      showCancelButton:
+        true,
+
+      confirmButtonText:
+        "Sí, registrar",
+
+      cancelButtonText:
+        "Cancelar"
+
+    }).then(
+      async res => {
+        if (!res.isConfirmed) {
+          return;
         }
 
-        const snapshot = await db.collection("ventas")
-          .orderBy("createdAt", "desc")
-          .get();
+        try {
+          if (!currentLocalId) {
+            throw new Error(
+              "No hay local asociado al usuario autenticado."
+            );
+          }
 
-        let total = 0;
-        snapshot.forEach(doc => {
-          const data = doc.data() || {};
-          if (!matchesCurrentLocal(data)) return;
-          if (!isWithinSelectedRange(data.createdAt)) return;
-          const created = data.createdAt?.seconds
-            ? new Date(data.createdAt.seconds * 1000)
-            : new Date(data.createdAt);
-          if (created < start || created > end) return;
+          const snapshot =
+            await db
+              .collection("ventas")
+              .orderBy(
+                "createdAt",
+                "desc"
+              )
+              .get();
 
-          total += numberOrZero(data.total || 0);
-        });
+          let total = 0;
 
-        await db.collection("cierres_caja").add({
-          date: firebase.firestore.FieldValue.serverTimestamp(),
-          dateString: toLocalInputDate(start),
-          total,
-          createdBy: auth.currentUser ? auth.currentUser.uid : null,
-          type: "ventas",
-          id_local: currentLocalId,
-          localNombre: currentLocalInfo.nombre || "",
-          localNumeroDocumento: currentLocalInfo.numeroDocumento || "",
-          localUbicacion: currentLocalInfo.ubicacion || "",
-          localContribuyente: currentLocalInfo.contribuyente || ""
-        });
+          snapshot.forEach(
+            doc => {
+              const data =
+                doc.data() || {};
 
-        Swal.fire({
-          icon: "success",
-          title: "Cierre registrado",
-          text: `Total del día: ${formatMoney(total)}`
-        });
-      } catch (err) {
-        debugError(err);
-        Swal.fire("Error", err.message || "No se pudo registrar el cierre.", "error");
+              if (
+                !matchesCurrentLocal(
+                  data
+                )
+              ) {
+                return;
+              }
+
+              if (
+                !isWithinSelectedRange(
+                  data.createdAt
+                )
+              ) {
+                return;
+              }
+
+              const created =
+                data.createdAt?.seconds
+                  ? new Date(
+                    data.createdAt.seconds *
+                    1000
+                  )
+                  : new Date(
+                    data.createdAt
+                  );
+
+              if (
+                created < start ||
+                created > end
+              ) {
+                return;
+              }
+
+              total +=
+                numberOrZero(
+                  data.total ||
+                  0
+                );
+            }
+          );
+
+          await db
+            .collection(
+              "cierres_caja"
+            )
+            .add({
+              date:
+                firebase.firestore
+                  .FieldValue
+                  .serverTimestamp(),
+
+              dateString:
+                toLocalInputDate(
+                  start
+                ),
+
+              total,
+
+              createdBy:
+                auth.currentUser
+                  ? auth.currentUser
+                    .uid
+                  : null,
+
+              type:
+                "ventas",
+
+              id_local:
+                currentLocalId,
+
+              localNombre:
+                currentLocalInfo
+                  .nombre || "",
+
+              localNumeroDocumento:
+                currentLocalInfo
+                  .numeroDocumento ||
+                "",
+
+              localUbicacion:
+                currentLocalInfo
+                  .ubicacion || "",
+
+              localContribuyente:
+                currentLocalInfo
+                  .contribuyente ||
+                ""
+            });
+
+          Swal.fire({
+            icon: "success",
+
+            title:
+              "Cierre registrado",
+
+            text:
+              `Total del día: ${formatMoney(total)}`
+          });
+
+        } catch (err) {
+          debugError(err);
+
+          Swal.fire(
+            "Error",
+            err.message ||
+            "No se pudo registrar el cierre.",
+            "error"
+          );
+        }
       }
-    });
+    );
   }
 
   async function bootUser(user) {
     try {
-      const storedUser = getStoredCurrentUser();
+      const storedUser =
+        getStoredCurrentUser();
 
-      let displayName = "Usuario";
-      let role = "Empleado";
+      let displayName =
+        "Usuario";
 
-      if (storedUser && storedUser.uid === user.uid) {
-        displayName = storedUser.name || "Usuario";
-        role = storedUser.role || "Empleado";
+      let role =
+        "Empleado";
+
+      if (
+        storedUser &&
+        storedUser.uid === user.uid
+      ) {
+        displayName =
+          storedUser.name ||
+          "Usuario";
+
+        role =
+          storedUser.role ||
+          "Empleado";
+
       } else {
-        const snapshot = await db.collection(EMPLOYEE_COLLECTION_NAME)
-          .where("email", "==", user.email)
-          .limit(1)
-          .get();
+        const snapshot =
+          await db
+            .collection(
+              EMPLOYEE_COLLECTION_NAME
+            )
+            .where(
+              "email",
+              "==",
+              user.email
+            )
+            .limit(1)
+            .get();
 
         if (!snapshot.empty) {
-          const data = snapshot.docs[0].data();
-          displayName = data.name || "Usuario";
-          role = data.position || data.role || "Empleado";
+          const data =
+            snapshot.docs[0]
+              .data();
 
-          localStorage.setItem("currentUser", JSON.stringify({
-            uid: user.uid,
-            name: displayName,
-            email: user.email,
-            phone: data.phone || "",
-            role,
-            id_local: data.id_local || data.idLocal || data.localId || ""
-          }));
+          displayName =
+            data.name ||
+            "Usuario";
+
+          role =
+            data.position ||
+            data.role ||
+            "Empleado";
+
+          localStorage.setItem(
+            "currentUser",
+            JSON.stringify({
+              uid:
+                user.uid,
+
+              name:
+                displayName,
+
+              email:
+                user.email,
+
+              phone:
+                data.phone ||
+                "",
+
+              role,
+
+              id_local:
+                data.id_local ||
+                data.idLocal ||
+                data.localId ||
+                ""
+            })
+          );
         }
       }
 
-      currentUserInfo.name = displayName;
-      currentUserInfo.role = role;
+      currentUserInfo.name =
+        displayName;
 
-      greetingEls.forEach(el => {
-        el.textContent = `Hola, ${displayName} (${role})`;
-      });
+      currentUserInfo.role =
+        role;
 
-      if (typeof renderNavigationForRole === "function") {
-        renderNavigationForRole(role);
+      greetingEls.forEach(
+        el => {
+          el.textContent =
+            `Hola, ${displayName} (${role})`;
+        }
+      );
+
+      if (
+        typeof renderNavigationForRole ===
+        "function"
+      ) {
+        renderNavigationForRole(
+          role
+        );
       }
 
-      await loadEmployeeAndLocalContext(user);
+      await loadEmployeeAndLocalContext(
+        user
+      );
 
-      greetingEls.forEach(el => {
-        el.textContent = `Hola, ${currentUserInfo.name} (${currentUserInfo.role})`;
-      });
+      greetingEls.forEach(
+        el => {
+          el.textContent =
+            `Hola, ${currentUserInfo.name} (${currentUserInfo.role})`;
+        }
+      );
 
       refreshLocalHeader();
+
     } catch (err) {
-      debugError("Error leyendo usuario o local:", err);
+      debugError(
+        "Error leyendo usuario o local:",
+        err
+      );
+
       throw err;
     }
   }
 
-  auth.onAuthStateChanged(async (user) => {
-    if (!user) {
-      window.location.href = "index.html";
-      return;
-    }
+  auth.onAuthStateChanged(
+    async user => {
+      if (!user) {
+        window.location.href =
+          "index.html";
 
-    try {
-      await bootUser(user);
-      setDefaultRangeToMonth();
-      await refreshEverything();
-    } catch (err) {
-      debugError("Error inicializando dashboard:", err);
-      Swal.fire({
-        icon: "error",
-        title: "Sin local asignado",
-        text: err.message || "No se pudo cargar el local del usuario."
-      });
-    }
-  });
+        return;
+      }
 
-  logoutButtons.forEach(btn => {
-    btn.addEventListener("click", () => {
-      auth.signOut()
-        .then(() => {
-          localStorage.removeItem("currentUser");
-          window.location.href = "index.html";
-        })
-        .catch(() => {
-          Swal.fire("Error", "No se pudo cerrar sesión.", "error");
+      try {
+        await bootUser(user);
+
+        setDefaultRangeToMonth();
+
+        await refreshEverything();
+
+      } catch (err) {
+        debugError(
+          "Error inicializando dashboard:",
+          err
+        );
+
+        Swal.fire({
+          icon: "error",
+
+          title:
+            "Sin local asignado",
+
+          text:
+            err.message ||
+            "No se pudo cargar el local del usuario."
         });
-    });
-  });
+      }
+    }
+  );
+
+  logoutButtons.forEach(
+    btn => {
+      btn.addEventListener(
+        "click",
+        () => {
+          auth
+            .signOut()
+            .then(() => {
+              localStorage.removeItem(
+                "currentUser"
+              );
+
+              window.location.href =
+                "index.html";
+            })
+            .catch(() => {
+              Swal.fire(
+                "Error",
+                "No se pudo cerrar sesión.",
+                "error"
+              );
+            });
+        }
+      );
+    }
+  );
 
   if (btnGoInventory) {
-    btnGoInventory.addEventListener("click", () => {
-      window.location.href = "inventory.html";
-    });
+    btnGoInventory.addEventListener(
+      "click",
+      () => {
+        window.location.href =
+          "inventory.html";
+      }
+    );
   }
 
   if (btnCloseDay) {
-    btnCloseDay.addEventListener("click", closeDay);
+    btnCloseDay.addEventListener(
+      "click",
+      closeDay
+    );
   }
 
   if (btnApplyRange) {
-    btnApplyRange.addEventListener("click", applyRange);
+    btnApplyRange.addEventListener(
+      "click",
+      applyRange
+    );
   }
 
   if (btnResetRange) {
-    btnResetRange.addEventListener("click", resetRange);
+    btnResetRange.addEventListener(
+      "click",
+      resetRange
+    );
   }
 
   if (btnExportSalesCSV) {
-    btnExportSalesCSV.addEventListener("click", exportSalesCSV);
+    btnExportSalesCSV.addEventListener(
+      "click",
+      exportSalesCSV
+    );
   }
 
   if (btnExportExpensesCSV) {
-    btnExportExpensesCSV.addEventListener("click", exportExpensesCSV);
+    btnExportExpensesCSV.addEventListener(
+      "click",
+      exportExpensesCSV
+    );
   }
 
   if (btnExportMovementsCSV) {
-    btnExportMovementsCSV.addEventListener("click", exportMovementsCSV);
+    btnExportMovementsCSV.addEventListener(
+      "click",
+      exportMovementsCSV
+    );
   }
 
   if (rangeSearch) {
-    rangeSearch.addEventListener("input", applySearchFilter);
+    rangeSearch.addEventListener(
+      "input",
+      applySearchFilter
+    );
   }
 
   function injectDashboardStyles() {
-    if (document.getElementById("dashboardExtraStyles")) return;
+    if (
+      document.getElementById(
+        "dashboardExtraStyles"
+      )
+    ) {
+      return;
+    }
 
-    const style = document.createElement("style");
-    style.id = "dashboardExtraStyles";
+    const style =
+      document.createElement(
+        "style"
+      );
+
+    style.id =
+      "dashboardExtraStyles";
+
     style.textContent = `
       .dashboard-hero {
         display: flex;
@@ -2185,6 +4254,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     `;
-    document.head.appendChild(style);
+
+    document.head.appendChild(
+      style
+    );
   }
 });

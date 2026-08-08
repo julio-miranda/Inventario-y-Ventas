@@ -1,9 +1,17 @@
 // assets/js/sales.js
-// Regla de stock corregida:
+//
+// Regla de stock:
 // stock disponible = stock actual guardado en el producto.
 // Al finalizar la venta SÍ se descuenta el inventario en la transacción.
 // Inventory lee el mismo stock actual.
 // Las ventas del mes se usan solo para reportes y validación visual.
+//
+// Referencia a libro:
+// - Se captura una referencia por venta.
+// - Se guarda en ventas.referenciaLibro.
+// - Se guarda en stock_movimientos.referenciaLibro.
+// - La referencia permite identificar posteriormente el movimiento
+//   correspondiente desde el dashboard.
 //
 // Filtro por local:
 // - Solo se muestran productos del local activo
@@ -17,6 +25,8 @@ const boxPriceGroup = document.getElementById('boxPriceGroup');
 const boxPriceInput = document.getElementById('boxPrice');
 const saleQuantityInput = document.getElementById('saleQuantity');
 const saleQuantityLabel = document.getElementById('saleQuantityLabel');
+const referenciaLibroInput = document.getElementById('referenciaLibro');
+
 const btnAddToCart = document.getElementById('btnAddToCart');
 const btnClearCart = document.getElementById('btnClearCart');
 const cartTableBody = document.querySelector('#cartTable tbody');
@@ -57,16 +67,29 @@ function numberOrZero(v) {
 
 function formatDateOnly(v) {
   if (!v) return '-';
-  const d = v.seconds ? new Date(v.seconds * 1000) : new Date(v);
+
+  const d = v.seconds
+    ? new Date(v.seconds * 1000)
+    : new Date(v);
+
   if (isNaN(d.getTime())) return '-';
+
   return d.toLocaleDateString();
 }
 
 function formatTimeOnly(v) {
   if (!v) return '-';
-  const d = v.seconds ? new Date(v.seconds * 1000) : new Date(v);
+
+  const d = v.seconds
+    ? new Date(v.seconds * 1000)
+    : new Date(v);
+
   if (isNaN(d.getTime())) return '-';
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  return d.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 }
 
 function escapeHtml(text) {
@@ -80,19 +103,32 @@ function escapeHtml(text) {
 
 function getStoredUserName() {
   try {
-    const stored = JSON.parse(localStorage.getItem('currentUser') || 'null');
-    if (stored && stored.name) return stored.name;
+    const stored = JSON.parse(
+      localStorage.getItem('currentUser') || 'null'
+    );
+
+    if (stored && stored.name) {
+      return stored.name;
+    }
   } catch {
     // ignore
   }
 
-  if (auth.currentUser && auth.currentUser.displayName) return auth.currentUser.displayName;
+  if (
+    auth.currentUser &&
+    auth.currentUser.displayName
+  ) {
+    return auth.currentUser.displayName;
+  }
+
   return null;
 }
 
 function getStoredCurrentUser() {
   try {
-    return JSON.parse(localStorage.getItem('currentUser') || 'null');
+    return JSON.parse(
+      localStorage.getItem('currentUser') || 'null'
+    );
   } catch {
     return null;
   }
@@ -111,68 +147,136 @@ function syncLocalContextFromStorage() {
 
     currentLocalInfo = {
       id_local: currentLocalId,
-      nombre: String(stored.localNombre || stored.localName || '').trim(),
-      numeroDocumento: String(stored.localNumeroDocumento || stored.localDocumentNumber || '').trim(),
-      ubicacion: String(stored.localUbicacion || stored.localLocation || '').trim()
+      nombre: String(
+        stored.localNombre ||
+        stored.localName ||
+        ''
+      ).trim(),
+      numeroDocumento: String(
+        stored.localNumeroDocumento ||
+        stored.localDocumentNumber ||
+        ''
+      ).trim(),
+      ubicacion: String(
+        stored.localUbicacion ||
+        stored.localLocation ||
+        ''
+      ).trim()
     };
   }
 
-  if (!currentLocalId && typeof window.getCurrentLocalId === 'function') {
-    currentLocalId = String(window.getCurrentLocalId() || '').trim();
+  if (
+    !currentLocalId &&
+    typeof window.getCurrentLocalId === 'function'
+  ) {
+    currentLocalId = String(
+      window.getCurrentLocalId() || ''
+    ).trim();
   }
 
-  if ((!currentLocalInfo.nombre || !currentLocalInfo.numeroDocumento || !currentLocalInfo.ubicacion) &&
-    typeof window.getCurrentLocalInfo === 'function') {
+  if (
+    (!currentLocalInfo.nombre ||
+      !currentLocalInfo.numeroDocumento ||
+      !currentLocalInfo.ubicacion) &&
+    typeof window.getCurrentLocalInfo === 'function'
+  ) {
     const info = window.getCurrentLocalInfo() || {};
+
     currentLocalInfo = {
-      id_local: currentLocalId || String(info.id_local || '').trim(),
-      nombre: String(info.nombre || '').trim(),
-      numeroDocumento: String(info.numeroDocumento || '').trim(),
-      ubicacion: String(info.ubicacion || '').trim()
+      id_local:
+        currentLocalId ||
+        String(info.id_local || '').trim(),
+
+      nombre:
+        String(info.nombre || '').trim(),
+
+      numeroDocumento:
+        String(info.numeroDocumento || '').trim(),
+
+      ubicacion:
+        String(info.ubicacion || '').trim()
     };
   }
 
-  if (typeof window.patchStoredCurrentUser === 'function') {
+  if (
+    typeof window.patchStoredCurrentUser === 'function'
+  ) {
     window.patchStoredCurrentUser({
       id_local: currentLocalId || '',
       localNombre: currentLocalInfo.nombre || '',
-      localNumeroDocumento: currentLocalInfo.numeroDocumento || '',
-      localUbicacion: currentLocalInfo.ubicacion || ''
+      localNumeroDocumento:
+        currentLocalInfo.numeroDocumento || '',
+      localUbicacion:
+        currentLocalInfo.ubicacion || ''
     });
   }
 }
 
 function normalizeUnitsPerBox(prod) {
-  const v = numberOrZero(prod && prod.unitsPerBox);
+  const v = numberOrZero(
+    prod && prod.unitsPerBox
+  );
+
   return v > 0 ? v : 1;
 }
 
 function isBoxProduct(prod) {
-  return !!(prod && (prod.saleByBox === true || prod.saleMode === 'box' || prod.saleType === 'box'));
+  return !!(
+    prod &&
+    (
+      prod.saleByBox === true ||
+      prod.saleMode === 'box' ||
+      prod.saleType === 'box'
+    )
+  );
 }
 
 function getDefaultSaleMode(prod) {
-  return isBoxProduct(prod) ? 'box' : 'unit';
+  return isBoxProduct(prod)
+    ? 'box'
+    : 'unit';
 }
 
 function getDefaultBoxPrice(prod) {
-  const unitsPerBox = normalizeUnitsPerBox(prod);
-  const saved = numberOrZero(prod && prod.boxPrice);
-  if (saved > 0) return saved;
-  return numberOrZero(prod && prod.price) * unitsPerBox;
+  const unitsPerBox =
+    normalizeUnitsPerBox(prod);
+
+  const saved =
+    numberOrZero(prod && prod.boxPrice);
+
+  if (saved > 0) {
+    return saved;
+  }
+
+  return (
+    numberOrZero(prod && prod.price) *
+    unitsPerBox
+  );
 }
 
 function getProductStockField(prod) {
   if (!prod) return 0;
 
-  const current = Number(prod.stockCurrentUnits);
-  if (Number.isFinite(current)) return Math.max(0, current);
+  const current =
+    Number(prod.stockCurrentUnits);
 
-  const qty = Number(prod.quantity);
-  if (Number.isFinite(qty)) return Math.max(0, qty);
+  if (Number.isFinite(current)) {
+    return Math.max(0, current);
+  }
 
-  const base = Number(prod.stockBaseUnits);
-  if (Number.isFinite(base)) return Math.max(0, base);
+  const qty =
+    Number(prod.quantity);
+
+  if (Number.isFinite(qty)) {
+    return Math.max(0, qty);
+  }
+
+  const base =
+    Number(prod.stockBaseUnits);
+
+  if (Number.isFinite(base)) {
+    return Math.max(0, base);
+  }
 
   return 0;
 }
@@ -182,21 +286,40 @@ function getAvailableUnits(prod) {
 }
 
 function getAvailableBoxes(prod) {
-  const unitsPerBox = normalizeUnitsPerBox(prod);
-  const availableUnits = getAvailableUnits(prod);
-  return Math.floor(availableUnits / unitsPerBox);
+  const unitsPerBox =
+    normalizeUnitsPerBox(prod);
+
+  const availableUnits =
+    getAvailableUnits(prod);
+
+  return Math.floor(
+    availableUnits / unitsPerBox
+  );
 }
 
 function startOfCurrentMonth() {
   const d = new Date();
+
   d.setDate(1);
   d.setHours(0, 0, 0, 0);
+
   return d;
 }
 
 function getSaleProductId(p) {
-  return p && (p.productId || p.productID || p.product_id || p.id)
-    ? String(p.productId || p.productID || p.product_id || p.id)
+  return p &&
+    (
+      p.productId ||
+      p.productID ||
+      p.product_id ||
+      p.id
+    )
+    ? String(
+        p.productId ||
+        p.productID ||
+        p.product_id ||
+        p.id
+      )
     : '';
 }
 
@@ -211,17 +334,47 @@ function getLocalFieldValue(data = {}) {
 }
 
 function matchesCurrentLocal(data = {}) {
-  if (!currentLocalId) return false;
-  return getLocalFieldValue(data) === String(currentLocalId).trim();
+  if (!currentLocalId) {
+    return false;
+  }
+
+  return (
+    getLocalFieldValue(data) ===
+    String(currentLocalId).trim()
+  );
 }
 
 function getMovementLocalPayload() {
   return {
     id_local: currentLocalId || '',
-    localNombre: currentLocalInfo.nombre || '',
-    localNumeroDocumento: currentLocalInfo.numeroDocumento || '',
-    localUbicacion: currentLocalInfo.ubicacion || ''
+    localNombre:
+      currentLocalInfo.nombre || '',
+    localNumeroDocumento:
+      currentLocalInfo.numeroDocumento || '',
+    localUbicacion:
+      currentLocalInfo.ubicacion || ''
   };
+}
+
+/*
+ * Obtiene la referencia actualmente escrita.
+ */
+function getReferenciaLibro() {
+  return String(
+    referenciaLibroInput
+      ? referenciaLibroInput.value
+      : ''
+  ).trim();
+}
+
+/*
+ * Limpia la referencia después de completar
+ * correctamente una venta.
+ */
+function clearReferenciaLibro() {
+  if (referenciaLibroInput) {
+    referenciaLibroInput.value = '';
+  }
 }
 
 function aggregateMonthlySales(snapshot) {
@@ -229,34 +382,79 @@ function aggregateMonthlySales(snapshot) {
 
   snapshot.forEach(doc => {
     const sale = doc.data();
-    if (!matchesCurrentLocal(sale)) return;
 
-    const products = Array.isArray(sale.products) ? sale.products : [];
+    if (!matchesCurrentLocal(sale)) {
+      return;
+    }
+
+    const products =
+      Array.isArray(sale.products)
+        ? sale.products
+        : [];
 
     products.forEach(p => {
-      const productId = getSaleProductId(p);
-      if (!productId) return;
+      const productId =
+        getSaleProductId(p);
 
-      const unitsPerBox = Math.max(1, numberOrZero(p.unitsPerBox));
-      const mode = String(p.mode || p.saleMode || p.saleType || '').toLowerCase();
-      const qty = numberOrZero(p.quantity);
-      const totalUnits = numberOrZero(p.unitsTotal || p.totalUnits);
+      if (!productId) {
+        return;
+      }
+
+      const unitsPerBox =
+        Math.max(
+          1,
+          numberOrZero(p.unitsPerBox)
+        );
+
+      const mode =
+        String(
+          p.mode ||
+          p.saleMode ||
+          p.saleType ||
+          ''
+        ).toLowerCase();
+
+      const qty =
+        numberOrZero(p.quantity);
+
+      const totalUnits =
+        numberOrZero(
+          p.unitsTotal ||
+          p.totalUnits
+        );
 
       let soldUnits = 0;
 
       if (mode === 'box') {
-        soldUnits = totalUnits > 0 ? totalUnits : qty * unitsPerBox;
+        soldUnits =
+          totalUnits > 0
+            ? totalUnits
+            : qty * unitsPerBox;
+
       } else if (mode === 'unit') {
-        soldUnits = totalUnits > 0 ? totalUnits : qty;
+        soldUnits =
+          totalUnits > 0
+            ? totalUnits
+            : qty;
+
       } else if (totalUnits > 0) {
         soldUnits = totalUnits;
-      } else if (numberOrZero(p.boxes) > 0) {
-        soldUnits = Math.floor(numberOrZero(p.boxes)) * unitsPerBox;
+
+      } else if (
+        numberOrZero(p.boxes) > 0
+      ) {
+        soldUnits =
+          Math.floor(
+            numberOrZero(p.boxes)
+          ) * unitsPerBox;
+
       } else {
         soldUnits = qty;
       }
 
-      unitsMap[productId] = (unitsMap[productId] || 0) + soldUnits;
+      unitsMap[productId] =
+        (unitsMap[productId] || 0) +
+        soldUnits;
     });
   });
 
@@ -264,10 +462,21 @@ function aggregateMonthlySales(snapshot) {
 }
 
 function initSelect2() {
-  if (!window.jQuery || typeof $.fn.select2 !== 'function' || !productSelect) return;
+  if (
+    !window.jQuery ||
+    typeof $.fn.select2 !== 'function' ||
+    !productSelect
+  ) {
+    return;
+  }
 
   try {
-    if ($(productSelect).hasClass('select2-hidden-accessible')) return;
+    if (
+      $(productSelect)
+        .hasClass('select2-hidden-accessible')
+    ) {
+      return;
+    }
 
     $('#productSelect').select2({
       placeholder: 'Buscar producto...',
@@ -276,104 +485,191 @@ function initSelect2() {
       minimumResultsForSearch: 0
     });
   } catch (err) {
-    console.warn('No se pudo inicializar Select2:', err);
+    console.warn(
+      'No se pudo inicializar Select2:',
+      err
+    );
   }
 }
 
 function refreshSaleModeUI() {
-  const productId = productSelect ? productSelect.value : '';
-  const prod = productId ? PRODUCTS_CACHE[productId] : null;
-  const mode = saleModeSelect ? saleModeSelect.value : 'unit';
+  const productId =
+    productSelect
+      ? productSelect.value
+      : '';
+
+  const prod =
+    productId
+      ? PRODUCTS_CACHE[productId]
+      : null;
+
+  const mode =
+    saleModeSelect
+      ? saleModeSelect.value
+      : 'unit';
 
   if (saleQuantityLabel) {
-    saleQuantityLabel.textContent = mode === 'box' ? 'Cantidad (cajas)' : 'Cantidad (unidades)';
+    saleQuantityLabel.textContent =
+      mode === 'box'
+        ? 'Cantidad (cajas)'
+        : 'Cantidad (unidades)';
   }
 
   if (boxPriceGroup) {
-    boxPriceGroup.style.display = mode === 'box' ? 'block' : 'none';
+    boxPriceGroup.style.display =
+      mode === 'box'
+        ? 'block'
+        : 'none';
   }
 
   if (mode === 'box') {
     if (prod) {
-      boxPriceInput.value = getDefaultBoxPrice(prod).toFixed(2);
-    } else if (!boxPriceInput.value || numberOrZero(boxPriceInput.value) <= 0) {
+      boxPriceInput.value =
+        getDefaultBoxPrice(prod)
+          .toFixed(2);
+    } else if (
+      !boxPriceInput.value ||
+      numberOrZero(
+        boxPriceInput.value
+      ) <= 0
+    ) {
       boxPriceInput.value = '0.00';
     }
   }
 }
 
 function syncModeFromProduct() {
-  const productId = productSelect ? productSelect.value : '';
-  const prod = productId ? PRODUCTS_CACHE[productId] : null;
-  if (!saleModeSelect) return;
+  const productId =
+    productSelect
+      ? productSelect.value
+      : '';
 
-  saleModeSelect.value = prod ? getDefaultSaleMode(prod) : 'unit';
+  const prod =
+    productId
+      ? PRODUCTS_CACHE[productId]
+      : null;
+
+  if (!saleModeSelect) {
+    return;
+  }
+
+  saleModeSelect.value =
+    prod
+      ? getDefaultSaleMode(prod)
+      : 'unit';
+
   refreshSaleModeUI();
 }
 
 function refreshProductSelectText() {
-  if (!productSelect) return;
+  if (!productSelect) {
+    return;
+  }
 
-  const currentValue = productSelect.value;
+  const currentValue =
+    productSelect.value;
+
   productSelect.innerHTML = '';
 
-  const entries = Object.entries(PRODUCTS_CACHE);
+  const entries =
+    Object.entries(PRODUCTS_CACHE);
 
   if (!entries.length) {
-    const opt = document.createElement('option');
+    const opt =
+      document.createElement('option');
+
     opt.value = '';
-    opt.textContent = 'No hay productos';
+    opt.textContent =
+      'No hay productos';
+
     productSelect.appendChild(opt);
+
     return;
   }
 
   entries
-    .sort((a, b) => String(a[1].name || '').localeCompare(String(b[1].name || '')))
+    .sort((a, b) =>
+      String(a[1].name || '')
+        .localeCompare(
+          String(b[1].name || '')
+        )
+    )
     .forEach(([id, p]) => {
-      const availableUnits = getAvailableUnits(p);
-      const unitsPerBox = normalizeUnitsPerBox(p);
-      const availableBoxes = getAvailableBoxes(p);
-      const boxPrice = getDefaultBoxPrice(p);
+      const availableUnits =
+        getAvailableUnits(p);
 
-      const opt = document.createElement('option');
+      const unitsPerBox =
+        normalizeUnitsPerBox(p);
+
+      const availableBoxes =
+        getAvailableBoxes(p);
+
+      const boxPrice =
+        getDefaultBoxPrice(p);
+
+      const opt =
+        document.createElement('option');
+
       opt.value = id;
 
-      let label = `${p.name || '-'} — ${currency(p.price)} c/u`;
+      let label =
+        `${p.name || '-'} — ${currency(p.price)} c/u`;
+
       if (unitsPerBox > 1) {
-        label += ` | ${currency(boxPrice)} caja (${unitsPerBox})`;
-        label += ` — stock: ${availableUnits} (${availableBoxes} cajas)`;
+        label +=
+          ` | ${currency(boxPrice)} caja (${unitsPerBox})`;
+
+        label +=
+          ` — stock: ${availableUnits} (${availableBoxes} cajas)`;
       } else {
-        label += ` — stock: ${availableUnits}`;
+        label +=
+          ` — stock: ${availableUnits}`;
       }
 
       if (isBoxProduct(p)) {
-        label += ' — venta por cajas';
+        label +=
+          ' — venta por cajas';
       }
 
       opt.textContent = label;
+
       productSelect.appendChild(opt);
     });
 
   if (currentValue) {
-    productSelect.value = currentValue;
+    productSelect.value =
+      currentValue;
   }
 
-  if (window.jQuery && typeof $.fn.select2 === 'function') {
-    $('#productSelect').trigger('change.select2');
+  if (
+    window.jQuery &&
+    typeof $.fn.select2 === 'function'
+  ) {
+    $('#productSelect')
+      .trigger('change.select2');
   }
 }
 
 auth.onAuthStateChanged(user => {
   if (!user) {
-    window.location.href = 'index.html';
+    window.location.href =
+      'index.html';
+
     return;
   }
 
   try {
-    const stored = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    const stored =
+      JSON.parse(
+        localStorage.getItem(
+          'currentUser'
+        ) || 'null'
+      );
+
     if (stored && stored.name) {
       userGreeting.forEach(b => {
-        b.textContent = `Hola, ${stored.name} (${stored.role || ''})`;
+        b.textContent =
+          `Hola, ${stored.name} (${stored.role || ''})`;
       });
     }
   } catch {
@@ -384,62 +680,129 @@ auth.onAuthStateChanged(user => {
 });
 
 function loadProductsRealtime() {
-  db.collection('productos').orderBy('name').onSnapshot(snapshot => {
-    PRODUCTS_CACHE = {};
+  db.collection('productos')
+    .orderBy('name')
+    .onSnapshot(snapshot => {
+      PRODUCTS_CACHE = {};
 
-    snapshot.forEach(doc => {
-      const p = doc.data();
+      snapshot.forEach(doc => {
+        const p = doc.data();
 
-      if (!matchesCurrentLocal(p)) return;
+        if (!matchesCurrentLocal(p)) {
+          return;
+        }
 
-      const currentStockUnits =
-        Number.isFinite(Number(p.stockCurrentUnits)) ? Math.max(0, numberOrZero(p.stockCurrentUnits)) :
-          Number.isFinite(Number(p.quantity)) ? Math.max(0, numberOrZero(p.quantity)) :
-            Number.isFinite(Number(p.stockBaseUnits)) ? Math.max(0, numberOrZero(p.stockBaseUnits)) :
-              0;
+        const currentStockUnits =
+          Number.isFinite(
+            Number(p.stockCurrentUnits)
+          )
+            ? Math.max(
+                0,
+                numberOrZero(
+                  p.stockCurrentUnits
+                )
+              )
+            : Number.isFinite(
+                Number(p.quantity)
+              )
+              ? Math.max(
+                  0,
+                  numberOrZero(p.quantity)
+                )
+              : Number.isFinite(
+                  Number(p.stockBaseUnits)
+                )
+                ? Math.max(
+                    0,
+                    numberOrZero(
+                      p.stockBaseUnits
+                    )
+                  )
+                : 0;
 
-      PRODUCTS_CACHE[doc.id] = {
-        id: doc.id,
-        ...p,
-        quantity: currentStockUnits,
-        stockCurrentUnits: currentStockUnits,
-        stockBaseUnits: numberOrZero(p.stockBaseUnits),
-        boxes: numberOrZero(p.boxes),
-        unitsPerBox: normalizeUnitsPerBox(p),
-        saleByBox: !!p.saleByBox
-      };
+        PRODUCTS_CACHE[doc.id] = {
+          id: doc.id,
+          ...p,
+          quantity:
+            currentStockUnits,
+          stockCurrentUnits:
+            currentStockUnits,
+          stockBaseUnits:
+            numberOrZero(
+              p.stockBaseUnits
+            ),
+          boxes:
+            numberOrZero(p.boxes),
+          unitsPerBox:
+            normalizeUnitsPerBox(p),
+          saleByBox:
+            !!p.saleByBox
+        };
+      });
+
+      refreshProductSelectText();
+      syncModeFromProduct();
+    }, err => {
+      console.error(
+        'Error cargando productos:',
+        err
+      );
+
+      Swal.fire(
+        'Error',
+        'No se pudieron cargar los productos.',
+        'error'
+      );
     });
-
-    refreshProductSelectText();
-    syncModeFromProduct();
-  }, err => {
-    console.error('Error cargando productos:', err);
-    Swal.fire('Error', 'No se pudieron cargar los productos.', 'error');
-  });
 }
 
 function loadMonthlySalesRealtime() {
-  const monthStart = startOfCurrentMonth();
+  const monthStart =
+    startOfCurrentMonth();
 
   db.collection('ventas')
-    .where('createdAt', '>=', monthStart)
+    .where(
+      'createdAt',
+      '>=',
+      monthStart
+    )
     .onSnapshot(snapshot => {
-      MONTHLY_SOLD_UNITS = aggregateMonthlySales(snapshot);
+      MONTHLY_SOLD_UNITS =
+        aggregateMonthlySales(
+          snapshot
+        );
+
       refreshProductSelectText();
       syncModeFromProduct();
       renderCart();
     }, err => {
-      console.error('Error cargando ventas del mes:', err);
+      console.error(
+        'Error cargando ventas del mes:',
+        err
+      );
+
       MONTHLY_SOLD_UNITS = {};
+
       refreshProductSelectText();
       syncModeFromProduct();
     });
 }
 
-function getLinePrice(prod, mode, customBoxPrice = null) {
+function getLinePrice(
+  prod,
+  mode,
+  customBoxPrice = null
+) {
   if (mode === 'box') {
-    const entered = numberOrZero(customBoxPrice);
-    if (entered > 0) return entered;
+    const entered =
+      numberOrZero(
+        customBoxPrice
+      );
+
+    if (entered > 0) {
+      return entered;
+    }
+
     return getDefaultBoxPrice(prod);
   }
 
@@ -447,64 +810,135 @@ function getLinePrice(prod, mode, customBoxPrice = null) {
 }
 
 function addToCart() {
-  if (isAddingToCart) return;
+  if (isAddingToCart) {
+    return;
+  }
+
   isAddingToCart = true;
 
   try {
-    const productId = productSelect ? productSelect.value : '';
+    const productId =
+      productSelect
+        ? productSelect.value
+        : '';
 
     if (!productId) {
-      Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Selecciona un producto' });
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'warning',
+        title: 'Selecciona un producto'
+      });
+
       return;
     }
 
-    const prod = PRODUCTS_CACHE[productId];
+    const prod =
+      PRODUCTS_CACHE[productId];
 
     if (!prod) {
-      Swal.fire('Error', 'Producto no encontrado en caché.', 'error');
+      Swal.fire(
+        'Error',
+        'Producto no encontrado en caché.',
+        'error'
+      );
+
       return;
     }
 
-    const mode = saleModeSelect ? saleModeSelect.value : getDefaultSaleMode(prod);
-    const qty = Math.max(1, Number(saleQuantityInput.value || 1));
-    const unitsPerBox = normalizeUnitsPerBox(prod);
-    const availableUnits = getAvailableUnits(prod);
+    const mode =
+      saleModeSelect
+        ? saleModeSelect.value
+        : getDefaultSaleMode(prod);
 
-    if (mode === 'box' && unitsPerBox <= 1) {
+    const qty =
+      Math.max(
+        1,
+        Number(
+          saleQuantityInput.value || 1
+        )
+      );
+
+    const unitsPerBox =
+      normalizeUnitsPerBox(prod);
+
+    const availableUnits =
+      getAvailableUnits(prod);
+
+    if (
+      mode === 'box' &&
+      unitsPerBox <= 1
+    ) {
       Swal.fire({
         icon: 'warning',
         title: 'No se puede vender por cajas',
-        text: 'Este producto no tiene unidades por caja configuradas.'
+        text:
+          'Este producto no tiene unidades por caja configuradas.'
       });
+
       return;
     }
 
-    const linePrice = getLinePrice(prod, mode, boxPriceInput ? boxPriceInput.value : null);
-    const unitsToDiscount = mode === 'box' ? qty * unitsPerBox : qty;
+    const linePrice =
+      getLinePrice(
+        prod,
+        mode,
+        boxPriceInput
+          ? boxPriceInput.value
+          : null
+      );
 
-    const alreadyUnitsInCart = CART
-      .filter(i => i.productId === productId)
-      .reduce((sum, i) => sum + numberOrZero(i.unitsTotal), 0);
+    const unitsToDiscount =
+      mode === 'box'
+        ? qty * unitsPerBox
+        : qty;
 
-    if ((alreadyUnitsInCart + unitsToDiscount) > availableUnits) {
+    const alreadyUnitsInCart =
+      CART
+        .filter(
+          i => i.productId === productId
+        )
+        .reduce(
+          (sum, i) =>
+            sum +
+            numberOrZero(
+              i.unitsTotal
+            ),
+          0
+        );
+
+    if (
+      alreadyUnitsInCart +
+      unitsToDiscount >
+      availableUnits
+    ) {
       Swal.fire({
         icon: 'warning',
         title: 'Stock insuficiente',
-        text: `Stock disponible: ${availableUnits} unidades`
+        text:
+          `Stock disponible: ${availableUnits} unidades`
       });
+
       return;
     }
 
-    const currentInCart = CART.find(i =>
-      i.productId === productId &&
-      i.mode === mode &&
-      Number(i.price) === Number(linePrice)
-    );
+    const currentInCart =
+      CART.find(i =>
+        i.productId === productId &&
+        i.mode === mode &&
+        Number(i.price) ===
+          Number(linePrice)
+      );
 
     if (currentInCart) {
       currentInCart.quantity += qty;
-      currentInCart.unitsTotal += unitsToDiscount;
-      currentInCart.total = currentInCart.quantity * currentInCart.price;
+
+      currentInCart.unitsTotal +=
+        unitsToDiscount;
+
+      currentInCart.total =
+        currentInCart.quantity *
+        currentInCart.price;
     } else {
       CART.push({
         productId,
@@ -513,8 +947,10 @@ function addToCart() {
         price: linePrice,
         quantity: qty,
         unitsPerBox,
-        unitsTotal: unitsToDiscount,
-        total: qty * linePrice
+        unitsTotal:
+          unitsToDiscount,
+        total:
+          qty * linePrice
       });
     }
 
@@ -531,189 +967,394 @@ function addToCart() {
 
     saleQuantityInput.value = 1;
 
-    if (mode === 'box' && productId) {
-      boxPriceInput.value = getDefaultBoxPrice(prod).toFixed(2);
+    if (
+      mode === 'box' &&
+      productId
+    ) {
+      boxPriceInput.value =
+        getDefaultBoxPrice(prod)
+          .toFixed(2);
     }
 
-    if (window.jQuery && typeof $.fn.select2 === 'function') {
-      $('#productSelect').val(null).trigger('change');
+    if (
+      window.jQuery &&
+      typeof $.fn.select2 === 'function'
+    ) {
+      $('#productSelect')
+        .val(null)
+        .trigger('change');
     } else if (productSelect) {
       productSelect.value = '';
     }
 
     refreshSaleModeUI();
+
   } finally {
     isAddingToCart = false;
   }
 }
 
 function updateCartSummary() {
-  const subtotal = CART.reduce((sum, item) => sum + Number(item.total || 0), 0);
-  cartSubtotalEl.textContent = currency(subtotal);
-  btnFinalize.disabled = CART.length === 0 || isFinalizingSale;
+  const subtotal =
+    CART.reduce(
+      (sum, item) =>
+        sum +
+        Number(item.total || 0),
+      0
+    );
+
+  cartSubtotalEl.textContent =
+    currency(subtotal);
+
+  btnFinalize.disabled =
+    CART.length === 0 ||
+    isFinalizingSale;
+
   return subtotal;
 }
 
 function syncCartInputsLayout() {
-  if (!cartTableBody) return;
+  if (!cartTableBody) {
+    return;
+  }
 
-  const widthQty = isTinyScreen() ? '100%' : '70px';
-  const widthPrice = isTinyScreen() ? '100%' : '90px';
+  const widthQty =
+    isTinyScreen()
+      ? '100%'
+      : '70px';
 
-  cartTableBody.querySelectorAll('input[data-cart-field="qty"]').forEach(input => {
-    input.style.width = widthQty;
-  });
+  const widthPrice =
+    isTinyScreen()
+      ? '100%'
+      : '90px';
 
-  cartTableBody.querySelectorAll('input[data-cart-field="price"]').forEach(input => {
-    input.style.width = widthPrice;
-  });
+  cartTableBody
+    .querySelectorAll(
+      'input[data-cart-field="qty"]'
+    )
+    .forEach(input => {
+      input.style.width =
+        widthQty;
+    });
 
-  cartTableBody.querySelectorAll('button[data-cart-remove="1"]').forEach(btn => {
-    btn.style.width = isTinyScreen() ? '100%' : '';
-  });
+  cartTableBody
+    .querySelectorAll(
+      'input[data-cart-field="price"]'
+    )
+    .forEach(input => {
+      input.style.width =
+        widthPrice;
+    });
+
+  cartTableBody
+    .querySelectorAll(
+      'button[data-cart-remove="1"]'
+    )
+    .forEach(btn => {
+      btn.style.width =
+        isTinyScreen()
+          ? '100%'
+          : '';
+    });
 }
 
 function renderCart() {
-  if (!cartTableBody) return;
+  if (!cartTableBody) {
+    return;
+  }
 
   cartTableBody.innerHTML = '';
 
   if (!CART.length) {
-    cartTableBody.innerHTML = '<tr><td colspan="5">El carrito está vacío.</td></tr>';
-    cartSubtotalEl.textContent = currency(0);
+    cartTableBody.innerHTML =
+      '<tr><td colspan="5">El carrito está vacío.</td></tr>';
+
+    cartSubtotalEl.textContent =
+      currency(0);
+
     btnFinalize.disabled = true;
+
     return;
   }
 
-  CART.forEach((item, idx) => {
-    const tr = document.createElement('tr');
+  CART.forEach(
+    (item, idx) => {
+      const tr =
+        document.createElement('tr');
 
-    const tdName = document.createElement('td');
-    tdName.setAttribute('data-label', 'Producto');
-    tdName.innerHTML = `
-      ${escapeHtml(item.name)}
-      <br>
-      <small>
-        ${item.mode === 'box'
-        ? `${item.quantity} cajas (${item.unitsTotal} unidades)`
-        : `${item.quantity} unidades`}
-      </small>
-    `;
-    tr.appendChild(tdName);
+      const tdName =
+        document.createElement('td');
 
-    const tdQty = document.createElement('td');
-    tdQty.setAttribute('data-label', 'Cantidad');
+      tdName.setAttribute(
+        'data-label',
+        'Producto'
+      );
 
-    const qtyInput = document.createElement('input');
-    qtyInput.type = 'number';
-    qtyInput.min = 1;
-    qtyInput.step = 1;
-    qtyInput.inputMode = 'numeric';
-    qtyInput.autocomplete = 'off';
-    qtyInput.value = item.quantity;
-    qtyInput.dataset.cartField = 'qty';
-    qtyInput.style.width = isTinyScreen() ? '100%' : '70px';
+      tdName.innerHTML = `
+        ${escapeHtml(item.name)}
+        <br>
+        <small>
+          ${
+            item.mode === 'box'
+              ? `${item.quantity} cajas (${item.unitsTotal} unidades)`
+              : `${item.quantity} unidades`
+          }
+        </small>
+      `;
 
-    qtyInput.addEventListener('input', (e) => {
-      const val = Number(e.target.value);
-      if (!Number.isFinite(val) || val < 1) return;
+      tr.appendChild(tdName);
 
-      const prod = PRODUCTS_CACHE[item.productId];
-      const availableUnits = getAvailableUnits(prod);
-      const unitsPerBox = normalizeUnitsPerBox(prod);
-      const newUnitsTotal = item.mode === 'box' ? val * unitsPerBox : val;
+      const tdQty =
+        document.createElement('td');
 
-      const currentInCartUnits = CART
-        .filter(i => i.productId === item.productId && i !== item)
-        .reduce((sum, i) => sum + numberOrZero(i.unitsTotal), 0);
+      tdQty.setAttribute(
+        'data-label',
+        'Cantidad'
+      );
 
-      if ((currentInCartUnits + newUnitsTotal) > availableUnits) {
-        Swal.fire({
-          icon: 'warning',
-          title: 'Stock insuficiente',
-          text: `Stock disponible: ${availableUnits} unidades`
-        });
-        e.target.value = item.quantity;
-        return;
-      }
+      const qtyInput =
+        document.createElement('input');
 
-      item.quantity = val;
-      item.unitsTotal = newUnitsTotal;
-      item.total = Number(item.price) * Number(item.quantity);
+      qtyInput.type = 'number';
+      qtyInput.min = 1;
+      qtyInput.step = 1;
+      qtyInput.inputMode = 'numeric';
+      qtyInput.autocomplete = 'off';
+      qtyInput.value =
+        item.quantity;
 
-      totalCell.textContent = currency(item.total);
-      updateCartSummary();
-    });
+      qtyInput.dataset.cartField =
+        'qty';
 
-    tdQty.appendChild(qtyInput);
-    tr.appendChild(tdQty);
+      qtyInput.style.width =
+        isTinyScreen()
+          ? '100%'
+          : '70px';
 
-    const tdPrice = document.createElement('td');
-    tdPrice.setAttribute('data-label', 'Precio');
+      qtyInput.addEventListener(
+        'input',
+        e => {
+          const val =
+            Number(e.target.value);
 
-    const priceInput = document.createElement('input');
-    priceInput.type = 'number';
-    priceInput.min = 0;
-    priceInput.step = '0.01';
-    priceInput.inputMode = 'decimal';
-    priceInput.autocomplete = 'off';
-    priceInput.value = Number(item.price).toFixed(2);
-    priceInput.dataset.cartField = 'price';
-    priceInput.style.width = isTinyScreen() ? '100%' : '90px';
+          if (
+            !Number.isFinite(val) ||
+            val < 1
+          ) {
+            return;
+          }
 
-    priceInput.addEventListener('input', (e) => {
-      const val = Number(e.target.value);
-      if (!Number.isFinite(val) || val < 0) return;
+          const prod =
+            PRODUCTS_CACHE[
+              item.productId
+            ];
 
-      item.price = val;
-      item.total = Number(item.price) * Number(item.quantity);
+          const availableUnits =
+            getAvailableUnits(prod);
 
-      totalCell.textContent = currency(item.total);
-      updateCartSummary();
-    });
+          const unitsPerBox =
+            normalizeUnitsPerBox(prod);
 
-    tdPrice.appendChild(priceInput);
-    tr.appendChild(tdPrice);
+          const newUnitsTotal =
+            item.mode === 'box'
+              ? val * unitsPerBox
+              : val;
 
-    const totalCell = document.createElement('td');
-    totalCell.setAttribute('data-label', 'Total');
-    totalCell.textContent = currency(item.total);
-    tr.appendChild(totalCell);
+          const currentInCartUnits =
+            CART
+              .filter(
+                i =>
+                  i.productId ===
+                    item.productId &&
+                  i !== item
+              )
+              .reduce(
+                (sum, i) =>
+                  sum +
+                  numberOrZero(
+                    i.unitsTotal
+                  ),
+                0
+              );
 
-    const tdActions = document.createElement('td');
-    tdActions.setAttribute('data-label', 'Acciones');
+          if (
+            currentInCartUnits +
+            newUnitsTotal >
+            availableUnits
+          ) {
+            Swal.fire({
+              icon: 'warning',
+              title: 'Stock insuficiente',
+              text:
+                `Stock disponible: ${availableUnits} unidades`
+            });
 
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'btn-outline';
-    removeBtn.type = 'button';
-    removeBtn.dataset.cartRemove = '1';
-    removeBtn.innerHTML = '<i class="fas fa-trash"></i> Quitar';
-    removeBtn.style.width = isTinyScreen() ? '100%' : '';
-    removeBtn.addEventListener('click', () => {
-      CART.splice(idx, 1);
-      renderCart();
-    });
+            e.target.value =
+              item.quantity;
 
-    tdActions.appendChild(removeBtn);
-    tr.appendChild(tdActions);
+            return;
+          }
 
-    cartTableBody.appendChild(tr);
-  });
+          item.quantity = val;
+
+          item.unitsTotal =
+            newUnitsTotal;
+
+          item.total =
+            Number(item.price) *
+            Number(item.quantity);
+
+          totalCell.textContent =
+            currency(item.total);
+
+          updateCartSummary();
+        }
+      );
+
+      tdQty.appendChild(
+        qtyInput
+      );
+
+      tr.appendChild(tdQty);
+
+      const tdPrice =
+        document.createElement('td');
+
+      tdPrice.setAttribute(
+        'data-label',
+        'Precio'
+      );
+
+      const priceInput =
+        document.createElement('input');
+
+      priceInput.type = 'number';
+      priceInput.min = 0;
+      priceInput.step = '0.01';
+      priceInput.inputMode = 'decimal';
+      priceInput.autocomplete = 'off';
+
+      priceInput.value =
+        Number(item.price)
+          .toFixed(2);
+
+      priceInput.dataset.cartField =
+        'price';
+
+      priceInput.style.width =
+        isTinyScreen()
+          ? '100%'
+          : '90px';
+
+      priceInput.addEventListener(
+        'input',
+        e => {
+          const val =
+            Number(e.target.value);
+
+          if (
+            !Number.isFinite(val) ||
+            val < 0
+          ) {
+            return;
+          }
+
+          item.price = val;
+
+          item.total =
+            Number(item.price) *
+            Number(item.quantity);
+
+          totalCell.textContent =
+            currency(item.total);
+
+          updateCartSummary();
+        }
+      );
+
+      tdPrice.appendChild(
+        priceInput
+      );
+
+      tr.appendChild(tdPrice);
+
+      const totalCell =
+        document.createElement('td');
+
+      totalCell.setAttribute(
+        'data-label',
+        'Total'
+      );
+
+      totalCell.textContent =
+        currency(item.total);
+
+      tr.appendChild(totalCell);
+
+      const tdActions =
+        document.createElement('td');
+
+      tdActions.setAttribute(
+        'data-label',
+        'Acciones'
+      );
+
+      const removeBtn =
+        document.createElement('button');
+
+      removeBtn.className =
+        'btn-outline';
+
+      removeBtn.type =
+        'button';
+
+      removeBtn.dataset.cartRemove =
+        '1';
+
+      removeBtn.innerHTML =
+        '<i class="fas fa-trash"></i> Quitar';
+
+      removeBtn.style.width =
+        isTinyScreen()
+          ? '100%'
+          : '';
+
+      removeBtn.addEventListener(
+        'click',
+        () => {
+          CART.splice(idx, 1);
+          renderCart();
+        }
+      );
+
+      tdActions.appendChild(
+        removeBtn
+      );
+
+      tr.appendChild(tdActions);
+
+      cartTableBody.appendChild(tr);
+    }
+  );
 
   updateCartSummary();
   syncCartInputsLayout();
 }
 
 function clearCart(confirmFirst = true) {
-  if (!CART.length) return;
+  if (!CART.length) {
+    return;
+  }
 
   if (confirmFirst) {
     Swal.fire({
       title: 'Limpiar carrito?',
       icon: 'question',
       showCancelButton: true,
-      confirmButtonText: 'Sí, limpiar',
-      cancelButtonText: 'Cancelar'
+      confirmButtonText:
+        'Sí, limpiar',
+      cancelButtonText:
+        'Cancelar'
     }).then(res => {
       if (res.isConfirmed) {
         CART = [];
@@ -727,129 +1368,386 @@ function clearCart(confirmFirst = true) {
 }
 
 async function finalizeSale() {
-  if (isFinalizingSale) return;
+  if (isFinalizingSale) {
+    return;
+  }
+
   if (!CART.length) {
-    Swal.fire('Carrito vacío', 'Agrega productos al carrito antes de finalizar.', 'info');
+    Swal.fire(
+      'Carrito vacío',
+      'Agrega productos al carrito antes de finalizar.',
+      'info'
+    );
+
     return;
   }
 
   if (!currentLocalId) {
-    Swal.fire('Sin local', 'No se pudo identificar el local activo.', 'error');
+    Swal.fire(
+      'Sin local',
+      'No se pudo identificar el local activo.',
+      'error'
+    );
+
+    return;
+  }
+
+  /*
+   * La referencia es necesaria porque será utilizada
+   * posteriormente en los movimientos de inventario.
+   */
+  const referenciaLibro =
+    getReferenciaLibro();
+
+  if (!referenciaLibro) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Referencia requerida',
+      text:
+        'Ingresa la referencia al libro antes de finalizar la venta.',
+      confirmButtonText: 'Entendido'
+    });
+
+    if (referenciaLibroInput) {
+      referenciaLibroInput.focus();
+    }
+
     return;
   }
 
   isFinalizingSale = true;
+
   btnFinalize.disabled = true;
   btnSaveDraft.disabled = true;
   btnAddToCart.disabled = true;
   btnClearCart.disabled = true;
-  if (productSelect) productSelect.disabled = true;
-  if (saleModeSelect) saleModeSelect.disabled = true;
-  if (saleQuantityInput) saleQuantityInput.disabled = true;
-  if (boxPriceInput) boxPriceInput.disabled = true;
+
+  if (productSelect) {
+    productSelect.disabled = true;
+  }
+
+  if (saleModeSelect) {
+    saleModeSelect.disabled = true;
+  }
+
+  if (saleQuantityInput) {
+    saleQuantityInput.disabled = true;
+  }
+
+  if (boxPriceInput) {
+    boxPriceInput.disabled = true;
+  }
+
+  if (referenciaLibroInput) {
+    referenciaLibroInput.disabled = true;
+  }
 
   try {
-    const summaryHtml = CART.map(i =>
-      `<div style="display:flex;justify-content:space-between;gap:12px;">
-        <span>${escapeHtml(i.name)} x${i.quantity} ${i.mode === 'box' ? '(cajas)' : '(unid.)'}</span>
-        <strong>${currency(i.total)}</strong>
-      </div>`
-    ).join('');
+    const summaryHtml =
+      CART.map(i =>
+        `<div style="display:flex;justify-content:space-between;gap:12px;">
+          <span>
+            ${escapeHtml(i.name)}
+            x${i.quantity}
+            ${i.mode === 'box'
+              ? '(cajas)'
+              : '(unid.)'}
+          </span>
 
-    const total = CART.reduce((s, i) => s + Number(i.total), 0);
+          <strong>
+            ${currency(i.total)}
+          </strong>
+        </div>`
+      ).join('');
 
-    const resp = await Swal.fire({
-      title: 'Finalizar venta',
-      html: `<div style="text-align:left">${summaryHtml}<hr><div style="display:flex;justify-content:space-between"><strong>Total:</strong><strong>${currency(total)}</strong></div></div>`,
-      showCancelButton: true,
-      confirmButtonText: 'Confirmar venta',
-      cancelButtonText: 'Cancelar',
-      width: 500
-    });
+    const total =
+      CART.reduce(
+        (s, i) =>
+          s +
+          Number(i.total),
+        0
+      );
 
-    if (!resp.isConfirmed) return;
+    const resp =
+      await Swal.fire({
+        title: 'Finalizar venta',
 
-    const storedUserName = getStoredUserName();
-    const localPayload = getMovementLocalPayload();
+        html:
+          `<div style="text-align:left">
+            ${summaryHtml}
 
-    const ventaRef = db.collection('ventas').doc();
+            <hr>
 
-    await db.runTransaction(async (t) => {
-      for (const item of CART) {
-        const prodRef = db.collection('productos').doc(item.productId);
-        const prodSnap = await t.get(prodRef);
+            <div style="display:flex;justify-content:space-between">
+              <strong>Referencia:</strong>
+              <strong>${escapeHtml(referenciaLibro)}</strong>
+            </div>
 
-        if (!prodSnap.exists) {
-          throw new Error(`El producto ${item.name} no existe.`);
+            <div style="display:flex;justify-content:space-between;margin-top:6px">
+              <strong>Total:</strong>
+              <strong>${currency(total)}</strong>
+            </div>
+          </div>`,
+
+        showCancelButton: true,
+        confirmButtonText:
+          'Confirmar venta',
+        cancelButtonText:
+          'Cancelar',
+        width: 500
+      });
+
+    if (!resp.isConfirmed) {
+      return;
+    }
+
+    const storedUserName =
+      getStoredUserName();
+
+    const localPayload =
+      getMovementLocalPayload();
+
+    const ventaRef =
+      db.collection('ventas').doc();
+
+    await db.runTransaction(
+      async (t) => {
+
+        for (const item of CART) {
+          const prodRef =
+            db.collection('productos')
+              .doc(item.productId);
+
+          const prodSnap =
+            await t.get(prodRef);
+
+          if (!prodSnap.exists) {
+            throw new Error(
+              `El producto ${item.name} no existe.`
+            );
+          }
+
+          const data =
+            prodSnap.data() || {};
+
+          if (!matchesCurrentLocal(data)) {
+            throw new Error(
+              `El producto ${item.name} no pertenece al local actual.`
+            );
+          }
+
+          const currentUnits =
+            Number.isFinite(
+              Number(
+                data.stockCurrentUnits
+              )
+            )
+              ? Math.max(
+                  0,
+                  numberOrZero(
+                    data.stockCurrentUnits
+                  )
+                )
+              : Number.isFinite(
+                  Number(data.quantity)
+                )
+                ? Math.max(
+                    0,
+                    numberOrZero(
+                      data.quantity
+                    )
+                  )
+                : Number.isFinite(
+                    Number(
+                      data.stockBaseUnits
+                    )
+                  )
+                  ? Math.max(
+                      0,
+                      numberOrZero(
+                        data.stockBaseUnits
+                      )
+                    )
+                  : 0;
+
+          const unitsToDiscount =
+            numberOrZero(
+              item.unitsTotal
+            );
+
+          if (
+            unitsToDiscount >
+            currentUnits
+          ) {
+            throw new Error(
+              `Stock insuficiente para "${item.name}". Disponible: ${currentUnits}`
+            );
+          }
+
+          const remainingUnits =
+            currentUnits -
+            unitsToDiscount;
+
+          const unitsPerBox =
+            Math.max(
+              1,
+              numberOrZero(
+                data.unitsPerBox
+              )
+            );
+
+          t.update(
+            prodRef,
+            {
+              quantity:
+                remainingUnits,
+
+              stockCurrentUnits:
+                remainingUnits,
+
+              boxes:
+                Math.floor(
+                  remainingUnits /
+                  unitsPerBox
+                ),
+
+              updatedAt:
+                firebase.firestore
+                  .FieldValue
+                  .serverTimestamp()
+            }
+          );
+
+          /*
+           * MOVIMIENTO DE INVENTARIO
+           *
+           * Ahora referenciaLibro contiene
+           * la referencia introducida por el usuario.
+           */
+          const movementRef =
+            db.collection(
+              'stock_movimientos'
+            ).doc();
+
+          t.set(
+            movementRef,
+            {
+              productId:
+                item.productId,
+
+              productName:
+                item.name,
+
+              tipoMovimiento:
+                'salida',
+
+              referenciaLibro:
+                referenciaLibro,
+
+              numeroDocumento:
+                ventaRef.id,
+
+              entrada: 0,
+
+              salida:
+                unitsToDiscount,
+
+              saldoAnterior:
+                currentUnits,
+
+              saldoActual:
+                remainingUnits,
+
+              detalle:
+                `Salida por venta ${ventaRef.id} - Referencia: ${referenciaLibro}`,
+
+              userId:
+                (
+                  auth.currentUser &&
+                  auth.currentUser.uid
+                )
+                  ? auth.currentUser.uid
+                  : null,
+
+              userName:
+                storedUserName || null,
+
+              createdAt:
+                firebase.firestore
+                  .FieldValue
+                  .serverTimestamp(),
+
+              ...localPayload
+            }
+          );
         }
 
-        const data = prodSnap.data() || {};
+        /*
+         * DOCUMENTO DE VENTA
+         *
+         * También se almacena la referencia
+         * para poder relacionar la venta con
+         * sus movimientos posteriormente.
+         */
+        const ventaData = {
+          products:
+            CART.map(i => ({
+              productId:
+                i.productId,
 
-        if (!matchesCurrentLocal(data)) {
-          throw new Error(`El producto ${item.name} no pertenece al local actual.`);
-        }
+              name:
+                i.name,
 
-        const currentUnits =
-          Number.isFinite(Number(data.stockCurrentUnits)) ? Math.max(0, numberOrZero(data.stockCurrentUnits)) :
-            Number.isFinite(Number(data.quantity)) ? Math.max(0, numberOrZero(data.quantity)) :
-              Number.isFinite(Number(data.stockBaseUnits)) ? Math.max(0, numberOrZero(data.stockBaseUnits)) :
-                0;
+              price:
+                i.price,
 
-        const unitsToDiscount = numberOrZero(item.unitsTotal);
+              quantity:
+                i.quantity,
 
-        if (unitsToDiscount > currentUnits) {
-          throw new Error(`Stock insuficiente para "${item.name}". Disponible: ${currentUnits}`);
-        }
+              mode:
+                i.mode,
 
-        const remainingUnits = currentUnits - unitsToDiscount;
-        const unitsPerBox = Math.max(1, numberOrZero(data.unitsPerBox));
+              unitsPerBox:
+                i.unitsPerBox,
 
-        t.update(prodRef, {
-          quantity: remainingUnits,
-          stockCurrentUnits: remainingUnits,
-          boxes: Math.floor(remainingUnits / unitsPerBox),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+              unitsTotal:
+                i.unitsTotal,
 
-        const movementRef = db.collection('stock_movimientos').doc();
-        t.set(movementRef, {
-          productId: item.productId,
-          productName: item.name,
-          tipoMovimiento: 'salida',
-          referenciaLibro: 'Venta',
-          numeroDocumento: ventaRef.id,
-          entrada: 0,
-          salida: unitsToDiscount,
-          saldoAnterior: currentUnits,
-          saldoActual: remainingUnits,
-          detalle: `Salida por venta ${ventaRef.id}`,
-          userId: (auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : null,
-          userName: storedUserName || null,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+              total:
+                i.total
+            })),
+
+          total:
+            Number(total),
+
+          referenciaLibro:
+            referenciaLibro,
+
+          createdAt:
+            firebase.firestore
+              .FieldValue
+              .serverTimestamp(),
+
+          userId:
+            (
+              auth.currentUser &&
+              auth.currentUser.uid
+            )
+              ? auth.currentUser.uid
+              : null,
+
+          userName:
+            storedUserName || null,
+
           ...localPayload
-        });
+        };
+
+        t.set(
+          ventaRef,
+          ventaData
+        );
       }
-
-      const ventaData = {
-        products: CART.map(i => ({
-          productId: i.productId,
-          name: i.name,
-          price: i.price,
-          quantity: i.quantity,
-          mode: i.mode,
-          unitsPerBox: i.unitsPerBox,
-          unitsTotal: i.unitsTotal,
-          total: i.total
-        })),
-        total: Number(total),
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        userId: (auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : null,
-        userName: storedUserName || null,
-        ...localPayload
-      };
-
-      t.set(ventaRef, ventaData);
-    });
+    );
 
     Swal.fire({
       toast: true,
@@ -861,32 +1759,88 @@ async function finalizeSale() {
     });
 
     CART = [];
+
+    clearReferenciaLibro();
+
     renderCart();
+
   } catch (err) {
-    console.error('Error finalizando venta:', err);
-    Swal.fire('Error', err.message || 'No se pudo finalizar la venta', 'error');
+    console.error(
+      'Error finalizando venta:',
+      err
+    );
+
+    Swal.fire(
+      'Error',
+      err.message ||
+        'No se pudo finalizar la venta',
+      'error'
+    );
+
   } finally {
     isFinalizingSale = false;
-    btnFinalize.disabled = CART.length === 0;
-    btnSaveDraft.disabled = false;
-    btnAddToCart.disabled = false;
-    btnClearCart.disabled = false;
-    if (productSelect) productSelect.disabled = false;
-    if (saleModeSelect) saleModeSelect.disabled = false;
-    if (saleQuantityInput) saleQuantityInput.disabled = false;
-    if (boxPriceInput) boxPriceInput.disabled = false;
+
+    btnFinalize.disabled =
+      CART.length === 0;
+
+    btnSaveDraft.disabled =
+      false;
+
+    btnAddToCart.disabled =
+      false;
+
+    btnClearCart.disabled =
+      false;
+
+    if (productSelect) {
+      productSelect.disabled =
+        false;
+    }
+
+    if (saleModeSelect) {
+      saleModeSelect.disabled =
+        false;
+    }
+
+    if (saleQuantityInput) {
+      saleQuantityInput.disabled =
+        false;
+    }
+
+    if (boxPriceInput) {
+      boxPriceInput.disabled =
+        false;
+    }
+
+    if (referenciaLibroInput) {
+      referenciaLibroInput.disabled =
+        false;
+    }
   }
 }
 
 async function saveDraft() {
-  if (isSavingDraft) return;
+  if (isSavingDraft) {
+    return;
+  }
+
   if (!CART.length) {
-    Swal.fire('Carrito vacío', 'Agrega productos antes de guardar un borrador.', 'info');
+    Swal.fire(
+      'Carrito vacío',
+      'Agrega productos antes de guardar un borrador.',
+      'info'
+    );
+
     return;
   }
 
   if (!currentLocalId) {
-    Swal.fire('Sin local', 'No se pudo identificar el local activo.', 'error');
+    Swal.fire(
+      'Sin local',
+      'No se pudo identificar el local activo.',
+      'error'
+    );
+
     return;
   }
 
@@ -894,28 +1848,81 @@ async function saveDraft() {
   btnSaveDraft.disabled = true;
 
   try {
-    const storedUserName = getStoredUserName();
-    const localPayload = getMovementLocalPayload();
+    const storedUserName =
+      getStoredUserName();
+
+    const localPayload =
+      getMovementLocalPayload();
+
+    /*
+     * La referencia puede quedar vacía en un borrador,
+     * ya que la validación obligatoria se realiza
+     * al finalizar la venta.
+     */
+    const referenciaLibro =
+      getReferenciaLibro();
 
     const draft = {
-      products: CART.map(i => ({
-        productId: i.productId,
-        name: i.name,
-        price: i.price,
-        quantity: i.quantity,
-        mode: i.mode,
-        unitsPerBox: i.unitsPerBox,
-        unitsTotal: i.unitsTotal,
-        total: i.total
-      })),
-      total: CART.reduce((s, i) => s + Number(i.total), 0),
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      userId: (auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : null,
-      userName: storedUserName || null,
+      products:
+        CART.map(i => ({
+          productId:
+            i.productId,
+
+          name:
+            i.name,
+
+          price:
+            i.price,
+
+          quantity:
+            i.quantity,
+
+          mode:
+            i.mode,
+
+          unitsPerBox:
+            i.unitsPerBox,
+
+          unitsTotal:
+            i.unitsTotal,
+
+          total:
+            i.total
+        })),
+
+      total:
+        CART.reduce(
+          (s, i) =>
+            s +
+            Number(i.total),
+          0
+        ),
+
+      referenciaLibro:
+        referenciaLibro || null,
+
+      createdAt:
+        firebase.firestore
+          .FieldValue
+          .serverTimestamp(),
+
+      userId:
+        (
+          auth.currentUser &&
+          auth.currentUser.uid
+        )
+          ? auth.currentUser.uid
+          : null,
+
+      userName:
+        storedUserName || null,
+
       ...localPayload
     };
 
-    await db.collection('ventas_borrador').add(draft);
+    await db.collection(
+      'ventas_borrador'
+    ).add(draft);
 
     Swal.fire({
       toast: true,
@@ -925,9 +1932,19 @@ async function saveDraft() {
       showConfirmButton: false,
       timer: 1400
     });
+
   } catch (err) {
-    console.error('Error guardando borrador:', err);
-    Swal.fire('Error', 'No se pudo guardar el borrador.', 'error');
+    console.error(
+      'Error guardando borrador:',
+      err
+    );
+
+    Swal.fire(
+      'Error',
+      'No se pudo guardar el borrador.',
+      'error'
+    );
+
   } finally {
     isSavingDraft = false;
     btnSaveDraft.disabled = false;
@@ -935,73 +1952,143 @@ async function saveDraft() {
 }
 
 function ensureSalesDataTable() {
-  if (salesDataTable) return salesDataTable;
+  if (salesDataTable) {
+    return salesDataTable;
+  }
 
-  if (!window.jQuery || !$.fn || !$.fn.DataTable) {
-    console.warn('DataTables no está cargado. Se mostrará la tabla sin DataTable.');
+  if (
+    !window.jQuery ||
+    !$.fn ||
+    !$.fn.DataTable
+  ) {
+    console.warn(
+      'DataTables no está cargado. Se mostrará la tabla sin DataTable.'
+    );
+
     return null;
   }
 
-  salesDataTable = $('#salesTable').DataTable({
-    data: [],
-    columns: [
-      { title: 'Productos' },
-      { title: 'Unidades' },
-      { title: 'Total' },
-      { title: 'Usuario' },
-      { title: 'Fecha' },
-      { title: 'Hora' }
-    ],
-    pageLength: 5,
-    lengthMenu: [5, 10, 25, 50],
-    scrollY: '260px',
-    scrollCollapse: true,
-    scrollX: false,
-    autoWidth: false,
-    orderMulti: true,
-    order: [[4, 'desc'], [5, 'desc']],
-    dom: '<"sales-dt-top"lf>rt<"sales-dt-bottom"ip><"clear">',
-    language: {
-      search: '',
-      searchPlaceholder: 'Buscar ventas...',
-      lengthMenu: 'Mostrar _MENU_',
-      info: 'Mostrando _START_ a _END_ de _TOTAL_',
-      infoEmpty: 'No hay ventas',
-      infoFiltered: '(filtrado de _MAX_ ventas)',
-      paginate: {
-        next: '›',
-        previous: '‹'
+  salesDataTable =
+    $('#salesTable').DataTable({
+      data: [],
+
+      columns: [
+        { title: 'Productos' },
+        { title: 'Unidades' },
+        { title: 'Total' },
+        { title: 'Usuario' },
+        { title: 'Fecha' },
+        { title: 'Hora' }
+      ],
+
+      pageLength: 5,
+
+      lengthMenu:
+        [5, 10, 25, 50],
+
+      scrollY:
+        '260px',
+
+      scrollCollapse:
+        true,
+
+      scrollX:
+        false,
+
+      autoWidth:
+        false,
+
+      orderMulti:
+        true,
+
+      order:
+        [
+          [4, 'desc'],
+          [5, 'desc']
+        ],
+
+      dom:
+        '<"sales-dt-top"lf>rt<"sales-dt-bottom"ip><"clear">',
+
+      language: {
+        search: '',
+        searchPlaceholder:
+          'Buscar ventas...',
+
+        lengthMenu:
+          'Mostrar _MENU_',
+
+        info:
+          'Mostrando _START_ a _END_ de _TOTAL_',
+
+        infoEmpty:
+          'No hay ventas',
+
+        infoFiltered:
+          '(filtrado de _MAX_ ventas)',
+
+        paginate: {
+          next: '›',
+          previous: '‹'
+        },
+
+        zeroRecords:
+          'No hay ventas'
       },
-      zeroRecords: 'No hay ventas'
-    },
-    columnDefs: [
-      { targets: [1, 2], className: 'dt-body-center' },
-      { targets: [0, 3, 4, 5], className: 'dt-body-left' }
-    ]
-  });
+
+      columnDefs: [
+        {
+          targets: [1, 2],
+          className:
+            'dt-body-center'
+        },
+
+        {
+          targets:
+            [0, 3, 4, 5],
+
+          className:
+            'dt-body-left'
+        }
+      ]
+    });
 
   return salesDataTable;
 }
 
 function renderSalesFallback(dataSet) {
-  if (!salesTable) return;
+  if (!salesTable) {
+    return;
+  }
 
-  const tbody = salesTable.querySelector('tbody');
-  if (!tbody) return;
+  const tbody =
+    salesTable.querySelector(
+      'tbody'
+    );
+
+  if (!tbody) {
+    return;
+  }
 
   tbody.innerHTML = '';
 
   if (!dataSet.length) {
-    tbody.innerHTML = '<tr><td colspan="6">No hay ventas registradas.</td></tr>';
+    tbody.innerHTML =
+      '<tr><td colspan="6">No hay ventas registradas.</td></tr>';
+
     return;
   }
 
   dataSet.forEach(row => {
-    const tr = document.createElement('tr');
+    const tr =
+      document.createElement('tr');
 
-    row.forEach((cell) => {
-      const td = document.createElement('td');
+    row.forEach(cell => {
+      const td =
+        document.createElement('td');
+
       td.textContent = cell;
+
       tr.appendChild(td);
     });
 
@@ -1011,88 +2098,179 @@ function renderSalesFallback(dataSet) {
 
 function listenSalesRealtime() {
   db.collection('ventas')
-    .orderBy('createdAt', 'desc')
+    .orderBy(
+      'createdAt',
+      'desc'
+    )
     .onSnapshot(snapshot => {
       const dataSet = [];
 
       snapshot.forEach(doc => {
         const v = doc.data();
-        if (!matchesCurrentLocal(v)) return;
 
-        const productos = (v.products || [])
-          .map(p => p.name)
-          .join(', ') || '-';
+        if (!matchesCurrentLocal(v)) {
+          return;
+        }
 
-        const unidades = (v.products || [])
-          .reduce((sum, p) => sum + Number(p.unitsTotal || p.quantity || 0), 0);
+        const productos =
+          (v.products || [])
+            .map(p => p.name)
+            .join(', ') ||
+          '-';
+
+        const unidades =
+          (v.products || [])
+            .reduce(
+              (sum, p) =>
+                sum +
+                Number(
+                  p.unitsTotal ||
+                  p.quantity ||
+                  0
+                ),
+              0
+            );
 
         dataSet.push([
           productos,
           unidades,
           currency(v.total),
           v.userName || '-',
-          formatDateOnly(v.createdAt),
-          formatTimeOnly(v.createdAt)
+          formatDateOnly(
+            v.createdAt
+          ),
+          formatTimeOnly(
+            v.createdAt
+          )
         ]);
       });
 
-      const dt = ensureSalesDataTable();
+      const dt =
+        ensureSalesDataTable();
 
       if (dt) {
         dt.clear();
         dt.rows.add(dataSet);
         dt.draw();
       } else {
-        renderSalesFallback(dataSet);
+        renderSalesFallback(
+          dataSet
+        );
       }
+
     }, err => {
-      console.error('Error listen ventas:', err);
+      console.error(
+        'Error listen ventas:',
+        err
+      );
 
       if (salesDataTable) {
-        salesDataTable.clear().draw();
+        salesDataTable
+          .clear()
+          .draw();
       } else {
         renderSalesFallback([]);
       }
     });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  syncLocalContextFromStorage();
-  initSelect2();
-  loadProductsRealtime();
-  loadMonthlySalesRealtime();
-  listenSalesRealtime();
+document.addEventListener(
+  'DOMContentLoaded',
+  () => {
+    syncLocalContextFromStorage();
 
-  if (productSelect) {
-    productSelect.addEventListener('change', () => {
-      syncModeFromProduct();
-    });
+    initSelect2();
+
+    loadProductsRealtime();
+
+    loadMonthlySalesRealtime();
+
+    listenSalesRealtime();
+
+    if (productSelect) {
+      productSelect.addEventListener(
+        'change',
+        () => {
+          syncModeFromProduct();
+        }
+      );
+    }
+
+    if (saleModeSelect) {
+      saleModeSelect.addEventListener(
+        'change',
+        () => {
+          refreshSaleModeUI();
+        }
+      );
+    }
+
+    if (btnAddToCart) {
+      btnAddToCart.addEventListener(
+        'click',
+        e => {
+          e.preventDefault();
+          addToCart();
+        }
+      );
+    }
+
+    if (btnClearCart) {
+      btnClearCart.addEventListener(
+        'click',
+        e => {
+          e.preventDefault();
+          clearCart(true);
+        }
+      );
+    }
+
+    if (btnFinalize) {
+      btnFinalize.addEventListener(
+        'click',
+        e => {
+          e.preventDefault();
+          finalizeSale();
+        }
+      );
+    }
+
+    if (btnSaveDraft) {
+      btnSaveDraft.addEventListener(
+        'click',
+        e => {
+          e.preventDefault();
+          saveDraft();
+        }
+      );
+    }
+
+    if (logoutBtn) {
+      logoutBtn.addEventListener(
+        'click',
+        () => {
+          auth.signOut()
+            .then(() => {
+              localStorage.removeItem(
+                'currentUser'
+              );
+
+              window.location.href =
+                'index.html';
+            });
+        }
+      );
+    }
+
+    window.addEventListener(
+      'resize',
+      () => {
+        syncCartInputsLayout();
+      }
+    );
+
+    refreshSaleModeUI();
+
+    renderCart();
   }
-
-  if (saleModeSelect) {
-    saleModeSelect.addEventListener('change', () => {
-      refreshSaleModeUI();
-    });
-  }
-
-  if (btnAddToCart) btnAddToCart.addEventListener('click', (e) => { e.preventDefault(); addToCart(); });
-  if (btnClearCart) btnClearCart.addEventListener('click', (e) => { e.preventDefault(); clearCart(true); });
-  if (btnFinalize) btnFinalize.addEventListener('click', (e) => { e.preventDefault(); finalizeSale(); });
-  if (btnSaveDraft) btnSaveDraft.addEventListener('click', (e) => { e.preventDefault(); saveDraft(); });
-
-  if (logoutBtn) {
-    logoutBtn.addEventListener('click', () => {
-      auth.signOut().then(() => {
-        localStorage.removeItem('currentUser');
-        window.location.href = 'index.html';
-      });
-    });
-  }
-
-  window.addEventListener('resize', () => {
-    syncCartInputsLayout();
-  });
-
-  refreshSaleModeUI();
-  renderCart();
-});
+);
