@@ -1,11 +1,18 @@
 // assets/js/inventory.js
 // Inventario con DataTable.
-// Regla corregida:
-// stock visible = stock actual guardado en el producto.
-// Las ventas del mes se usan solo para métricas, sugerencias y alertas.
-// Vendedor: acceso de solo lectura.
-// Administrador/Bodega: pueden editar y agregar stock.
-// Administrador: puede eliminar.
+//
+// Reglas:
+// - stock visible = stock actual guardado en el producto.
+// - Las ventas del mes se usan solo para métricas, sugerencias y alertas.
+// - Vendedor: acceso de solo lectura.
+// - Administrador/Bodega: pueden editar y agregar stock.
+// - Administrador: puede eliminar.
+//
+// Referencias de libro:
+// - Las referencias registradas se obtienen de stock_movimientos.
+// - El formulario de edición muestra las referencias existentes del producto.
+// - Al seleccionar una referencia existente se carga su número de documento.
+// - También se puede introducir una nueva referencia.
 //
 // Filtro por local:
 // - Se toma el id_local del usuario autenticado.
@@ -86,10 +93,14 @@ function getStoredCurrentUser() {
 function patchStoredCurrentUser(patch = {}) {
   try {
     const current = getStoredCurrentUser() || {};
-    localStorage.setItem("currentUser", JSON.stringify({
-      ...current,
-      ...patch
-    }));
+
+    localStorage.setItem(
+      "currentUser",
+      JSON.stringify({
+        ...current,
+        ...patch
+      })
+    );
   } catch {
     // ignore
   }
@@ -102,26 +113,29 @@ function getCurrentPageFile() {
 
 function startOfCurrentMonth() {
   const d = new Date();
+
   d.setDate(1);
   d.setHours(0, 0, 0, 0);
+
   return d;
 }
 
 function getUnitsPerBox(product) {
   const v = numberOrZero(product && product.unitsPerBox);
+
   return v > 0 ? v : 1;
 }
 
 function getProductCode(product) {
   return String(
     product &&
-      (
-        product.codigoProducto ||
-        product.productCode ||
-        product.code ||
-        product.sku ||
-        ""
-      )
+    (
+      product.codigoProducto ||
+      product.productCode ||
+      product.code ||
+      product.sku ||
+      ""
+    )
   ).trim();
 }
 
@@ -129,30 +143,45 @@ function getCurrentStockUnits(product) {
   if (!product) return 0;
 
   const current = Number(product.stockCurrentUnits);
-  if (Number.isFinite(current)) return Math.max(0, current);
+
+  if (Number.isFinite(current)) {
+    return Math.max(0, current);
+  }
 
   const qty = Number(product.quantity);
-  if (Number.isFinite(qty)) return Math.max(0, qty);
+
+  if (Number.isFinite(qty)) {
+    return Math.max(0, qty);
+  }
 
   const base = Number(product.stockBaseUnits);
-  if (Number.isFinite(base)) return Math.max(0, base);
+
+  if (Number.isFinite(base)) {
+    return Math.max(0, base);
+  }
 
   return 0;
 }
 
 function getStockBaseUnits(product) {
   const base = numberOrZero(product && product.stockBaseUnits);
-  if (base > 0) return base;
+
+  if (base > 0) {
+    return base;
+  }
+
   return getCurrentStockUnits(product);
 }
 
 function getSoldUnitsForProduct(product) {
   if (!product || !product.id) return 0;
+
   return numberOrZero(currentMonthlySalesMap[product.id]);
 }
 
 function getSoldBoxesForProduct(product) {
   if (!product || !product.id) return 0;
+
   return numberOrZero(currentMonthlyBoxesMap[product.id]);
 }
 
@@ -163,12 +192,16 @@ function getStockUnits(product) {
 function getStockBoxes(product) {
   const unitsPerBox = getUnitsPerBox(product);
   const stockUnits = getStockUnits(product);
+
   return Math.floor(stockUnits / unitsPerBox);
 }
 
 function getCostPerUnit(product) {
   const stored = numberOrZero(product && product.lastCostPerUnit);
-  if (stored > 0) return stored;
+
+  if (stored > 0) {
+    return stored;
+  }
 
   const costPerBox = numberOrZero(product && product.lastCostPerBox);
   const unitsPerBox = getUnitsPerBox(product);
@@ -181,8 +214,18 @@ function getCostPerUnit(product) {
 }
 
 function getSaleProductId(p) {
-  return p && (p.productId || p.productID || p.product_id || p.id)
-    ? String(p.productId || p.productID || p.product_id || p.id)
+  return p && (
+    p.productId ||
+    p.productID ||
+    p.product_id ||
+    p.id
+  )
+    ? String(
+      p.productId ||
+      p.productID ||
+      p.product_id ||
+      p.id
+    )
     : "";
 }
 
@@ -205,6 +248,7 @@ function normalizeLocalInfo(data = {}, fallbackId = "") {
       data.localId ||
       ""
     ).trim(),
+
     nombre: String(
       data.nombre ||
       data.name ||
@@ -213,6 +257,7 @@ function normalizeLocalInfo(data = {}, fallbackId = "") {
       data.localNombre ||
       ""
     ).trim(),
+
     numeroDocumento: String(
       data.numeroDocumento ||
       data.numero_documento ||
@@ -221,6 +266,7 @@ function normalizeLocalInfo(data = {}, fallbackId = "") {
       data.localNumeroDocumento ||
       ""
     ).trim(),
+
     ubicacion: String(
       data.ubicacion ||
       data.location ||
@@ -234,20 +280,31 @@ function normalizeLocalInfo(data = {}, fallbackId = "") {
 
 function matchesCurrentLocal(data = {}) {
   if (!currentLocalId) return false;
+
   return getLocalFieldValue(data) === String(currentLocalId).trim();
 }
 
 async function loadLocalDocById(localId) {
   const target = String(localId || "").trim();
-  if (!target) return null;
+
+  if (!target) {
+    return null;
+  }
 
   try {
     const direct = await db.collection("local").doc(target).get();
+
     if (direct.exists) {
-      return { id: direct.id, ...(direct.data() || {}) };
+      return {
+        id: direct.id,
+        ...(direct.data() || {})
+      };
     }
   } catch (err) {
-    console.warn("No se pudo leer el local por documento directo:", err);
+    console.warn(
+      "No se pudo leer el local por documento directo:",
+      err
+    );
   }
 
   try {
@@ -258,10 +315,17 @@ async function loadLocalDocById(localId) {
 
     if (!byField.empty) {
       const doc = byField.docs[0];
-      return { id: doc.id, ...(doc.data() || {}) };
+
+      return {
+        id: doc.id,
+        ...(doc.data() || {})
+      };
     }
   } catch (err) {
-    console.warn("No se pudo leer el local por id_local:", err);
+    console.warn(
+      "No se pudo leer el local por id_local:",
+      err
+    );
   }
 
   return null;
@@ -271,7 +335,9 @@ async function resolveCurrentLocalContext() {
   const stored = getStoredCurrentUser() || {};
 
   currentLocalId = String(
-    (typeof getCurrentLocalId === "function" ? getCurrentLocalId() : "") ||
+    (typeof getCurrentLocalId === "function"
+      ? getCurrentLocalId()
+      : "") ||
     stored.id_local ||
     stored.idLocal ||
     stored.localId ||
@@ -279,14 +345,27 @@ async function resolveCurrentLocalContext() {
   ).trim();
 
   currentLocalInfo = normalizeLocalInfo(
-    (typeof getCurrentLocalInfo === "function" ? getCurrentLocalInfo() : stored) || stored,
+    (typeof getCurrentLocalInfo === "function"
+      ? getCurrentLocalInfo()
+      : stored) || stored,
     currentLocalId
   );
 
-  if (currentLocalId && (!currentLocalInfo.nombre || !currentLocalInfo.numeroDocumento || !currentLocalInfo.ubicacion)) {
+  if (
+    currentLocalId &&
+    (
+      !currentLocalInfo.nombre ||
+      !currentLocalInfo.numeroDocumento ||
+      !currentLocalInfo.ubicacion
+    )
+  ) {
     const localDoc = await loadLocalDocById(currentLocalId);
+
     if (localDoc) {
-      currentLocalInfo = normalizeLocalInfo(localDoc, currentLocalId);
+      currentLocalInfo = normalizeLocalInfo(
+        localDoc,
+        currentLocalId
+      );
     }
   }
 
@@ -305,42 +384,86 @@ function aggregateMonthlySales(snapshot) {
   snapshot.forEach(doc => {
     const sale = doc.data() || {};
 
-    if (!matchesCurrentLocal(sale)) return;
+    if (!matchesCurrentLocal(sale)) {
+      return;
+    }
 
-    const products = Array.isArray(sale.products) ? sale.products : [];
+    const products = Array.isArray(sale.products)
+      ? sale.products
+      : [];
 
     products.forEach(p => {
       const productId = getSaleProductId(p);
-      if (!productId) return;
 
-      const unitsPerBox = Math.max(1, numberOrZero(p.unitsPerBox));
-      const mode = String(p.mode || p.saleMode || p.saleType || "").toLowerCase();
+      if (!productId) {
+        return;
+      }
+
+      const unitsPerBox = Math.max(
+        1,
+        numberOrZero(p.unitsPerBox)
+      );
+
+      const mode = String(
+        p.mode ||
+        p.saleMode ||
+        p.saleType ||
+        ""
+      ).toLowerCase();
+
       const qty = numberOrZero(p.quantity);
-      const totalUnits = numberOrZero(p.unitsTotal || p.totalUnits);
+      const totalUnits = numberOrZero(
+        p.unitsTotal ||
+        p.totalUnits
+      );
 
       let soldUnits = 0;
       let soldBoxes = 0;
 
       if (mode === "box") {
-        soldBoxes = qty > 0 ? Math.floor(qty) : (totalUnits > 0 ? Math.floor(totalUnits / unitsPerBox) : 0);
-        soldUnits = totalUnits > 0 ? totalUnits : soldBoxes * unitsPerBox;
+        soldBoxes = qty > 0
+          ? Math.floor(qty)
+          : (
+            totalUnits > 0
+              ? Math.floor(totalUnits / unitsPerBox)
+              : 0
+          );
+
+        soldUnits = totalUnits > 0
+          ? totalUnits
+          : soldBoxes * unitsPerBox;
+
       } else if (mode === "unit") {
-        soldUnits = totalUnits > 0 ? totalUnits : qty;
+        soldUnits = totalUnits > 0
+          ? totalUnits
+          : qty;
+
       } else if (totalUnits > 0) {
         soldUnits = totalUnits;
+
       } else if (numberOrZero(p.boxes) > 0) {
-        soldBoxes = Math.floor(numberOrZero(p.boxes));
+        soldBoxes = Math.floor(
+          numberOrZero(p.boxes)
+        );
+
         soldUnits = soldBoxes * unitsPerBox;
+
       } else {
         soldUnits = qty;
       }
 
-      unitsMap[productId] = (unitsMap[productId] || 0) + soldUnits;
-      boxesMap[productId] = (boxesMap[productId] || 0) + soldBoxes;
+      unitsMap[productId] =
+        (unitsMap[productId] || 0) + soldUnits;
+
+      boxesMap[productId] =
+        (boxesMap[productId] || 0) + soldBoxes;
     });
   });
 
-  return { unitsMap, boxesMap };
+  return {
+    unitsMap,
+    boxesMap
+  };
 }
 
 function buildProjectionForProduct(product) {
@@ -350,16 +473,25 @@ function buildProjectionForProduct(product) {
   const costPerUnit = getCostPerUnit(product);
 
   const soldUnits = getSoldUnitsForProduct(product);
-  const soldBoxes = Math.floor(getSoldBoxesForProduct(product));
+  const soldBoxes = Math.floor(
+    getSoldBoxesForProduct(product)
+  );
 
-  let suggestedUnits = soldUnits + SAFETY_STOCK_DEFAULT - stockUnits;
-  if (suggestedUnits < 0) suggestedUnits = 0;
+  let suggestedUnits =
+    soldUnits +
+    SAFETY_STOCK_DEFAULT -
+    stockUnits;
+
+  if (suggestedUnits < 0) {
+    suggestedUnits = 0;
+  }
 
   const suggestedBoxes = unitsPerBox > 1
     ? Math.ceil(suggestedUnits / unitsPerBox)
     : suggestedUnits;
 
   let status = "OK";
+
   if (suggestedUnits > 0) {
     status = "Reponer";
   } else if (stockUnits <= LOW_STOCK_THRESHOLD) {
@@ -367,9 +499,16 @@ function buildProjectionForProduct(product) {
   }
 
   let coverageDays = "-";
+
   if (soldUnits > 0) {
     const dailyRate = soldUnits / 30;
-    coverageDays = dailyRate > 0 ? Math.max(0, Math.floor(stockUnits / dailyRate)) : "-";
+
+    coverageDays = dailyRate > 0
+      ? Math.max(
+        0,
+        Math.floor(stockUnits / dailyRate)
+      )
+      : "-";
   }
 
   return {
@@ -405,27 +544,65 @@ function buildRowData(product) {
     soldMonthUnits: projection.soldMonthUnits,
     soldMonthBoxes: projection.soldMonthBoxes,
     costPerUnit: projection.costPerUnit,
-    suggestedPurchaseUnits: projection.suggestedPurchaseUnits,
-    suggestedPurchaseBoxes: projection.suggestedPurchaseBoxes,
+    suggestedPurchaseUnits:
+      projection.suggestedPurchaseUnits,
+    suggestedPurchaseBoxes:
+      projection.suggestedPurchaseBoxes,
     status: projection.status
   };
 }
 
 function renderStatusChip(status) {
   if (status === "Reponer") {
-    return `<span style="padding:4px 8px;border-radius:999px;background:#fee2e2;color:#b91c1c;font-weight:700;">Reponer</span>`;
+    return `
+      <span style="
+        padding:4px 8px;
+        border-radius:999px;
+        background:#fee2e2;
+        color:#b91c1c;
+        font-weight:700;
+      ">
+        Reponer
+      </span>
+    `;
   }
 
   if (status === "Bajo") {
-    return `<span style="padding:4px 8px;border-radius:999px;background:#fef3c7;color:#92400e;font-weight:700;">Bajo</span>`;
+    return `
+      <span style="
+        padding:4px 8px;
+        border-radius:999px;
+        background:#fef3c7;
+        color:#92400e;
+        font-weight:700;
+      ">
+        Bajo
+      </span>
+    `;
   }
 
-  return `<span style="padding:4px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;">OK</span>`;
+  return `
+    <span style="
+      padding:4px 8px;
+      border-radius:999px;
+      background:#dcfce7;
+      color:#166534;
+      font-weight:700;
+    ">
+      OK
+    </span>
+  `;
 }
 
 function renderStockDisplay(row) {
   if (row.unitsPerBox > 1) {
-    return `${row.stockUnits}<br><small>${row.stockBoxes} cajas x ${row.unitsPerBox}</small>`;
+    return `
+      ${row.stockUnits}
+      <br>
+      <small>
+        ${row.stockBoxes} cajas x ${row.unitsPerBox}
+      </small>
+    `;
   }
 
   return `${row.stockUnits}`;
@@ -436,45 +613,147 @@ function renderActions(row) {
     return `<span class="small">Solo lectura</span>`;
   }
 
-  const isAdmin = currentRole === "administrador" || currentRole === "admin";
+  const isAdmin =
+    currentRole === "administrador" ||
+    currentRole === "admin";
 
   return `
-    <button type="button" class="btn-outline" data-action="edit" data-id="${row.id}">
+    <button
+      type="button"
+      class="btn-outline"
+      data-action="edit"
+      data-id="${row.id}"
+    >
       <i class="fas fa-edit"></i> Editar
     </button>
-    <button type="button" class="btn-outline" data-action="delete" data-id="${row.id}" data-name="${escapeHtml(row.name)}" style="margin-left:8px;" ${isAdmin ? "" : "disabled title='Solo administrador puede eliminar productos'"}>
+
+    <button
+      type="button"
+      class="btn-outline"
+      data-action="delete"
+      data-id="${row.id}"
+      data-name="${escapeHtml(row.name)}"
+      style="margin-left:8px;"
+      ${isAdmin
+      ? ""
+      : "disabled title='Solo administrador puede eliminar productos'"}
+    >
       <i class="fas fa-trash"></i> Eliminar
     </button>
   `;
 }
 
 function ensureInventoryDataTable() {
-  if (inventoryDT) return inventoryDT;
-  if (!window.jQuery || !$.fn || !$.fn.DataTable) return null;
+  if (inventoryDT) {
+    return inventoryDT;
+  }
+
+  if (!window.jQuery || !$.fn || !$.fn.DataTable) {
+    return null;
+  }
 
   inventoryDT = $("#inventoryTable").DataTable({
     data: [],
+
     columns: [
-      { data: "name", title: "Nombre", render: (data, type) => type === "display" ? escapeHtml(data) : data },
-      { data: "stockUnits", title: "Stock", render: (data, type, row) => type === "display" ? renderStockDisplay(row) : data },
-      { data: "price", title: "Precio", render: (data, type) => type === "display" ? currency(data) : data },
-      { data: "soldMonthUnits", title: "Vendido Mes (Unid.)", render: (data, type) => type === "display" ? numberOrZero(data) : data },
-      { data: "soldMonthBoxes", title: "Vendido Mes (Cajas)", render: (data, type) => type === "display" ? Math.floor(numberOrZero(data)) : data },
-      { data: "costPerUnit", title: "Costo por unidad", render: (data, type) => type === "display" ? currency(data) : data },
+      {
+        data: "name",
+        title: "Nombre",
+        render: (data, type) =>
+          type === "display"
+            ? escapeHtml(data)
+            : data
+      },
+
+      {
+        data: "stockUnits",
+        title: "Stock",
+        render: (data, type, row) =>
+          type === "display"
+            ? renderStockDisplay(row)
+            : data
+      },
+
+      {
+        data: "price",
+        title: "Precio",
+        render: (data, type) =>
+          type === "display"
+            ? currency(data)
+            : data
+      },
+
+      {
+        data: "soldMonthUnits",
+        title: "Vendido Mes (Unid.)",
+        render: (data, type) =>
+          type === "display"
+            ? numberOrZero(data)
+            : data
+      },
+
+      {
+        data: "soldMonthBoxes",
+        title: "Vendido Mes (Cajas)",
+        render: (data, type) =>
+          type === "display"
+            ? Math.floor(numberOrZero(data))
+            : data
+      },
+
+      {
+        data: "costPerUnit",
+        title: "Costo por unidad",
+        render: (data, type) =>
+          type === "display"
+            ? currency(data)
+            : data
+      },
+
       {
         data: "suggestedPurchaseUnits",
         title: "Sugerido Compra (Unid.)",
         render: (data, type) => {
-          if (type !== "display") return data;
+          if (type !== "display") {
+            return data;
+          }
+
           return data > 0
             ? `<strong style="color:#ef4444;">${data}</strong>`
             : `<strong style="color:#16a34a;">0</strong>`;
         }
       },
-      { data: "suggestedPurchaseBoxes", title: "Sugerido Compra (Cajas)", render: (data, type) => type === "display" ? Math.floor(numberOrZero(data)) : data },
-      { data: "status", title: "Estado", render: (data, type) => type === "display" ? renderStatusChip(data) : data },
-      { data: null, title: "Acciones", orderable: false, searchable: false, render: (data, type, row) => type === "display" ? renderActions(row) : "" }
+
+      {
+        data: "suggestedPurchaseBoxes",
+        title: "Sugerido Compra (Cajas)",
+        render: (data, type) =>
+          type === "display"
+            ? Math.floor(numberOrZero(data))
+            : data
+      },
+
+      {
+        data: "status",
+        title: "Estado",
+        render: (data, type) =>
+          type === "display"
+            ? renderStatusChip(data)
+            : data
+      },
+
+      {
+        data: null,
+        title: "Acciones",
+        orderable: false,
+        searchable: false,
+        render: (data, type, row) =>
+          type === "display"
+            ? renderActions(row)
+            : ""
+      }
     ],
+
     pageLength: 10,
     lengthMenu: [5, 10, 25, 50],
     order: [[0, "asc"]],
@@ -482,13 +761,15 @@ function ensureInventoryDataTable() {
     scrollX: true,
     scrollCollapse: true,
     deferRender: true,
-    dom: "rt<\"bottom\"ip><\"clear\">",
+    dom: 'rt<"bottom"ip><"clear">',
+
     language: {
       emptyTable: "No hay productos registrados.",
       zeroRecords: "No se encontraron coincidencias.",
       info: "Mostrando _START_ a _END_ de _TOTAL_",
       infoEmpty: "No hay registros",
       infoFiltered: "(filtrado de _MAX_ registros)",
+
       paginate: {
         previous: "‹",
         next: "›"
@@ -496,31 +777,51 @@ function ensureInventoryDataTable() {
     }
   });
 
-  $("#inventoryTable tbody").on("click", "button[data-action='edit']", function () {
-    if (!canEditInventory) return;
-    openEditModal(String($(this).data("id")));
-  });
+  $("#inventoryTable tbody").on(
+    "click",
+    "button[data-action='edit']",
+    function () {
+      if (!canEditInventory) return;
 
-  $("#inventoryTable tbody").on("click", "button[data-action='delete']", function () {
-    if (!canEditInventory) return;
-    confirmDeleteProduct(String($(this).data("id")), String($(this).data("name") || ""));
-  });
+      openEditModal(
+        String($(this).data("id"))
+      );
+    }
+  );
+
+  $("#inventoryTable tbody").on(
+    "click",
+    "button[data-action='delete']",
+    function () {
+      if (!canEditInventory) return;
+
+      confirmDeleteProduct(
+        String($(this).data("id")),
+        String($(this).data("name") || "")
+      );
+    }
+  );
 
   return inventoryDT;
 }
 
 function renderInventoryFallback(rows) {
-  if (!inventoryTbody) return;
+  if (!inventoryTbody) {
+    return;
+  }
 
   inventoryTbody.innerHTML = "";
 
   if (!rows.length) {
-    inventoryTbody.innerHTML = "<tr><td colspan='10'>No hay productos registrados.</td></tr>";
+    inventoryTbody.innerHTML =
+      "<tr><td colspan='10'>No hay productos registrados.</td></tr>";
+
     return;
   }
 
   rows.forEach(row => {
     const tr = document.createElement("tr");
+
     tr.innerHTML = `
       <td>${escapeHtml(row.name)}</td>
       <td>${renderStockDisplay(row)}</td>
@@ -528,11 +829,17 @@ function renderInventoryFallback(rows) {
       <td>${numberOrZero(row.soldMonthUnits)}</td>
       <td>${Math.floor(numberOrZero(row.soldMonthBoxes))}</td>
       <td>${currency(row.costPerUnit)}</td>
-      <td>${row.suggestedPurchaseUnits > 0 ? `<strong style="color:#ef4444;">${row.suggestedPurchaseUnits}</strong>` : "<strong style='color:#16a34a;'>0</strong>"}</td>
+      <td>
+        ${row.suggestedPurchaseUnits > 0
+        ? `<strong style="color:#ef4444;">${row.suggestedPurchaseUnits}</strong>`
+        : "<strong style='color:#16a34a;'>0</strong>"
+      }
+      </td>
       <td>${Math.floor(numberOrZero(row.suggestedPurchaseBoxes))}</td>
       <td>${renderStatusChip(row.status)}</td>
       <td>${renderActions(row)}</td>
     `;
+
     inventoryTbody.appendChild(tr);
   });
 }
@@ -540,16 +847,38 @@ function renderInventoryFallback(rows) {
 function refreshInventoryView() {
   const rows = currentProductsList.map(buildRowData);
 
-  const totalValue = rows.reduce((sum, p) => sum + (numberOrZero(p.stockUnits) * numberOrZero(p.price)), 0);
-  const lowStockList = rows.filter(p => p.stockUnits <= LOW_STOCK_THRESHOLD || p.suggestedPurchaseUnits > 0);
+  const totalValue = rows.reduce(
+    (sum, p) =>
+      sum +
+      (
+        numberOrZero(p.stockUnits) *
+        numberOrZero(p.price)
+      ),
+    0
+  );
 
-  if (totalProductsCard) totalProductsCard.textContent = rows.length;
-  if (totalValueCard) totalValueCard.textContent = currency(totalValue);
-  if (lowStockCard) lowStockCard.textContent = lowStockList.length;
+  const lowStockList = rows.filter(
+    p =>
+      p.stockUnits <= LOW_STOCK_THRESHOLD ||
+      p.suggestedPurchaseUnits > 0
+  );
+
+  if (totalProductsCard) {
+    totalProductsCard.textContent = rows.length;
+  }
+
+  if (totalValueCard) {
+    totalValueCard.textContent = currency(totalValue);
+  }
+
+  if (lowStockCard) {
+    lowStockCard.textContent = lowStockList.length;
+  }
 
   renderLowStockPanel(lowStockList);
 
   const dt = ensureInventoryDataTable();
+
   if (dt) {
     dt.clear();
     dt.rows.add(rows);
@@ -564,11 +893,14 @@ function refreshInventoryView() {
 }
 
 function renderLowStockPanel(list) {
-  if (!lowStockPanel) return;
+  if (!lowStockPanel) {
+    return;
+  }
 
   if (!list.length) {
     lowStockPanel.style.display = "none";
     lowStockPanel.innerHTML = "";
+
     return;
   }
 
@@ -577,20 +909,27 @@ function renderLowStockPanel(list) {
 
   list.forEach(p => {
     const div = document.createElement("div");
+
     div.className = "low-stock-item";
 
     const left = document.createElement("div");
-    left.innerHTML = `<strong>${escapeHtml(p.name)}</strong>`;
+
+    left.innerHTML = `
+      <strong>${escapeHtml(p.name)}</strong>
+    `;
 
     const right = document.createElement("div");
+
     right.textContent =
       `Stock: ${p.stockUnits} unid. | ` +
       `Cajas: ${p.stockBoxes} | ` +
       `Vendido mes: ${p.soldMonthUnits} unid. | ` +
-      `Sugerido compra: ${p.suggestedPurchaseUnits} unid. (${p.suggestedPurchaseBoxes} cajas)`;
+      `Sugerido compra: ${p.suggestedPurchaseUnits} unid. ` +
+      `(${p.suggestedPurchaseBoxes} cajas)`;
 
     div.appendChild(left);
     div.appendChild(right);
+
     lowStockPanel.appendChild(div);
   });
 }
@@ -614,87 +953,420 @@ function startRealtimeListeners() {
 
   salesUnsub = db.collection("ventas")
     .where("createdAt", ">=", monthStart)
-    .onSnapshot(snapshot => {
-      const { unitsMap, boxesMap } = aggregateMonthlySales(snapshot);
-      currentMonthlySalesMap = unitsMap;
-      currentMonthlyBoxesMap = boxesMap;
-      refreshInventoryView();
-    }, err => {
-      console.error("Error cargando ventas del mes:", err);
-      currentMonthlySalesMap = {};
-      currentMonthlyBoxesMap = {};
-      refreshInventoryView();
-    });
+    .onSnapshot(
+      snapshot => {
+        const {
+          unitsMap,
+          boxesMap
+        } = aggregateMonthlySales(snapshot);
+
+        currentMonthlySalesMap = unitsMap;
+        currentMonthlyBoxesMap = boxesMap;
+
+        refreshInventoryView();
+      },
+      err => {
+        console.error(
+          "Error cargando ventas del mes:",
+          err
+        );
+
+        currentMonthlySalesMap = {};
+        currentMonthlyBoxesMap = {};
+
+        refreshInventoryView();
+      }
+    );
 
   productsUnsub = db.collection("productos")
     .orderBy("name")
-    .onSnapshot(snapshot => {
-      const products = [];
+    .onSnapshot(
+      snapshot => {
+        const products = [];
 
-      snapshot.forEach(doc => {
-        const p = doc.data() || {};
-        if (!matchesCurrentLocal(p)) return;
+        snapshot.forEach(doc => {
+          const p = doc.data() || {};
 
-        const currentStockUnits =
-          Number.isFinite(Number(p.stockCurrentUnits)) ? Math.max(0, numberOrZero(p.stockCurrentUnits)) :
-            Number.isFinite(Number(p.quantity)) ? Math.max(0, numberOrZero(p.quantity)) :
-              Number.isFinite(Number(p.stockBaseUnits)) ? Math.max(0, numberOrZero(p.stockBaseUnits)) :
-                0;
+          if (!matchesCurrentLocal(p)) {
+            return;
+          }
 
-        products.push({
-          id: doc.id,
-          ...p,
-          id_local: p.id_local || currentLocalId,
-          localNombre: p.localNombre || currentLocalInfo.nombre || "",
-          localNumeroDocumento: p.localNumeroDocumento || currentLocalInfo.numeroDocumento || "",
-          localUbicacion: p.localUbicacion || currentLocalInfo.ubicacion || "",
-          codigoProducto: getProductCode(p),
-          quantity: currentStockUnits,
-          stockCurrentUnits: currentStockUnits,
-          stockBaseUnits: numberOrZero(p.stockBaseUnits),
-          boxes: numberOrZero(p.boxes),
-          unitsPerBox: numberOrZero(p.unitsPerBox) > 0 ? numberOrZero(p.unitsPerBox) : 1
+          const currentStockUnits =
+            Number.isFinite(
+              Number(p.stockCurrentUnits)
+            )
+              ? Math.max(
+                0,
+                numberOrZero(p.stockCurrentUnits)
+              )
+              : Number.isFinite(
+                Number(p.quantity)
+              )
+                ? Math.max(
+                  0,
+                  numberOrZero(p.quantity)
+                )
+                : Number.isFinite(
+                  Number(p.stockBaseUnits)
+                )
+                  ? Math.max(
+                    0,
+                    numberOrZero(p.stockBaseUnits)
+                  )
+                  : 0;
+
+          products.push({
+            id: doc.id,
+            ...p,
+
+            id_local:
+              p.id_local ||
+              currentLocalId,
+
+            localNombre:
+              p.localNombre ||
+              currentLocalInfo.nombre ||
+              "",
+
+            localNumeroDocumento:
+              p.localNumeroDocumento ||
+              currentLocalInfo.numeroDocumento ||
+              "",
+
+            localUbicacion:
+              p.localUbicacion ||
+              currentLocalInfo.ubicacion ||
+              "",
+
+            codigoProducto:
+              getProductCode(p),
+
+            quantity:
+              currentStockUnits,
+
+            stockCurrentUnits:
+              currentStockUnits,
+
+            stockBaseUnits:
+              numberOrZero(p.stockBaseUnits),
+
+            boxes:
+              numberOrZero(p.boxes),
+
+            unitsPerBox:
+              numberOrZero(p.unitsPerBox) > 0
+                ? numberOrZero(p.unitsPerBox)
+                : 1
+          });
         });
-      });
 
-      currentProductsList = products;
-      refreshInventoryView();
-    }, err => {
-      console.error("Error cargando inventario:", err);
-      currentProductsList = [];
-      refreshInventoryView();
-    });
+        currentProductsList = products;
+
+        refreshInventoryView();
+      },
+      err => {
+        console.error(
+          "Error cargando inventario:",
+          err
+        );
+
+        currentProductsList = [];
+
+        refreshInventoryView();
+      }
+    );
 }
 
 function findProductByName(name) {
-  if (!name) return null;
-  const lower = String(name).trim().toLowerCase();
+  if (!name) {
+    return null;
+  }
+
+  const lower =
+    String(name)
+      .trim()
+      .toLowerCase();
+
   return currentProductsList.find(p => {
-    const n = String(p.name || "").trim().toLowerCase();
-    const c = String(getProductCode(p) || "").trim().toLowerCase();
-    const id = String(p.id || "").trim().toLowerCase();
-    return n === lower || c === lower || id === lower;
+    const n =
+      String(p.name || "")
+        .trim()
+        .toLowerCase();
+
+    const c =
+      String(getProductCode(p) || "")
+        .trim()
+        .toLowerCase();
+
+    const id =
+      String(p.id || "")
+        .trim()
+        .toLowerCase();
+
+    return (
+      n === lower ||
+      c === lower ||
+      id === lower
+    );
   }) || null;
 }
 
 function findProductById(id) {
-  return currentProductsList.find(p => String(p.id) === String(id)) || null;
+  return currentProductsList.find(
+    p => String(p.id) === String(id)
+  ) || null;
+}
+
+/* =======================
+   REFERENCIAS DE LIBRO
+   ======================= */
+
+/*
+ * Obtiene todos los movimientos registrados para un producto.
+ *
+ * No se utiliza orderBy("createdAt") en la consulta para evitar
+ * exigir un índice compuesto de Firestore.
+ *
+ * El orden se realiza posteriormente en JavaScript.
+ */
+async function loadProductStockMovements(productId) {
+  const targetId = String(productId || "").trim();
+
+  if (!targetId) {
+    return [];
+  }
+
+  try {
+    const snapshot = await db
+      .collection("stock_movimientos")
+      .where("productId", "==", targetId)
+      .get();
+
+    const movements = [];
+
+    snapshot.forEach(doc => {
+      const data = doc.data() || {};
+
+      /*
+       * El movimiento debe pertenecer al local actual.
+       * Si por alguna razón un movimiento antiguo no tiene
+       * id_local, no se descarta cuando el producto sí es del
+       * local actual; esto permite recuperar registros antiguos.
+       */
+      const movementLocal = getLocalFieldValue(data);
+
+      if (
+        movementLocal &&
+        currentLocalId &&
+        movementLocal !== String(currentLocalId).trim()
+      ) {
+        return;
+      }
+
+      const referencia =
+        String(
+          data.referenciaLibro ||
+          data.referenceBook ||
+          data.bookReference ||
+          ""
+        ).trim();
+
+      const numeroDocumento =
+        String(
+          data.numeroDocumento ||
+          data.documentNumber ||
+          data.numero_documento ||
+          ""
+        ).trim();
+
+      /*
+       * Solo interesan registros que realmente tengan
+       * referencia o número de documento.
+       */
+      if (!referencia && !numeroDocumento) {
+        return;
+      }
+
+      let createdAtMs = 0;
+
+      if (
+        data.createdAt &&
+        typeof data.createdAt.toMillis === "function"
+      ) {
+        createdAtMs = data.createdAt.toMillis();
+      } else if (
+        data.createdAt instanceof Date
+      ) {
+        createdAtMs = data.createdAt.getTime();
+      } else if (
+        data.createdAt &&
+        typeof data.createdAt.seconds === "number"
+      ) {
+        createdAtMs =
+          data.createdAt.seconds * 1000;
+      }
+
+      movements.push({
+        id: doc.id,
+        referenciaLibro: referencia,
+        numeroDocumento,
+        tipoMovimiento:
+          String(
+            data.tipoMovimiento ||
+            ""
+          ).trim(),
+        detalle:
+          String(
+            data.detalle ||
+            ""
+          ).trim(),
+        entrada:
+          numberOrZero(data.entrada),
+        salida:
+          numberOrZero(data.salida),
+        saldoAnterior:
+          numberOrZero(data.saldoAnterior),
+        saldoActual:
+          numberOrZero(data.saldoActual),
+        createdAtMs
+      });
+    });
+
+    /*
+     * Más reciente primero.
+     */
+    movements.sort(
+      (a, b) =>
+        numberOrZero(b.createdAtMs) -
+        numberOrZero(a.createdAtMs)
+    );
+
+    return movements;
+  } catch (err) {
+    console.error(
+      "Error cargando referencias de libro:",
+      err
+    );
+
+    return [];
+  }
+}
+
+/*
+ * Elimina referencias duplicadas conservando la más reciente.
+ */
+function getUniqueBookReferences(movements = []) {
+  const seen = new Set();
+  const unique = [];
+
+  movements.forEach(movement => {
+    const key = [
+      String(
+        movement.referenciaLibro || ""
+      ).trim().toLowerCase(),
+
+      String(
+        movement.numeroDocumento || ""
+      ).trim().toLowerCase()
+    ].join("|");
+
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    unique.push(movement);
+  });
+
+  return unique;
+}
+
+/*
+ * Construye el selector de referencias existentes.
+ */
+function buildBookReferenceOptions(
+  movements = [],
+  selectedReference = "",
+  selectedDocument = ""
+) {
+  const unique =
+    getUniqueBookReferences(movements);
+
+  const options = [
+    `<option value="">Escribir nueva referencia</option>`
+  ];
+
+  unique.forEach((movement, index) => {
+    const reference =
+      movement.referenciaLibro || "";
+
+    const document =
+      movement.numeroDocumento || "";
+
+    const labelParts = [];
+
+    if (reference) {
+      labelParts.push(reference);
+    }
+
+    if (document) {
+      labelParts.push(
+        `Documento: ${document}`
+      );
+    }
+
+    if (movement.tipoMovimiento) {
+      labelParts.push(
+        `Movimiento: ${movement.tipoMovimiento}`
+      );
+    }
+
+    const value = String(index);
+
+    const isSelected =
+      reference === selectedReference &&
+      document === selectedDocument;
+
+    options.push(`
+      <option
+        value="${escapeHtml(value)}"
+        ${isSelected ? "selected" : ""}
+      >
+        ${escapeHtml(labelParts.join(" — "))}
+      </option>
+    `);
+  });
+
+  return options.join("");
 }
 
 /* =======================
    Modal moderno para agregar / reponer
    ======================= */
-function buildExistingProductOptions(selectedValue = "") {
-  const options = [`<option value="">Selecciona un producto</option>`];
+
+function buildExistingProductOptions(
+  selectedValue = ""
+) {
+  const options = [
+    `<option value="">Selecciona un producto</option>`
+  ];
 
   currentProductsList.forEach(p => {
     const code = getProductCode(p);
+
     options.push(
-      `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}${code ? ` — ${escapeHtml(code)}` : ""}</option>`
+      `<option value="${escapeHtml(p.name)}">
+        ${escapeHtml(p.name)}
+        ${code ? ` — ${escapeHtml(code)}` : ""}
+      </option>`
     );
+
     if (code) {
       options.push(
-        `<option value="${escapeHtml(code)}">${escapeHtml(code)}${p.name ? ` — ${escapeHtml(p.name)}` : ""}</option>`
+        `<option value="${escapeHtml(code)}">
+          ${escapeHtml(code)}
+          ${p.name ? ` — ${escapeHtml(p.name)}` : ""}
+        </option>`
       );
     }
   });
@@ -703,168 +1375,438 @@ function buildExistingProductOptions(selectedValue = "") {
 }
 
 function buildStockFormHtml(initial = {}) {
-  const hasProducts = currentProductsList.length > 0;
-  const defaultMode = initial.mode || (hasProducts ? "existing" : "new");
-  const selectedProduct = initial.productName ? findProductByName(initial.productName) : null;
-  const selectedUnitsPerBox = selectedProduct ? getUnitsPerBox(selectedProduct) : 1;
-  const selectedCode = selectedProduct ? getProductCode(selectedProduct) : "";
+  const hasProducts =
+    currentProductsList.length > 0;
 
-  const productOptions = buildExistingProductOptions();
+  const defaultMode =
+    initial.mode ||
+    (hasProducts ? "existing" : "new");
+
+  const selectedProduct =
+    initial.productName
+      ? findProductByName(initial.productName)
+      : null;
+
+  const selectedUnitsPerBox =
+    selectedProduct
+      ? getUnitsPerBox(selectedProduct)
+      : 1;
+
+  const selectedCode =
+    selectedProduct
+      ? getProductCode(selectedProduct)
+      : "";
+
+  const productOptions =
+    buildExistingProductOptions();
 
   return `
     <div class="inv-modal">
       <div class="inv-modal-grid">
+
         <div class="inv-field full">
-          <label for="p-mode">Tipo de registro</label>
+          <label for="p-mode">
+            Tipo de registro
+          </label>
+
           <select id="p-mode">
-            <option value="new" ${defaultMode === "new" ? "selected" : ""}>Nuevo producto</option>
-            <option value="existing" ${defaultMode === "existing" ? "selected" : ""}>Agregar a producto existente</option>
+            <option
+              value="new"
+              ${defaultMode === "new" ? "selected" : ""}
+            >
+              Nuevo producto
+            </option>
+
+            <option
+              value="existing"
+              ${defaultMode === "existing" ? "selected" : ""}
+            >
+              Agregar a producto existente
+            </option>
           </select>
         </div>
 
-        <div class="inv-field full" id="existingGroup">
-          <label for="p-existing">Producto existente</label>
+        <div
+          class="inv-field full"
+          id="existingGroup"
+        >
+          <label for="p-existing">
+            Producto existente
+          </label>
+
           <input
             id="p-existing"
             type="text"
             list="productList"
             placeholder="Escribe para buscar un producto o su código..."
-            value="${escapeHtml(initial.productName || initial.codigoProducto || "")}"
+            value="${escapeHtml(
+    initial.productName ||
+    initial.codigoProducto ||
+    ""
+  )}"
             autocomplete="off"
           >
+
           <datalist id="productList">
             ${productOptions}
           </datalist>
         </div>
 
-        <div class="inv-field full" id="nameGroup">
-          <label for="p-name">Nombre del producto</label>
-          <input id="p-name" type="text" placeholder="Ej. Aceite 1L" value="${escapeHtml(initial.name || "")}">
+        <div
+          class="inv-field full"
+          id="nameGroup"
+        >
+          <label for="p-name">
+            Nombre del producto
+          </label>
+
+          <input
+            id="p-name"
+            type="text"
+            placeholder="Ej. Aceite 1L"
+            value="${escapeHtml(
+    initial.name || ""
+  )}"
+          >
         </div>
 
         <div class="inv-field full">
-          <label for="p-code">Código del producto</label>
+          <label for="p-code">
+            Código del producto
+          </label>
+
           <input
             id="p-code"
             type="text"
             placeholder="Ej. ACE-001"
-            value="${escapeHtml(initial.codigoProducto || selectedCode || "")}"
+            value="${escapeHtml(
+    initial.codigoProducto ||
+    selectedCode ||
+    ""
+  )}"
           >
         </div>
 
         <div class="inv-field full">
-          <label for="p-ref">Referencia a libro</label>
+          <label for="p-ref">
+            Referencia a libro
+          </label>
+
           <input
             id="p-ref"
             type="text"
             placeholder="Ej. Compra, Ajuste, Inventario inicial"
-            value="${escapeHtml(initial.referenciaLibro || "")}"
+            value="${escapeHtml(
+    initial.referenciaLibro || ""
+  )}"
           >
         </div>
 
         <div class="inv-field full">
-          <label for="p-doc">Número de documento</label>
+          <label for="p-doc">
+            Número de documento
+          </label>
+
           <input
             id="p-doc"
             type="text"
             placeholder="FAC-00125 / AJ-00001 / INV-00001"
-            value="${escapeHtml(initial.numeroDocumento || "")}"
+            value="${escapeHtml(
+    initial.numeroDocumento || ""
+  )}"
           >
         </div>
 
-        <div class="inv-helper" id="p-hint">
-          Cuando seleccionas un producto existente, el sistema suma las cajas y unidades sueltas al stock actual.
+        <div
+          class="inv-helper"
+          id="p-hint"
+        >
+          Cuando seleccionas un producto existente,
+          el sistema suma las cajas y unidades sueltas
+          al stock actual.
         </div>
 
         <div class="inv-field">
-          <label for="p-boxes">Cajas a agregar</label>
-          <input id="p-boxes" type="number" min="0" step="1" value="${Math.max(0, numberOrZero(initial.boxes))}">
+          <label for="p-boxes">
+            Cajas a agregar
+          </label>
+
+          <input
+            id="p-boxes"
+            type="number"
+            min="0"
+            step="1"
+            value="${Math.max(
+    0,
+    numberOrZero(initial.boxes)
+  )}"
+          >
         </div>
 
         <div class="inv-field">
-          <label for="p-upb">Unidades por caja</label>
-          <input id="p-upb" type="number" min="1" step="1" value="${Math.max(1, numberOrZero(initial.unitsPerBox || selectedUnitsPerBox || 1))}">
+          <label for="p-upb">
+            Unidades por caja
+          </label>
+
+          <input
+            id="p-upb"
+            type="number"
+            min="1"
+            step="1"
+            value="${Math.max(
+    1,
+    numberOrZero(
+      initial.unitsPerBox ||
+      selectedUnitsPerBox ||
+      1
+    )
+  )}"
+          >
         </div>
 
         <div class="inv-field">
-          <label for="p-extra">Unidades sueltas</label>
-          <input id="p-extra" type="number" min="0" step="1" value="${Math.max(0, numberOrZero(initial.extraUnits))}">
+          <label for="p-extra">
+            Unidades sueltas
+          </label>
+
+          <input
+            id="p-extra"
+            type="number"
+            min="0"
+            step="1"
+            value="${Math.max(
+    0,
+    numberOrZero(initial.extraUnits)
+  )}"
+          >
         </div>
 
         <div class="inv-field">
-          <label for="p-costbox">Costo por caja</label>
-          <input id="p-costbox" type="number" min="0" step="0.01" value="${Math.max(0, numberOrZero(initial.lastCostPerBox))}">
+          <label for="p-costbox">
+            Costo por caja
+          </label>
+
+          <input
+            id="p-costbox"
+            type="number"
+            min="0"
+            step="0.01"
+            value="${Math.max(
+    0,
+    numberOrZero(
+      initial.lastCostPerBox
+    )
+  )}"
+          >
         </div>
 
         <div class="inv-field">
-          <label for="p-price">Precio de venta</label>
-          <input id="p-price" type="number" min="0" step="0.01" value="${Math.max(0, numberOrZero(initial.price))}">
+          <label for="p-price">
+            Precio de venta
+          </label>
+
+          <input
+            id="p-price"
+            type="number"
+            min="0"
+            step="0.01"
+            value="${Math.max(
+    0,
+    numberOrZero(initial.price)
+  )}"
+          >
         </div>
 
         <div class="inv-mini-summary">
+
           <div class="inv-mini-card">
             <span>Unidades a sumar</span>
             <strong id="p-total-units">0</strong>
           </div>
+
           <div class="inv-mini-card">
             <span>Cajas a sumar</span>
             <strong id="p-total-boxes">0</strong>
           </div>
+
           <div class="inv-mini-card">
             <span>Modo activo</span>
-            <strong id="p-mode-label">Nuevo</strong>
+            <strong id="p-mode-label">
+              Nuevo
+            </strong>
           </div>
+
         </div>
+
       </div>
     </div>
   `;
 }
 
 function syncStockModalState() {
-  const modeEl = document.getElementById("p-mode");
-  const existingGroup = document.getElementById("existingGroup");
-  const nameGroup = document.getElementById("nameGroup");
-  const existingEl = document.getElementById("p-existing");
-  const nameEl = document.getElementById("p-name");
-  const codeEl = document.getElementById("p-code");
-  const refEl = document.getElementById("p-ref");
-  const upbEl = document.getElementById("p-upb");
-  const hintEl = document.getElementById("p-hint");
-  const modeLabel = document.getElementById("p-mode-label");
-  const totalUnitsEl = document.getElementById("p-total-units");
-  const totalBoxesEl = document.getElementById("p-total-boxes");
+  const modeEl =
+    document.getElementById("p-mode");
 
-  if (!modeEl || !existingGroup || !nameGroup || !existingEl || !nameEl || !codeEl || !refEl || !upbEl || !hintEl || !modeLabel || !totalUnitsEl || !totalBoxesEl) {
+  const existingGroup =
+    document.getElementById("existingGroup");
+
+  const nameGroup =
+    document.getElementById("nameGroup");
+
+  const existingEl =
+    document.getElementById("p-existing");
+
+  const nameEl =
+    document.getElementById("p-name");
+
+  const codeEl =
+    document.getElementById("p-code");
+
+  const refEl =
+    document.getElementById("p-ref");
+
+  const upbEl =
+    document.getElementById("p-upb");
+
+  const costBoxEl =
+    document.getElementById("p-costbox");
+
+  const priceEl =
+    document.getElementById("p-price");
+
+  const hintEl =
+    document.getElementById("p-hint");
+
+  const modeLabel =
+    document.getElementById("p-mode-label");
+
+  const totalUnitsEl =
+    document.getElementById("p-total-units");
+
+  const totalBoxesEl =
+    document.getElementById("p-total-boxes");
+
+  if (
+    !modeEl ||
+    !existingGroup ||
+    !nameGroup ||
+    !existingEl ||
+    !nameEl ||
+    !codeEl ||
+    !refEl ||
+    !upbEl ||
+    !costBoxEl ||
+    !priceEl ||
+    !hintEl ||
+    !modeLabel ||
+    !totalUnitsEl ||
+    !totalBoxesEl
+  ) {
     return;
   }
 
   const refreshPreview = () => {
-    const boxes = Math.max(0, numberOrZero(document.getElementById("p-boxes")?.value));
-    const upb = Math.max(1, numberOrZero(document.getElementById("p-upb")?.value));
-    const extra = Math.max(0, numberOrZero(document.getElementById("p-extra")?.value));
-    const totalUnits = (boxes * upb) + extra;
+    const boxes = Math.max(
+      0,
+      numberOrZero(
+        document.getElementById("p-boxes")?.value
+      )
+    );
 
-    totalUnitsEl.textContent = String(totalUnits);
-    totalBoxesEl.textContent = String(boxes);
+    const upb = Math.max(
+      1,
+      numberOrZero(
+        document.getElementById("p-upb")?.value
+      )
+    );
+
+    const extra = Math.max(
+      0,
+      numberOrZero(
+        document.getElementById("p-extra")?.value
+      )
+    );
+
+    const totalUnits =
+      boxes * upb + extra;
+
+    totalUnitsEl.textContent =
+      String(totalUnits);
+
+    totalBoxesEl.textContent =
+      String(boxes);
+  };
+
+  const clearExistingProductFields = () => {
+    nameEl.value = "";
+    codeEl.value = "";
+    costBoxEl.value = "0";
+    priceEl.value = "0";
   };
 
   const applyExistingProduct = () => {
-    const typed = String(existingEl.value || "").trim();
-    const product = findProductByName(typed);
+    const typed =
+      String(existingEl.value || "").trim();
+
+    const product =
+      findProductByName(typed);
 
     if (!product) {
       upbEl.disabled = false;
-      hintEl.textContent = "Escribe el nombre o el código exacto del producto, o selecciónalo de las sugerencias.";
+
+      hintEl.textContent =
+        "Escribe el nombre o el código exacto del producto, o selecciónalo de las sugerencias.";
+
       return;
     }
 
-    nameEl.value = product.name || "";
-    codeEl.value = getProductCode(product) || codeEl.value || "";
-    upbEl.value = getUnitsPerBox(product);
+    const unitsPerBox =
+      getUnitsPerBox(product);
+
+    const costPerBox =
+      numberOrZero(
+        product.lastCostPerBox
+      );
+
+    const price =
+      numberOrZero(product.price);
+
+    nameEl.value =
+      product.name || "";
+
+    codeEl.value =
+      getProductCode(product) || "";
+
+    upbEl.value =
+      unitsPerBox;
+
     upbEl.disabled = true;
+
+    costBoxEl.value =
+      costPerBox.toFixed(2);
+
+    priceEl.value =
+      price.toFixed(2);
+
     hintEl.innerHTML = `
-      Producto encontrado: <strong>${escapeHtml(product.name || "")}</strong>.
-      El sistema usará <strong>${getUnitsPerBox(product)}</strong> unidades por caja.
+      Producto encontrado:
+      <strong>
+        ${escapeHtml(product.name || "")}
+      </strong>.
+
+      El sistema usará
+      <strong>${unitsPerBox}</strong>
+      unidades por caja.
+
+      <br>
+
+      Costo por caja registrado:
+      <strong>${currency(costPerBox)}</strong>
+
+      <br>
+
+      Precio de venta registrado:
+      <strong>${currency(price)}</strong>
     `;
   };
 
@@ -874,31 +1816,75 @@ function syncStockModalState() {
     if (mode === "existing") {
       existingGroup.style.display = "flex";
       nameGroup.style.display = "none";
-      modeLabel.textContent = "Reposición";
+
+      modeLabel.textContent =
+        "Reposición";
+
       applyExistingProduct();
+
     } else {
       existingGroup.style.display = "none";
       nameGroup.style.display = "flex";
-      modeLabel.textContent = "Nuevo";
+
+      modeLabel.textContent =
+        "Nuevo";
+
       upbEl.disabled = false;
-      hintEl.textContent = "Completa los datos del producto nuevo y su cantidad inicial.";
+
+      if (!existingEl.value.trim()) {
+        costBoxEl.value = "0";
+        priceEl.value = "0";
+      }
+
+      hintEl.textContent =
+        "Completa los datos del producto nuevo y su cantidad inicial.";
     }
 
     refreshPreview();
   };
 
-  modeEl.addEventListener("change", applyMode);
-  existingEl.addEventListener("input", () => {
-    if (modeEl.value === "existing") {
+  modeEl.addEventListener(
+    "change",
+    applyMode
+  );
+
+  existingEl.addEventListener(
+    "input",
+    () => {
+      if (modeEl.value !== "existing") {
+        return;
+      }
+
       applyExistingProduct();
       refreshPreview();
     }
-  });
+  );
 
-  ["p-boxes", "p-upb", "p-extra"].forEach(id => {
-    const el = document.getElementById(id);
+  existingEl.addEventListener(
+    "change",
+    () => {
+      if (modeEl.value !== "existing") {
+        return;
+      }
+
+      applyExistingProduct();
+      refreshPreview();
+    }
+  );
+
+  [
+    "p-boxes",
+    "p-upb",
+    "p-extra"
+  ].forEach(id => {
+    const el =
+      document.getElementById(id);
+
     if (el) {
-      el.addEventListener("input", refreshPreview);
+      el.addEventListener(
+        "input",
+        refreshPreview
+      );
     }
   });
 
@@ -907,18 +1893,82 @@ function syncStockModalState() {
 }
 
 function readStockFormValues() {
-  const mode = document.getElementById("p-mode").value;
-  const existingName = document.getElementById("p-existing") ? document.getElementById("p-existing").value.trim() : "";
-  const name = document.getElementById("p-name") ? document.getElementById("p-name").value.trim() : "";
-  const codigoProducto = document.getElementById("p-code") ? document.getElementById("p-code").value.trim() : "";
-  const referenciaLibro = document.getElementById("p-ref") ? document.getElementById("p-ref").value.trim() : "";
-  const numeroDocumento = document.getElementById("p-doc") ? document.getElementById("p-doc").value.trim() : "";
-  const boxes = Math.max(0, numberOrZero(document.getElementById("p-boxes").value));
-  const unitsPerBox = Math.max(1, numberOrZero(document.getElementById("p-upb").value));
-  const extraUnits = Math.max(0, numberOrZero(document.getElementById("p-extra").value));
-  const lastCostPerBox = Math.max(0, numberOrZero(document.getElementById("p-costbox").value));
-  const price = Math.max(0, numberOrZero(document.getElementById("p-price").value));
-  const quantity = (boxes * unitsPerBox) + extraUnits;
+  const mode =
+    document.getElementById("p-mode").value;
+
+  const existingName =
+    document.getElementById("p-existing")
+      ? document.getElementById("p-existing")
+        .value
+        .trim()
+      : "";
+
+  const name =
+    document.getElementById("p-name")
+      ? document.getElementById("p-name")
+        .value
+        .trim()
+      : "";
+
+  const codigoProducto =
+    document.getElementById("p-code")
+      ? document.getElementById("p-code")
+        .value
+        .trim()
+      : "";
+
+  const referenciaLibro =
+    document.getElementById("p-ref")
+      ? document.getElementById("p-ref")
+        .value
+        .trim()
+      : "";
+
+  const numeroDocumento =
+    document.getElementById("p-doc")
+      ? document.getElementById("p-doc")
+        .value
+        .trim()
+      : "";
+
+  const boxes = Math.max(
+    0,
+    numberOrZero(
+      document.getElementById("p-boxes").value
+    )
+  );
+
+  const unitsPerBox = Math.max(
+    1,
+    numberOrZero(
+      document.getElementById("p-upb").value
+    )
+  );
+
+  const extraUnits = Math.max(
+    0,
+    numberOrZero(
+      document.getElementById("p-extra").value
+    )
+  );
+
+  const lastCostPerBox = Math.max(
+    0,
+    numberOrZero(
+      document.getElementById("p-costbox").value
+    )
+  );
+
+  const price = Math.max(
+    0,
+    numberOrZero(
+      document.getElementById("p-price").value
+    )
+  );
+
+  const quantity =
+    boxes * unitsPerBox +
+    extraUnits;
 
   return {
     mode,
@@ -950,206 +2000,449 @@ async function registrarMovimientoStock({
   detalle = ""
 }) {
   try {
-    const user = auth.currentUser || null;
-    const stored = getStoredCurrentUser();
-    const userName = (stored && stored.name) ? stored.name : (user ? user.email : "");
+    const user =
+      auth.currentUser || null;
 
-    await db.collection("stock_movimientos").add({
-      productId,
-      productName,
-      codigoProducto,
-      productCode: codigoProducto,
-      tipoMovimiento,
-      referenciaLibro,
-      referenceBook: referenciaLibro,
-      bookReference: referenciaLibro,
-      numeroDocumento,
-      entrada: numberOrZero(entrada),
-      salida: numberOrZero(salida),
-      saldoAnterior: numberOrZero(saldoAnterior),
-      saldoActual: numberOrZero(saldoActual),
-      detalle,
-      id_local: currentLocalId || null,
-      localNombre: currentLocalInfo.nombre || "",
-      localNumeroDocumento: currentLocalInfo.numeroDocumento || "",
-      localUbicacion: currentLocalInfo.ubicacion || "",
-      userId: user ? user.uid : null,
-      userName,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    const stored =
+      getStoredCurrentUser();
+
+    const userName =
+      stored && stored.name
+        ? stored.name
+        : user
+          ? user.email
+          : "";
+
+    await db
+      .collection("stock_movimientos")
+      .add({
+        productId,
+        productName,
+        codigoProducto,
+        productCode: codigoProducto,
+
+        tipoMovimiento,
+
+        referenciaLibro,
+        referenceBook: referenciaLibro,
+        bookReference: referenciaLibro,
+
+        numeroDocumento,
+
+        entrada:
+          numberOrZero(entrada),
+
+        salida:
+          numberOrZero(salida),
+
+        saldoAnterior:
+          numberOrZero(saldoAnterior),
+
+        saldoActual:
+          numberOrZero(saldoActual),
+
+        detalle,
+
+        id_local:
+          currentLocalId || null,
+
+        localNombre:
+          currentLocalInfo.nombre || "",
+
+        localNumeroDocumento:
+          currentLocalInfo.numeroDocumento || "",
+
+        localUbicacion:
+          currentLocalInfo.ubicacion || "",
+
+        userId:
+          user ? user.uid : null,
+
+        userName,
+
+        createdAt:
+          firebase.firestore.FieldValue.serverTimestamp()
+      });
   } catch (err) {
-    console.error("Error registrando movimiento de stock:", err);
+    console.error(
+      "Error registrando movimiento de stock:",
+      err
+    );
   }
 }
 
 async function createNewProduct(values) {
-  const ref = await db.collection("productos").add({
-    name: values.name,
-    codigoProducto: values.codigoProducto || "",
-    productCode: values.codigoProducto || "",
-    quantity: values.quantity,
-    stockCurrentUnits: values.quantity,
-    stockBaseUnits: values.quantity,
-    boxes: Math.floor(values.quantity / Math.max(1, values.unitsPerBox)),
-    unitsPerBox: values.unitsPerBox,
-    lastCostPerBox: values.lastCostPerBox,
-    lastCostPerUnit: values.unitsPerBox > 0 ? (values.lastCostPerBox / values.unitsPerBox) : 0,
-    price: values.price,
-    id_local: currentLocalId || null,
-    localNombre: currentLocalInfo.nombre || "",
-    localNumeroDocumento: currentLocalInfo.numeroDocumento || "",
-    localUbicacion: currentLocalInfo.ubicacion || "",
-    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
+  const ref =
+    await db.collection("productos").add({
+      name: values.name,
+
+      codigoProducto:
+        values.codigoProducto || "",
+
+      productCode:
+        values.codigoProducto || "",
+
+      quantity:
+        values.quantity,
+
+      stockCurrentUnits:
+        values.quantity,
+
+      stockBaseUnits:
+        values.quantity,
+
+      boxes:
+        Math.floor(
+          values.quantity /
+          Math.max(
+            1,
+            values.unitsPerBox
+          )
+        ),
+
+      unitsPerBox:
+        values.unitsPerBox,
+
+      lastCostPerBox:
+        values.lastCostPerBox,
+
+      lastCostPerUnit:
+        values.unitsPerBox > 0
+          ? values.lastCostPerBox /
+          values.unitsPerBox
+          : 0,
+
+      price:
+        values.price,
+
+      id_local:
+        currentLocalId || null,
+
+      localNombre:
+        currentLocalInfo.nombre || "",
+
+      localNumeroDocumento:
+        currentLocalInfo.numeroDocumento || "",
+
+      localUbicacion:
+        currentLocalInfo.ubicacion || "",
+
+      createdAt:
+        firebase.firestore.FieldValue.serverTimestamp(),
+
+      updatedAt:
+        firebase.firestore.FieldValue.serverTimestamp()
+    });
 
   await registrarMovimientoStock({
     productId: ref.id,
-    productName: values.name,
-    codigoProducto: values.codigoProducto || "",
-    tipoMovimiento: "entrada",
-    referenciaLibro: values.referenciaLibro || "Inventario inicial",
-    numeroDocumento: values.numeroDocumento || ref.id,
-    entrada: values.quantity,
-    salida: 0,
-    saldoAnterior: 0,
-    saldoActual: values.quantity,
-    detalle: "Alta inicial de producto"
+
+    productName:
+      values.name,
+
+    codigoProducto:
+      values.codigoProducto || "",
+
+    tipoMovimiento:
+      "entrada",
+
+    referenciaLibro:
+      values.referenciaLibro ||
+      "Inventario inicial",
+
+    numeroDocumento:
+      values.numeroDocumento ||
+      ref.id,
+
+    entrada:
+      values.quantity,
+
+    salida:
+      0,
+
+    saldoAnterior:
+      0,
+
+    saldoActual:
+      values.quantity,
+
+    detalle:
+      "Alta inicial de producto"
   });
 }
 
-async function addToExistingProduct(product, values) {
-  const currentUnitsPerBox = getUnitsPerBox(product);
-  const unitsAdded = (Math.max(0, values.boxes) * currentUnitsPerBox) + Math.max(0, values.extraUnits);
+async function addToExistingProduct(
+  product,
+  values
+) {
+  const currentUnitsPerBox =
+    getUnitsPerBox(product);
+
+  const unitsAdded =
+    Math.max(
+      0,
+      values.boxes
+    ) * currentUnitsPerBox +
+    Math.max(
+      0,
+      values.extraUnits
+    );
 
   if (unitsAdded <= 0) {
-    throw new Error("La cantidad a agregar debe ser mayor que cero.");
+    throw new Error(
+      "La cantidad a agregar debe ser mayor que cero."
+    );
   }
 
-  const productRef = db.collection("productos").doc(product.id);
+  const productRef =
+    db.collection("productos")
+      .doc(product.id);
 
   let saldoAnterior = 0;
   let saldoActual = 0;
 
-  await db.runTransaction(async (t) => {
-    const snap = await t.get(productRef);
+  await db.runTransaction(
+    async t => {
+      const snap =
+        await t.get(productRef);
 
-    if (!snap.exists) {
-      throw new Error("El producto ya no existe.");
+      if (!snap.exists) {
+        throw new Error(
+          "El producto ya no existe."
+        );
+      }
+
+      const data =
+        snap.data() || {};
+
+      if (!matchesCurrentLocal(data)) {
+        throw new Error(
+          "Este producto no pertenece al local actual."
+        );
+      }
+
+      const currentStock =
+        getCurrentStockUnits(data);
+
+      const nextQuantity =
+        currentStock + unitsAdded;
+
+      const nextBoxes =
+        Math.floor(
+          nextQuantity /
+          currentUnitsPerBox
+        );
+
+      saldoAnterior =
+        currentStock;
+
+      saldoActual =
+        nextQuantity;
+
+      const nextLastCostPerBox =
+        values.lastCostPerBox > 0
+          ? values.lastCostPerBox
+          : numberOrZero(
+            data.lastCostPerBox
+          );
+
+      const nextPrice =
+        values.price > 0
+          ? values.price
+          : numberOrZero(data.price);
+
+      const nextCodigoProducto =
+        values.codigoProducto ||
+        getProductCode(data) ||
+        "";
+
+      t.update(productRef, {
+        name:
+          values.name ||
+          data.name ||
+          "",
+
+        codigoProducto:
+          nextCodigoProducto,
+
+        productCode:
+          nextCodigoProducto,
+
+        quantity:
+          nextQuantity,
+
+        stockCurrentUnits:
+          nextQuantity,
+
+        boxes:
+          nextBoxes,
+
+        unitsPerBox:
+          currentUnitsPerBox,
+
+        lastCostPerBox:
+          nextLastCostPerBox,
+
+        lastCostPerUnit:
+          currentUnitsPerBox > 0
+            ? nextLastCostPerBox /
+            currentUnitsPerBox
+            : 0,
+
+        price:
+          nextPrice,
+
+        id_local:
+          currentLocalId ||
+          data.id_local ||
+          null,
+
+        localNombre:
+          currentLocalInfo.nombre ||
+          data.localNombre ||
+          "",
+
+        localNumeroDocumento:
+          currentLocalInfo.numeroDocumento ||
+          data.localNumeroDocumento ||
+          "",
+
+        localUbicacion:
+          currentLocalInfo.ubicacion ||
+          data.localUbicacion ||
+          "",
+
+        updatedAt:
+          firebase.firestore.FieldValue.serverTimestamp()
+      });
     }
-
-    const data = snap.data() || {};
-    if (!matchesCurrentLocal(data)) {
-      throw new Error("Este producto no pertenece al local actual.");
-    }
-
-    const currentStock = getCurrentStockUnits(data);
-    const nextQuantity = currentStock + unitsAdded;
-    const nextBoxes = Math.floor(nextQuantity / currentUnitsPerBox);
-
-    saldoAnterior = currentStock;
-    saldoActual = nextQuantity;
-
-    const nextLastCostPerBox = values.lastCostPerBox > 0
-      ? values.lastCostPerBox
-      : numberOrZero(data.lastCostPerBox);
-
-    const nextPrice = values.price > 0
-      ? values.price
-      : numberOrZero(data.price);
-
-    const nextCodigoProducto = values.codigoProducto || getProductCode(data) || "";
-
-    t.update(productRef, {
-      name: values.name || data.name || "",
-      codigoProducto: nextCodigoProducto,
-      productCode: nextCodigoProducto,
-      quantity: nextQuantity,
-      stockCurrentUnits: nextQuantity,
-      boxes: nextBoxes,
-      unitsPerBox: currentUnitsPerBox,
-      lastCostPerBox: nextLastCostPerBox,
-      lastCostPerUnit: currentUnitsPerBox > 0 ? (nextLastCostPerBox / currentUnitsPerBox) : 0,
-      price: nextPrice,
-      id_local: currentLocalId || data.id_local || null,
-      localNombre: currentLocalInfo.nombre || data.localNombre || "",
-      localNumeroDocumento: currentLocalInfo.numeroDocumento || data.localNumeroDocumento || "",
-      localUbicacion: currentLocalInfo.ubicacion || data.localUbicacion || "",
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-  });
+  );
 
   await registrarMovimientoStock({
-    productId: product.id,
-    productName: values.name || product.name || "",
-    codigoProducto: values.codigoProducto || getProductCode(product) || "",
-    tipoMovimiento: "entrada",
-    referenciaLibro: values.referenciaLibro || "Compra",
-    numeroDocumento: values.numeroDocumento || "",
-    entrada: unitsAdded,
-    salida: 0,
+    productId:
+      product.id,
+
+    productName:
+      values.name ||
+      product.name ||
+      "",
+
+    codigoProducto:
+      values.codigoProducto ||
+      getProductCode(product) ||
+      "",
+
+    tipoMovimiento:
+      "entrada",
+
+    referenciaLibro:
+      values.referenciaLibro ||
+      "Compra",
+
+    numeroDocumento:
+      values.numeroDocumento ||
+      "",
+
+    entrada:
+      unitsAdded,
+
+    salida:
+      0,
+
     saldoAnterior,
     saldoActual,
-    detalle: "Entrada de inventario"
+
+    detalle:
+      "Entrada de inventario"
   });
 }
 
 async function showAddProductModal() {
   if (!canEditInventory) {
-    Swal.fire("Sin permisos", "No puedes agregar productos desde este rol.", "warning");
+    Swal.fire(
+      "Sin permisos",
+      "No puedes agregar productos desde este rol.",
+      "warning"
+    );
+
     return;
   }
 
   if (!currentLocalId) {
-    Swal.fire("Sin local", "No se pudo identificar el local actual.", "error");
+    Swal.fire(
+      "Sin local",
+      "No se pudo identificar el local actual.",
+      "error"
+    );
+
     return;
   }
 
   if (!currentProductsList.length) {
-    const result = await Swal.fire({
-      title: "Nuevo producto",
-      html: buildStockFormHtml({
-        mode: "new",
-        boxes: 0,
-        unitsPerBox: 1,
-        extraUnits: 0,
-        lastCostPerBox: 0,
-        price: 0,
-        referenciaLibro: "Inventario inicial",
-        numeroDocumento: "",
-        codigoProducto: ""
-      }),
-      showCancelButton: true,
-      confirmButtonText: "Guardar",
-      cancelButtonText: "Cancelar",
-      focusConfirm: false,
-      didOpen: syncStockModalState,
-      preConfirm: () => {
-        const values = readStockFormValues();
+    const result =
+      await Swal.fire({
+        title: "Nuevo producto",
 
-        if (!values.name) {
-          Swal.showValidationMessage("El nombre es obligatorio.");
-          return;
+        html: buildStockFormHtml({
+          mode: "new",
+          boxes: 0,
+          unitsPerBox: 1,
+          extraUnits: 0,
+          lastCostPerBox: 0,
+          price: 0,
+          referenciaLibro:
+            "Inventario inicial",
+          numeroDocumento: "",
+          codigoProducto: ""
+        }),
+
+        showCancelButton: true,
+        confirmButtonText: "Guardar",
+        cancelButtonText: "Cancelar",
+        focusConfirm: false,
+        didOpen: syncStockModalState,
+
+        preConfirm: () => {
+          const values =
+            readStockFormValues();
+
+          if (!values.name) {
+            Swal.showValidationMessage(
+              "El nombre es obligatorio."
+            );
+
+            return;
+          }
+
+          if (!values.codigoProducto) {
+            Swal.showValidationMessage(
+              "El código de producto es obligatorio."
+            );
+
+            return;
+          }
+
+          if (values.quantity <= 0) {
+            Swal.showValidationMessage(
+              "Debes ingresar cajas o unidades sueltas."
+            );
+
+            return;
+          }
+
+          return values;
         }
+      });
 
-        if (!values.codigoProducto) {
-          Swal.showValidationMessage("El código de producto es obligatorio.");
-          return;
-        }
-
-        if (values.quantity <= 0) {
-          Swal.showValidationMessage("Debes ingresar cajas o unidades sueltas.");
-          return;
-        }
-
-        return values;
-      }
-    });
-
-    if (!result.isConfirmed) return;
+    if (!result.isConfirmed) {
+      return;
+    }
 
     try {
-      await createNewProduct(result.value);
+      await createNewProduct(
+        result.value
+      );
+
       Swal.fire({
         toast: true,
         position: "top-end",
@@ -1159,109 +2452,204 @@ async function showAddProductModal() {
         showConfirmButton: false
       });
     } catch (err) {
-      console.error("Error guardando producto:", err);
-      Swal.fire("Error", "No se pudo guardar el producto.", "error");
+      console.error(
+        "Error guardando producto:",
+        err
+      );
+
+      Swal.fire(
+        "Error",
+        "No se pudo guardar el producto.",
+        "error"
+      );
     }
 
     return;
   }
 
   const defaultMode = "existing";
-  const initialProduct = currentProductsList[0] || null;
 
-  const result = await Swal.fire({
-    title: "Agregar / reponer producto",
-    html: buildStockFormHtml({
-      mode: defaultMode,
-      productId: initialProduct ? initialProduct.id : "",
-      productName: initialProduct ? initialProduct.name : "",
-      codigoProducto: initialProduct ? getProductCode(initialProduct) : "",
-      boxes: 0,
-      unitsPerBox: initialProduct ? getUnitsPerBox(initialProduct) : 1,
-      extraUnits: 0,
-      lastCostPerBox: initialProduct ? numberOrZero(initialProduct.lastCostPerBox) : 0,
-      price: initialProduct ? numberOrZero(initialProduct.price) : 0,
-      referenciaLibro: "Compra",
-      numeroDocumento: ""
-    }),
-    showCancelButton: true,
-    confirmButtonText: "Guardar",
-    cancelButtonText: "Cancelar",
-    focusConfirm: false,
-    didOpen: syncStockModalState,
-    preConfirm: () => {
-      const values = readStockFormValues();
+  const initialProduct =
+    currentProductsList[0] || null;
 
-      if (values.mode === "existing") {
-        if (!values.existingName) {
-          Swal.showValidationMessage("Debes escribir o seleccionar un producto existente.");
+  const result =
+    await Swal.fire({
+      title:
+        "Agregar / reponer producto",
+
+      html: buildStockFormHtml({
+        mode: defaultMode,
+
+        productId:
+          initialProduct
+            ? initialProduct.id
+            : "",
+
+        productName:
+          initialProduct
+            ? initialProduct.name
+            : "",
+
+        codigoProducto:
+          initialProduct
+            ? getProductCode(initialProduct)
+            : "",
+
+        boxes: 0,
+
+        unitsPerBox:
+          initialProduct
+            ? getUnitsPerBox(initialProduct)
+            : 1,
+
+        extraUnits: 0,
+
+        lastCostPerBox:
+          initialProduct
+            ? numberOrZero(
+              initialProduct.lastCostPerBox
+            )
+            : 0,
+
+        price:
+          initialProduct
+            ? numberOrZero(
+              initialProduct.price
+            )
+            : 0,
+
+        referenciaLibro:
+          "Compra",
+
+        numeroDocumento: ""
+      }),
+
+      showCancelButton: true,
+      confirmButtonText: "Guardar",
+      cancelButtonText: "Cancelar",
+      focusConfirm: false,
+      didOpen: syncStockModalState,
+
+      preConfirm: () => {
+        const values =
+          readStockFormValues();
+
+        if (values.mode === "existing") {
+          if (!values.existingName) {
+            Swal.showValidationMessage(
+              "Debes escribir o seleccionar un producto existente."
+            );
+
+            return;
+          }
+
+          if (
+            !findProductByName(
+              values.existingName
+            )
+          ) {
+            Swal.showValidationMessage(
+              "No se encontró el producto. Selecciónalo de las sugerencias."
+            );
+
+            return;
+          }
+
+          if (values.quantity <= 0) {
+            Swal.showValidationMessage(
+              "Debes ingresar cajas o unidades sueltas."
+            );
+
+            return;
+          }
+
+          return values;
+        }
+
+        if (!values.name) {
+          Swal.showValidationMessage(
+            "El nombre es obligatorio."
+          );
+
           return;
         }
 
-        if (!findProductByName(values.existingName)) {
-          Swal.showValidationMessage("No se encontró el producto. Selecciónalo de las sugerencias.");
+        if (!values.codigoProducto) {
+          Swal.showValidationMessage(
+            "El código de producto es obligatorio."
+          );
+
+          return;
+        }
+
+        if (
+          findProductByName(values.name) ||
+          findProductByName(
+            values.codigoProducto
+          )
+        ) {
+          Swal.showValidationMessage(
+            "Ese producto ya existe. Usa la opción de producto existente."
+          );
+
           return;
         }
 
         if (values.quantity <= 0) {
-          Swal.showValidationMessage("Debes ingresar cajas o unidades sueltas.");
+          Swal.showValidationMessage(
+            "Debes ingresar cajas o unidades sueltas."
+          );
+
           return;
         }
 
         return values;
       }
+    });
 
-      if (!values.name) {
-        Swal.showValidationMessage("El nombre es obligatorio.");
-        return;
-      }
-
-      if (!values.codigoProducto) {
-        Swal.showValidationMessage("El código de producto es obligatorio.");
-        return;
-      }
-
-      if (findProductByName(values.name) || findProductByName(values.codigoProducto)) {
-        Swal.showValidationMessage("Ese producto ya existe. Usa la opción de producto existente.");
-        return;
-      }
-
-      if (values.quantity <= 0) {
-        Swal.showValidationMessage("Debes ingresar cajas o unidades sueltas.");
-        return;
-      }
-
-      return values;
-    }
-  });
-
-  if (!result.isConfirmed) return;
+  if (!result.isConfirmed) {
+    return;
+  }
 
   try {
     const values = result.value;
 
     if (values.mode === "existing") {
-      const product = findProductByName(values.existingName);
+      const product =
+        findProductByName(
+          values.existingName
+        );
 
       if (!product) {
-        Swal.fire("No encontrado", "El producto seleccionado no existe.", "warning");
+        Swal.fire(
+          "No encontrado",
+          "El producto seleccionado no existe.",
+          "warning"
+        );
+
         return;
       }
 
-      await addToExistingProduct(product, values);
+      await addToExistingProduct(
+        product,
+        values
+      );
 
       Swal.fire({
         toast: true,
         position: "top-end",
         icon: "success",
-        title: "Stock agregado al producto",
+        title:
+          "Stock agregado al producto",
         timer: 1400,
         showConfirmButton: false
       });
+
       return;
     }
 
     await createNewProduct(values);
+
     Swal.fire({
       toast: true,
       position: "top-end",
@@ -1270,40 +2658,277 @@ async function showAddProductModal() {
       timer: 1400,
       showConfirmButton: false
     });
+
   } catch (err) {
-    console.error("Error guardando producto:", err);
-    Swal.fire("Error", "No se pudo guardar el producto.", "error");
+    console.error(
+      "Error guardando producto:",
+      err
+    );
+
+    Swal.fire(
+      "Error",
+      "No se pudo guardar el producto.",
+      "error"
+    );
   }
 }
 
 /* =======================
    Modal de edición existente
    ======================= */
+
 function buildProductFormHtml(initial = {}) {
   return `
-    <input id="p-name" class="swal2-input" placeholder="Nombre del producto" value="${escapeHtml(initial.name || "")}">
-    <input id="p-code" class="swal2-input" placeholder="Código del producto" value="${escapeHtml(initial.codigoProducto || "")}">
-    <input id="p-boxes" type="number" class="swal2-input" placeholder="Número de cajas" min="0" value="${numberOrZero(initial.boxes)}">
-    <input id="p-upb" type="number" class="swal2-input" placeholder="Unidades por caja" min="1" value="${Math.max(1, numberOrZero(initial.unitsPerBox || 1))}">
-    <input id="p-extra" type="number" class="swal2-input" placeholder="Unidades sueltas" min="0" value="${numberOrZero(initial.extraUnits)}">
-    <input id="p-costbox" type="number" class="swal2-input" placeholder="Costo por caja" step="0.01" min="0" value="${numberOrZero(initial.lastCostPerBox)}">
-    <input id="p-price" type="number" class="swal2-input" placeholder="Precio de venta" step="0.01" min="0" value="${numberOrZero(initial.price)}">
-    <input id="p-ref" class="swal2-input" placeholder="Referencia a libro" value="${escapeHtml(initial.referenciaLibro || "")}">
-    <div style="text-align:left; margin-top:6px;">
-      <small>La cantidad total se calcula con cajas × unidades por caja + unidades sueltas.</small>
+    <div style="text-align:left;">
+
+      <input
+        id="p-name"
+        class="swal2-input"
+        placeholder="Nombre del producto"
+        value="${escapeHtml(
+    initial.name || ""
+  )}"
+      >
+
+      <input
+        id="p-code"
+        class="swal2-input"
+        placeholder="Código del producto"
+        value="${escapeHtml(
+    initial.codigoProducto || ""
+  )}"
+      >
+
+      <input
+        id="p-boxes"
+        type="number"
+        class="swal2-input"
+        placeholder="Número de cajas"
+        min="0"
+        value="${numberOrZero(
+    initial.boxes
+  )}"
+      >
+
+      <input
+        id="p-upb"
+        type="number"
+        class="swal2-input"
+        placeholder="Unidades por caja"
+        min="1"
+        value="${Math.max(
+    1,
+    numberOrZero(
+      initial.unitsPerBox || 1
+    )
+  )}"
+      >
+
+      <input
+        id="p-extra"
+        type="number"
+        class="swal2-input"
+        placeholder="Unidades sueltas"
+        min="0"
+        value="${numberOrZero(
+    initial.extraUnits
+  )}"
+      >
+
+      <input
+        id="p-costbox"
+        type="number"
+        class="swal2-input"
+        placeholder="Costo por caja"
+        step="0.01"
+        min="0"
+        value="${numberOrZero(
+    initial.lastCostPerBox
+  )}"
+      >
+
+      <input
+        id="p-price"
+        type="number"
+        class="swal2-input"
+        placeholder="Precio de venta"
+        step="0.01"
+        min="0"
+        value="${numberOrZero(
+    initial.price
+  )}"
+      >
+
+      ${initial.bookReferencesHtml
+      ? `
+            <label
+              for="p-ref-history"
+              style="
+                display:block;
+                margin-top:12px;
+                margin-bottom:5px;
+                font-weight:600;
+              "
+            >
+              Referencias a libro registradas
+            </label>
+
+            <select
+              id="p-ref-history"
+              class="swal2-select"
+              style="
+                width:100%;
+                margin:0 0 8px 0;
+              "
+            >
+              ${initial.bookReferencesHtml}
+            </select>
+          `
+      : ""
+    }
+
+      <input
+        id="p-ref"
+        class="swal2-input"
+        placeholder="Referencia a libro"
+        value="${escapeHtml(
+      initial.referenciaLibro || ""
+    )}"
+      >
+
+      <input
+        id="p-doc"
+        class="swal2-input"
+        placeholder="Número de documento"
+        value="${escapeHtml(
+      initial.numeroDocumento || ""
+    )}"
+      >
+
+      ${initial.bookReferencesCount > 0
+      ? `
+            <div
+              style="
+                margin-top:8px;
+                padding:8px 10px;
+                border-radius:6px;
+                background:#f3f4f6;
+                color:#374151;
+                font-size:12px;
+              "
+            >
+              Se encontraron
+              <strong>
+                ${initial.bookReferencesCount}
+              </strong>
+              referencia(s) registradas para
+              este producto.
+            </div>
+          `
+      : `
+            <div
+              style="
+                margin-top:8px;
+                padding:8px 10px;
+                border-radius:6px;
+                background:#fef3c7;
+                color:#92400e;
+                font-size:12px;
+              "
+            >
+              No se encontraron referencias
+              anteriores en los movimientos de
+              este producto.
+            </div>
+          `
+    }
+
+      <div
+        style="
+          text-align:left;
+          margin-top:10px;
+        "
+      >
+        <small>
+          La cantidad total se calcula con
+          cajas × unidades por caja +
+          unidades sueltas.
+        </small>
+      </div>
+
     </div>
   `;
 }
 
 function readProductFormValues() {
-  const name = document.getElementById("p-name").value.trim();
-  const codigoProducto = document.getElementById("p-code").value.trim();
-  const boxes = Math.max(0, numberOrZero(document.getElementById("p-boxes").value));
-  const unitsPerBox = Math.max(1, numberOrZero(document.getElementById("p-upb").value));
-  const extraUnits = Math.max(0, numberOrZero(document.getElementById("p-extra").value));
-  const lastCostPerBox = Math.max(0, numberOrZero(document.getElementById("p-costbox").value));
-  const price = Math.max(0, numberOrZero(document.getElementById("p-price").value));
-  const referenciaLibro = document.getElementById("p-ref").value.trim();
+  const name =
+    document.getElementById("p-name")
+      .value
+      .trim();
+
+  const codigoProducto =
+    document.getElementById("p-code")
+      .value
+      .trim();
+
+  const boxes =
+    Math.max(
+      0,
+      numberOrZero(
+        document.getElementById("p-boxes")
+          .value
+      )
+    );
+
+  const unitsPerBox =
+    Math.max(
+      1,
+      numberOrZero(
+        document.getElementById("p-upb")
+          .value
+      )
+    );
+
+  const extraUnits =
+    Math.max(
+      0,
+      numberOrZero(
+        document.getElementById("p-extra")
+          .value
+      )
+    );
+
+  const lastCostPerBox =
+    Math.max(
+      0,
+      numberOrZero(
+        document.getElementById("p-costbox")
+          .value
+      )
+    );
+
+  const price =
+    Math.max(
+      0,
+      numberOrZero(
+        document.getElementById("p-price")
+          .value
+      )
+    );
+
+  const referenciaLibro =
+    document.getElementById("p-ref")
+      ? document.getElementById("p-ref")
+        .value
+        .trim()
+      : "";
+
+  const numeroDocumento =
+    document.getElementById("p-doc")
+      ? document.getElementById("p-doc")
+        .value
+        .trim()
+      : "";
 
   return {
     name,
@@ -1314,106 +2939,404 @@ function readProductFormValues() {
     lastCostPerBox,
     price,
     referenciaLibro,
-    quantity: (boxes * unitsPerBox) + extraUnits
+    numeroDocumento,
+
+    quantity:
+      boxes * unitsPerBox +
+      extraUnits
   };
 }
 
 async function openEditModal(productId) {
   if (!canEditInventory) {
-    Swal.fire("Sin permisos", "No puedes editar productos desde este rol.", "warning");
+    Swal.fire(
+      "Sin permisos",
+      "No puedes editar productos desde este rol.",
+      "warning"
+    );
+
     return;
   }
 
   try {
-    const doc = await db.collection("productos").doc(productId).get();
+    const doc =
+      await db
+        .collection("productos")
+        .doc(productId)
+        .get();
 
     if (!doc.exists) {
-      Swal.fire("No encontrado", "El producto no existe.", "warning");
+      Swal.fire(
+        "No encontrado",
+        "El producto no existe.",
+        "warning"
+      );
+
       return;
     }
 
-    const product = doc.data() || {};
+    const product =
+      doc.data() || {};
+
     if (!matchesCurrentLocal(product)) {
-      Swal.fire("Sin permisos", "Este producto no pertenece al local actual.", "error");
+      Swal.fire(
+        "Sin permisos",
+        "Este producto no pertenece al local actual.",
+        "error"
+      );
+
       return;
     }
 
-    const currentUnitsPerBox = getUnitsPerBox(product);
-    const currentUnits = getCurrentStockUnits(product);
-    const currentBoxes = Math.floor(currentUnits / currentUnitsPerBox);
-    const extraUnits = Math.max(0, currentUnits - (currentBoxes * currentUnitsPerBox));
+    /*
+     * NUEVO:
+     * Cargar los movimientos del producto antes
+     * de construir el formulario.
+     */
+    const movements =
+      await loadProductStockMovements(
+        productId
+      );
 
-    const result = await Swal.fire({
-      title: `Editar: ${product.name || ""}`,
-      html: buildProductFormHtml({
-        name: product.name || "",
-        codigoProducto: getProductCode(product),
-        boxes: currentBoxes,
-        unitsPerBox: currentUnitsPerBox,
-        extraUnits,
-        lastCostPerBox: numberOrZero(product.lastCostPerBox),
-        price: numberOrZero(product.price),
-        referenciaLibro: product.referenciaLibro || product.referenceBook || ""
-      }),
-      focusConfirm: false,
-      showCancelButton: true,
-      confirmButtonText: "Actualizar",
-      cancelButtonText: "Cancelar",
-      preConfirm: () => {
-        const values = readProductFormValues();
+    const uniqueReferences =
+      getUniqueBookReferences(
+        movements
+      );
 
-        if (!values.name) {
-          Swal.showValidationMessage("El nombre es obligatorio.");
-          return;
+    /*
+     * Si el producto ya tiene referencia almacenada
+     * directamente en productos, se usa como respaldo.
+     *
+     * Sin embargo, las referencias de movimientos
+     * tienen prioridad porque pueden existir varias.
+     */
+    let initialReference =
+      String(
+        product.referenciaLibro ||
+        product.referenceBook ||
+        ""
+      ).trim();
+
+    let initialDocument =
+      String(
+        product.numeroDocumento ||
+        product.documentNumber ||
+        ""
+      ).trim();
+
+    if (
+      !initialReference &&
+      uniqueReferences.length > 0
+    ) {
+      initialReference =
+        uniqueReferences[0]
+          .referenciaLibro || "";
+
+      initialDocument =
+        uniqueReferences[0]
+          .numeroDocumento || "";
+    }
+
+    /*
+     * Construimos las opciones después de haber
+     * recuperado los movimientos.
+     */
+    const bookReferencesHtml =
+      buildBookReferenceOptions(
+        uniqueReferences,
+        initialReference,
+        initialDocument
+      );
+
+    const currentUnitsPerBox =
+      getUnitsPerBox(product);
+
+    const currentUnits =
+      getCurrentStockUnits(product);
+
+    const currentBoxes =
+      Math.floor(
+        currentUnits /
+        currentUnitsPerBox
+      );
+
+    const extraUnits =
+      Math.max(
+        0,
+        currentUnits -
+        currentBoxes *
+        currentUnitsPerBox
+      );
+
+    const result =
+      await Swal.fire({
+        title:
+          `Editar: ${product.name || ""}`,
+
+        html:
+          buildProductFormHtml({
+            name:
+              product.name || "",
+
+            codigoProducto:
+              getProductCode(product),
+
+            boxes:
+              currentBoxes,
+
+            unitsPerBox:
+              currentUnitsPerBox,
+
+            extraUnits,
+
+            lastCostPerBox:
+              numberOrZero(
+                product.lastCostPerBox
+              ),
+
+            price:
+              numberOrZero(
+                product.price
+              ),
+
+            referenciaLibro:
+              initialReference,
+
+            numeroDocumento:
+              initialDocument,
+
+            bookReferencesHtml,
+
+            bookReferencesCount:
+              uniqueReferences.length
+          }),
+
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText:
+          "Actualizar",
+
+        cancelButtonText:
+          "Cancelar",
+
+        didOpen: () => {
+          const historySelect =
+            document.getElementById(
+              "p-ref-history"
+            );
+
+          if (!historySelect) {
+            return;
+          }
+
+          historySelect.addEventListener(
+            "change",
+            () => {
+              const index =
+                Number(
+                  historySelect.value
+                );
+
+              if (
+                !Number.isInteger(index) ||
+                index < 0 ||
+                index >=
+                uniqueReferences.length
+              ) {
+                return;
+              }
+
+              const selected =
+                uniqueReferences[index];
+
+              const refInput =
+                document.getElementById(
+                  "p-ref"
+                );
+
+              const docInput =
+                document.getElementById(
+                  "p-doc"
+                );
+
+              if (refInput) {
+                refInput.value =
+                  selected.referenciaLibro ||
+                  "";
+              }
+
+              if (docInput) {
+                docInput.value =
+                  selected.numeroDocumento ||
+                  "";
+              }
+            }
+          );
+        },
+
+        preConfirm: () => {
+          const values =
+            readProductFormValues();
+
+          if (!values.name) {
+            Swal.showValidationMessage(
+              "El nombre es obligatorio."
+            );
+
+            return;
+          }
+
+          if (!values.codigoProducto) {
+            Swal.showValidationMessage(
+              "El código de producto es obligatorio."
+            );
+
+            return;
+          }
+
+          return values;
         }
+      });
 
-        if (!values.codigoProducto) {
-          Swal.showValidationMessage("El código de producto es obligatorio.");
-          return;
-        }
+    if (!result.isConfirmed) {
+      return;
+    }
 
-        return values;
-      }
-    });
+    const values =
+      result.value;
 
-    if (!result.isConfirmed) return;
+    const nextUnits =
+      values.quantity;
 
-    const values = result.value;
-    const nextUnits = values.quantity;
+    /*
+     * Actualizamos el producto.
+     *
+     * También conservamos referencia y documento
+     * en el producto para que exista un respaldo
+     * de la última referencia seleccionada.
+     */
+    await db
+      .collection("productos")
+      .doc(productId)
+      .update({
+        name:
+          values.name,
 
-    await db.collection("productos").doc(productId).update({
-      name: values.name,
-      codigoProducto: values.codigoProducto,
-      productCode: values.codigoProducto,
-      referenciaLibro: values.referenciaLibro,
-      referenceBook: values.referenciaLibro,
-      quantity: nextUnits,
-      stockCurrentUnits: nextUnits,
-      boxes: Math.floor(nextUnits / values.unitsPerBox),
-      unitsPerBox: values.unitsPerBox,
-      lastCostPerBox: values.lastCostPerBox,
-      lastCostPerUnit: values.unitsPerBox > 0 ? (values.lastCostPerBox / values.unitsPerBox) : 0,
-      price: values.price,
-      id_local: currentLocalId || product.id_local || null,
-      localNombre: currentLocalInfo.nombre || product.localNombre || "",
-      localNumeroDocumento: currentLocalInfo.numeroDocumento || product.localNumeroDocumento || "",
-      localUbicacion: currentLocalInfo.ubicacion || product.localUbicacion || "",
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+        codigoProducto:
+          values.codigoProducto,
 
+        productCode:
+          values.codigoProducto,
+
+        referenciaLibro:
+          values.referenciaLibro,
+
+        referenceBook:
+          values.referenciaLibro,
+
+        numeroDocumento:
+          values.numeroDocumento,
+
+        quantity:
+          nextUnits,
+
+        stockCurrentUnits:
+          nextUnits,
+
+        boxes:
+          Math.floor(
+            nextUnits /
+            values.unitsPerBox
+          ),
+
+        unitsPerBox:
+          values.unitsPerBox,
+
+        lastCostPerBox:
+          values.lastCostPerBox,
+
+        lastCostPerUnit:
+          values.unitsPerBox > 0
+            ? values.lastCostPerBox /
+            values.unitsPerBox
+            : 0,
+
+        price:
+          values.price,
+
+        id_local:
+          currentLocalId ||
+          product.id_local ||
+          null,
+
+        localNombre:
+          currentLocalInfo.nombre ||
+          product.localNombre ||
+          "",
+
+        localNumeroDocumento:
+          currentLocalInfo.numeroDocumento ||
+          product.localNumeroDocumento ||
+          "",
+
+        localUbicacion:
+          currentLocalInfo.ubicacion ||
+          product.localUbicacion ||
+          "",
+
+        updatedAt:
+          firebase.firestore.FieldValue
+            .serverTimestamp()
+      });
+
+    /*
+     * Si cambió el stock, registramos el ajuste
+     * con la referencia y documento seleccionados
+     * o escritos por el usuario.
+     */
     if (nextUnits !== currentUnits) {
       await registrarMovimientoStock({
         productId,
-        productName: values.name,
-        codigoProducto: values.codigoProducto,
-        tipoMovimiento: "ajuste",
-        referenciaLibro: values.referenciaLibro || "Ajuste manual",
-        numeroDocumento: `AJ-${Date.now()}`,
-        entrada: Math.max(0, nextUnits - currentUnits),
-        salida: Math.max(0, currentUnits - nextUnits),
-        saldoAnterior: currentUnits,
-        saldoActual: nextUnits,
-        detalle: "Edición manual de stock"
+
+        productName:
+          values.name,
+
+        codigoProducto:
+          values.codigoProducto,
+
+        tipoMovimiento:
+          "ajuste",
+
+        referenciaLibro:
+          values.referenciaLibro ||
+          "Ajuste manual",
+
+        numeroDocumento:
+          values.numeroDocumento ||
+          `AJ-${Date.now()}`,
+
+        entrada:
+          Math.max(
+            0,
+            nextUnits -
+            currentUnits
+          ),
+
+        salida:
+          Math.max(
+            0,
+            currentUnits -
+            nextUnits
+          ),
+
+        saldoAnterior:
+          currentUnits,
+
+        saldoActual:
+          nextUnits,
+
+        detalle:
+          "Edición manual de stock"
       });
     }
 
@@ -1421,53 +3344,113 @@ async function openEditModal(productId) {
       toast: true,
       position: "top-end",
       icon: "success",
-      title: "Producto actualizado",
+      title:
+        "Producto actualizado",
       timer: 1400,
       showConfirmButton: false
     });
+
   } catch (err) {
-    console.error("Error editando producto:", err);
-    Swal.fire("Error", "No se pudo actualizar el producto.", "error");
+    console.error(
+      "Error editando producto:",
+      err
+    );
+
+    Swal.fire(
+      "Error",
+      "No se pudo actualizar el producto.",
+      "error"
+    );
   }
 }
 
-function confirmDeleteProduct(productId, productName) {
-  if (!(currentRole === "administrador" || currentRole === "admin")) {
-    Swal.fire("No tienes permisos", "Solo el administrador puede eliminar productos.", "error");
+function confirmDeleteProduct(
+  productId,
+  productName
+) {
+  if (
+    !(
+      currentRole === "administrador" ||
+      currentRole === "admin"
+    )
+  ) {
+    Swal.fire(
+      "No tienes permisos",
+      "Solo el administrador puede eliminar productos.",
+      "error"
+    );
+
     return;
   }
 
   Swal.fire({
-    title: `Eliminar "${productName}"?`,
-    text: "Esta acción no se puede deshacer",
-    icon: "warning",
-    showCancelButton: true,
-    confirmButtonText: "Sí, eliminar",
-    cancelButtonText: "Cancelar"
-  }).then(async (result) => {
-    if (!result.isConfirmed) return;
+    title:
+      `Eliminar "${productName}"?`,
 
-    try {
-      await db.collection("productos").doc(productId).delete();
-      Swal.fire({
-        toast: true,
-        position: "top-end",
-        icon: "success",
-        title: "Producto eliminado",
-        showConfirmButton: false,
-        timer: 1400
-      });
-    } catch (err) {
-      console.error("Error eliminando producto:", err);
-      Swal.fire("Error", "No se pudo eliminar el producto.", "error");
+    text:
+      "Esta acción no se puede deshacer",
+
+    icon: "warning",
+
+    showCancelButton: true,
+
+    confirmButtonText:
+      "Sí, eliminar",
+
+    cancelButtonText:
+      "Cancelar"
+
+  }).then(
+    async result => {
+      if (!result.isConfirmed) {
+        return;
+      }
+
+      try {
+        await db
+          .collection("productos")
+          .doc(productId)
+          .delete();
+
+        Swal.fire({
+          toast: true,
+          position: "top-end",
+          icon: "success",
+          title:
+            "Producto eliminado",
+          showConfirmButton: false,
+          timer: 1400
+        });
+
+      } catch (err) {
+        console.error(
+          "Error eliminando producto:",
+          err
+        );
+
+        Swal.fire(
+          "Error",
+          "No se pudo eliminar el producto.",
+          "error"
+        );
+      }
     }
-  });
+  );
 }
 
 function filterWithDataTable() {
-  const dt = ensureInventoryDataTable();
-  if (!dt) return;
-  dt.search(searchInput ? searchInput.value.trim() : "").draw();
+  const dt =
+    ensureInventoryDataTable();
+
+  if (!dt) {
+    return;
+  }
+
+  dt.search(
+    searchInput
+      ? searchInput.value.trim()
+      : ""
+  ).draw();
 }
 
 function destroyInventoryDataTable() {
@@ -1477,19 +3460,49 @@ function destroyInventoryDataTable() {
   }
 }
 
-async function backfillStockBaseUnitsIfNeeded(products) {
-  if (!(currentRole === "administrador" || currentRole === "admin" || currentRole === "bodega")) return;
+async function backfillStockBaseUnitsIfNeeded(
+  products
+) {
+  if (
+    !(
+      currentRole === "administrador" ||
+      currentRole === "admin" ||
+      currentRole === "bodega"
+    )
+  ) {
+    return;
+  }
 
-  const batch = db.batch();
+  const batch =
+    db.batch();
+
   let pending = 0;
 
-  products.forEach((product) => {
-    if (!Number.isFinite(Number(product.stockCurrentUnits))) {
-      const ref = db.collection("productos").doc(product.id);
+  products.forEach(product => {
+    if (
+      !Number.isFinite(
+        Number(
+          product.stockCurrentUnits
+        )
+      )
+    ) {
+      const ref =
+        db
+          .collection("productos")
+          .doc(product.id);
+
       batch.update(ref, {
-        stockCurrentUnits: getCurrentStockUnits(product),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        stockCurrentUnits:
+          getCurrentStockUnits(
+            product
+          ),
+
+        updatedAt:
+          firebase.firestore
+            .FieldValue
+            .serverTimestamp()
       });
+
       pending += 1;
     }
   });
@@ -1498,125 +3511,266 @@ async function backfillStockBaseUnitsIfNeeded(products) {
     try {
       await batch.commit();
     } catch (err) {
-      console.warn("No se pudo completar la normalización de stockCurrentUnits:", err);
+      console.warn(
+        "No se pudo completar la normalización de stockCurrentUnits:",
+        err
+      );
     }
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  auth.onAuthStateChanged(async (user) => {
-    const page = getCurrentPageFile();
+document.addEventListener(
+  "DOMContentLoaded",
+  () => {
+    auth.onAuthStateChanged(
+      async user => {
+        const page =
+          getCurrentPageFile();
 
-    if (!user) {
-      if (page !== "index.html" && page !== "login.html") {
-        window.location.href = "index.html";
-      }
-      return;
-    }
+        if (!user) {
+          if (
+            page !== "index.html" &&
+            page !== "login.html"
+          ) {
+            window.location.href =
+              "index.html";
+          }
 
-    let displayName = "Usuario";
-    let role = "Empleado";
-
-    try {
-      await resolveCurrentLocalContext();
-
-      const storedUser = getStoredCurrentUser();
-
-      if (storedUser && storedUser.uid === user.uid) {
-        displayName = storedUser.name || "Usuario";
-        role = storedUser.role || "Empleado";
-      } else {
-        const snapshot = await db
-          .collection("empleados")
-          .where("email", "==", user.email)
-          .limit(1)
-          .get();
-
-        if (!snapshot.empty) {
-          const data = snapshot.docs[0].data();
-          displayName = data.name || "Usuario";
-          role = data.position || data.role || "Empleado";
-
-          currentLocalId = String(data.id_local || data.idLocal || data.localId || currentLocalId || "").trim();
-          currentLocalInfo = normalizeLocalInfo({
-            id_local: currentLocalId,
-            nombre: data.localNombre || "",
-            numeroDocumento: data.localNumeroDocumento || "",
-            ubicacion: data.localUbicacion || ""
-          }, currentLocalId);
-
-          localStorage.setItem("currentUser", JSON.stringify({
-            uid: user.uid,
-            name: displayName,
-            email: user.email,
-            phone: data.phone || "",
-            role,
-            id_local: currentLocalId,
-            localNombre: currentLocalInfo.nombre || "",
-            localNumeroDocumento: currentLocalInfo.numeroDocumento || "",
-            localUbicacion: currentLocalInfo.ubicacion || ""
-          }));
+          return;
         }
+
+        let displayName =
+          "Usuario";
+
+        let role =
+          "Empleado";
+
+        try {
+          await resolveCurrentLocalContext();
+
+          const storedUser =
+            getStoredCurrentUser();
+
+          if (
+            storedUser &&
+            storedUser.uid === user.uid
+          ) {
+            displayName =
+              storedUser.name ||
+              "Usuario";
+
+            role =
+              storedUser.role ||
+              "Empleado";
+
+          } else {
+            const snapshot =
+              await db
+                .collection("empleados")
+                .where(
+                  "email",
+                  "==",
+                  user.email
+                )
+                .limit(1)
+                .get();
+
+            if (!snapshot.empty) {
+              const data =
+                snapshot.docs[0]
+                  .data();
+
+              displayName =
+                data.name ||
+                "Usuario";
+
+              role =
+                data.position ||
+                data.role ||
+                "Empleado";
+
+              currentLocalId =
+                String(
+                  data.id_local ||
+                  data.idLocal ||
+                  data.localId ||
+                  currentLocalId ||
+                  ""
+                ).trim();
+
+              currentLocalInfo =
+                normalizeLocalInfo(
+                  {
+                    id_local:
+                      currentLocalId,
+
+                    nombre:
+                      data.localNombre ||
+                      "",
+
+                    numeroDocumento:
+                      data.localNumeroDocumento ||
+                      "",
+
+                    ubicacion:
+                      data.localUbicacion ||
+                      ""
+                  },
+                  currentLocalId
+                );
+
+              localStorage.setItem(
+                "currentUser",
+                JSON.stringify({
+                  uid:
+                    user.uid,
+
+                  name:
+                    displayName,
+
+                  email:
+                    user.email,
+
+                  phone:
+                    data.phone || "",
+
+                  role,
+
+                  id_local:
+                    currentLocalId,
+
+                  localNombre:
+                    currentLocalInfo
+                      .nombre || "",
+
+                  localNumeroDocumento:
+                    currentLocalInfo
+                      .numeroDocumento ||
+                    "",
+
+                  localUbicacion:
+                    currentLocalInfo
+                      .ubicacion || ""
+                })
+              );
+            }
+          }
+
+          currentRole =
+            String(
+              role || ""
+            )
+              .trim()
+              .toLowerCase();
+
+          canEditInventory =
+            currentRole ===
+            "administrador" ||
+            currentRole === "admin" ||
+            currentRole === "bodega";
+
+          userGreeting.forEach(
+            el => {
+              el.textContent =
+                `Hola, ${displayName} (${role})`;
+            }
+          );
+
+          if (btnAdd) {
+            btnAdd.style.display =
+              canEditInventory &&
+                currentLocalId
+                ? ""
+                : "none";
+          }
+
+          if (
+            typeof renderNavigationForRole ===
+            "function"
+          ) {
+            renderNavigationForRole(
+              role
+            );
+          }
+
+          if (!currentLocalId) {
+            Swal.fire({
+              icon: "warning",
+              title:
+                "Sin local",
+              text:
+                "El usuario no tiene id_local asignado. El inventario no puede filtrarse."
+            });
+          }
+
+        } catch (err) {
+          console.error(
+            "Error leyendo usuario:",
+            err
+          );
+        }
+
+        ensureInventoryDataTable();
+        startRealtimeListeners();
       }
+    );
 
-      currentRole = String(role || "").trim().toLowerCase();
-      canEditInventory = currentRole === "administrador" || currentRole === "admin" || currentRole === "bodega";
-
-      userGreeting.forEach(el => {
-        el.textContent = `Hola, ${displayName} (${role})`;
-      });
-
-      if (btnAdd) {
-        btnAdd.style.display = canEditInventory && currentLocalId ? "" : "none";
-      }
-
-      if (typeof renderNavigationForRole === "function") {
-        renderNavigationForRole(role);
-      }
-
-      if (!currentLocalId) {
-        Swal.fire({
-          icon: "warning",
-          title: "Sin local",
-          text: "El usuario no tiene id_local asignado. El inventario no puede filtrarse."
-        });
-      }
-    } catch (err) {
-      console.error("Error leyendo usuario:", err);
+    if (btnAdd) {
+      btnAdd.addEventListener(
+        "click",
+        showAddProductModal
+      );
     }
 
-    ensureInventoryDataTable();
-    startRealtimeListeners();
-  });
+    if (searchInput) {
+      searchInput.addEventListener(
+        "input",
+        filterWithDataTable
+      );
+    }
 
-  if (btnAdd) {
-    btnAdd.addEventListener("click", showAddProductModal);
+    if (btnLogout) {
+      btnLogout.addEventListener(
+        "click",
+        () => {
+          auth
+            .signOut()
+            .then(() => {
+              localStorage.removeItem(
+                "currentUser"
+              );
+
+              window.location.href =
+                "index.html";
+            });
+        }
+      );
+    }
+
+    if (btnLogoutMobile) {
+      btnLogoutMobile.addEventListener(
+        "click",
+        () => {
+          auth
+            .signOut()
+            .then(() => {
+              localStorage.removeItem(
+                "currentUser"
+              );
+
+              window.location.href =
+                "index.html";
+            });
+        }
+      );
+    }
+
+    window.addEventListener(
+      "beforeunload",
+      () => {
+        stopRealtimeListeners();
+        destroyInventoryDataTable();
+      }
+    );
   }
-
-  if (searchInput) {
-    searchInput.addEventListener("input", filterWithDataTable);
-  }
-
-  if (btnLogout) {
-    btnLogout.addEventListener("click", () => {
-      auth.signOut().then(() => {
-        localStorage.removeItem("currentUser");
-        window.location.href = "index.html";
-      });
-    });
-  }
-
-  if (btnLogoutMobile) {
-    btnLogoutMobile.addEventListener("click", () => {
-      auth.signOut().then(() => {
-        localStorage.removeItem("currentUser");
-        window.location.href = "index.html";
-      });
-    });
-  }
-
-  window.addEventListener("beforeunload", () => {
-    stopRealtimeListeners();
-    destroyInventoryDataTable();
-  });
-});
+);

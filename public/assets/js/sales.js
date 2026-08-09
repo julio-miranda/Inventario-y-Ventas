@@ -8,6 +8,7 @@
 //
 // Referencia a libro:
 // - Se captura una referencia por venta.
+// - Si el input está vacío, la referencia será "venta" por defecto.
 // - Se guarda en ventas.referenciaLibro.
 // - Se guarda en stock_movimientos.referenciaLibro.
 // - La referencia permite identificar posteriormente el movimiento
@@ -358,13 +359,19 @@ function getMovementLocalPayload() {
 
 /*
  * Obtiene la referencia actualmente escrita.
+ *
+ * Si el input está vacío, se utiliza "venta"
+ * como referencia predeterminada.
  */
 function getReferenciaLibro() {
-  return String(
-    referenciaLibroInput
-      ? referenciaLibroInput.value
-      : ''
-  ).trim();
+  const referencia =
+    String(
+      referenciaLibroInput
+        ? referenciaLibroInput.value
+        : ''
+    ).trim();
+
+  return referencia || 'venta';
 }
 
 /*
@@ -1393,27 +1400,11 @@ async function finalizeSale() {
   }
 
   /*
-   * La referencia es necesaria porque será utilizada
-   * posteriormente en los movimientos de inventario.
+   * Si el input está vacío, getReferenciaLibro()
+   * devuelve automáticamente "venta".
    */
   const referenciaLibro =
     getReferenciaLibro();
-
-  if (!referenciaLibro) {
-    Swal.fire({
-      icon: 'warning',
-      title: 'Referencia requerida',
-      text:
-        'Ingresa la referencia al libro antes de finalizar la venta.',
-      confirmButtonText: 'Entendido'
-    });
-
-    if (referenciaLibroInput) {
-      referenciaLibroInput.focus();
-    }
-
-    return;
-  }
 
   isFinalizingSale = true;
 
@@ -1621,8 +1612,8 @@ async function finalizeSale() {
           /*
            * MOVIMIENTO DE INVENTARIO
            *
-           * Ahora referenciaLibro contiene
-           * la referencia introducida por el usuario.
+           * Si no se introdujo una referencia,
+           * se guarda "venta".
            */
           const movementRef =
             db.collection(
@@ -1685,9 +1676,8 @@ async function finalizeSale() {
         /*
          * DOCUMENTO DE VENTA
          *
-         * También se almacena la referencia
-         * para poder relacionar la venta con
-         * sus movimientos posteriormente.
+         * También se almacena la referencia.
+         * Si el input estaba vacío, será "venta".
          */
         const ventaData = {
           products:
@@ -1855,9 +1845,8 @@ async function saveDraft() {
       getMovementLocalPayload();
 
     /*
-     * La referencia puede quedar vacía en un borrador,
-     * ya que la validación obligatoria se realiza
-     * al finalizar la venta.
+     * Si el input está vacío, la referencia
+     * predeterminada también será "venta".
      */
     const referenciaLibro =
       getReferenciaLibro();
@@ -1899,7 +1888,7 @@ async function saveDraft() {
         ),
 
       referenciaLibro:
-        referenciaLibro || null,
+        referenciaLibro,
 
       createdAt:
         firebase.firestore
