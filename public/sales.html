@@ -8,182 +8,520 @@
     <title>Ventas - Sistema de Gestión</title>
 
     <link rel="stylesheet" href="assets/css/styles.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css" />
+    <link
+        rel="stylesheet"
+        href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css"
+    />
+
     <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link
+        href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"
+        rel="stylesheet"
+    />
+
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
-    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
+    <link
+        href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
+        rel="stylesheet"
+    />
 </head>
 
 <body>
 
     <nav class="navbar" role="navigation">
+
         <div class="navbar-logo">
             <a href="#">MiEmpresa</a>
         </div>
 
         <div class="navbar-right">
+
             <div class="navbar-links">
                 <ul>
-                    <li><a href="dashboard.html">Inicio</a></li>
-                    <li><a href="inventory.html">Inventario</a></li>
-                    <li><a href="sales.html">Ventas</a></li>
-                    <li><a href="attendance.html">Asistencia</a></li>
-                    <li><a href="employees.html">Empleados</a></li>
+                    <li>
+                        <a href="dashboard.html">
+                            Inicio
+                        </a>
+                    </li>
+
+                    <li>
+                        <a href="inventory.html">
+                            Inventario
+                        </a>
+                    </li>
+
+                    <li>
+                        <a href="sales.html">
+                            Ventas
+                        </a>
+                    </li>
+
+                    <li>
+                        <a href="attendance.html">
+                            Asistencia
+                        </a>
+                    </li>
+
+                    <li>
+                        <a href="employees.html">
+                            Empleados
+                        </a>
+                    </li>
                 </ul>
             </div>
 
             <div class="navbar-user">
-                <span class="userGreeting">Hola, Usuario</span>
-                <button id="logoutButton">Cerrar sesión</button>
+
+                <span class="userGreeting">
+                    Hola, Usuario
+                </span>
+
+                <button
+                    id="logoutButton"
+                    type="button"
+                >
+                    Cerrar sesión
+                </button>
+
             </div>
         </div>
 
-        <div class="menu-toggle" id="menuToggle">
+        <div
+            class="menu-toggle"
+            id="menuToggle"
+        >
             <i class="fas fa-bars"></i>
         </div>
+
     </nav>
 
-    <div class="fullscreen-menu" id="fullscreenMenu">
-        <div class="close-menu" id="closeMenu">
+    <div
+        class="fullscreen-menu"
+        id="fullscreenMenu"
+    >
+
+        <div
+            class="close-menu"
+            id="closeMenu"
+        >
             <i class="fas fa-times"></i>
         </div>
 
         <ul class="menu-links">
-            <li><a href="dashboard.html">Inicio</a></li>
-            <li><a href="inventory.html">Inventario</a></li>
-            <li><a href="sales.html">Ventas</a></li>
-            <li><a href="attendance.html">Asistencia</a></li>
-            <li><a href="employees.html">Empleados</a></li>
+
+            <li>
+                <a href="dashboard.html">
+                    Inicio
+                </a>
+            </li>
+
+            <li>
+                <a href="inventory.html">
+                    Inventario
+                </a>
+            </li>
+
+            <li>
+                <a href="sales.html">
+                    Ventas
+                </a>
+            </li>
+
+            <li>
+                <a href="attendance.html">
+                    Asistencia
+                </a>
+            </li>
+
+            <li>
+                <a href="employees.html">
+                    Empleados
+                </a>
+            </li>
+
         </ul>
 
         <div class="menu-user">
-            <span class="userGreeting">Hola, Usuario</span>
-            <button id="logoutButtonMobile">Cerrar sesión</button>
+
+            <span class="userGreeting">
+                Hola, Usuario
+            </span>
+
+            <button
+                id="logoutButtonMobile"
+                type="button"
+            >
+                Cerrar sesión
+            </button>
+
         </div>
+
     </div>
 
     <main class="sales">
-        <h1>Registrar Venta (Punto de Venta)</h1>
 
-        <div class="top-controls"
-            style="display:flex; gap:12px; align-items:flex-end; margin-bottom:12px; flex-wrap:wrap;">
-            <div style="flex:1; min-width:240px;">
-                <label for="productSelect">Producto</label>
-                <select id="productSelect" style="width:100%"></select>
+        <h1>
+            Registrar Venta (Punto de Venta)
+        </h1>
+
+        <div
+            class="top-controls"
+            style="
+                display:flex;
+                gap:12px;
+                align-items:flex-end;
+                margin-bottom:12px;
+                flex-wrap:wrap;
+            "
+        >
+
+            <div
+                style="
+                    flex:1;
+                    min-width:240px;
+                "
+            >
+
+                <label for="productSelect">
+                    Producto
+                </label>
+
+                <select
+                    id="productSelect"
+                    style="width:100%"
+                ></select>
+
             </div>
 
             <div style="width:140px;">
-                <label for="saleMode">Vender por</label>
-                <select id="saleMode" style="width:100%">
-                    <option value="unit">Unidades</option>
-                    <option value="box">Cajas</option>
+
+                <label for="saleMode">
+                    Vender por
+                </label>
+
+                <select
+                    id="saleMode"
+                    style="width:100%"
+                >
+
+                    <option value="unit">
+                        Unidades
+                    </option>
+
+                    <option value="box">
+                        Cajas
+                    </option>
+
                 </select>
+
             </div>
 
-            <div id="boxPriceGroup" style="width:170px; display:none;">
-                <label for="boxPrice">Precio por caja</label>
-                <input type="number" id="boxPrice" min="0" step="0.01" value="0" />
+            <div
+                id="boxPriceGroup"
+                style="
+                    width:170px;
+                    display:none;
+                "
+            >
+
+                <label for="boxPrice">
+                    Precio por caja
+                </label>
+
+                <input
+                    type="number"
+                    id="boxPrice"
+                    min="0"
+                    step="0.01"
+                    value="0"
+                />
+
             </div>
 
             <div style="width:140px;">
-                <label for="saleQuantity" id="saleQuantityLabel">Cantidad</label>
-                <input type="number" id="saleQuantity" min="1" value="1" />
+
+                <label
+                    for="saleQuantity"
+                    id="saleQuantityLabel"
+                >
+                    Cantidad
+                </label>
+
+                <input
+                    type="number"
+                    id="saleQuantity"
+                    min="1"
+                    value="1"
+                />
+
             </div>
 
-            <!-- NUEVO: Referencia al libro -->
-            <div style="width:220px; min-width:180px;">
-                <label for="referenciaLibro">Referencia a libro</label>
-                <input type="text" id="referenciaLibro" maxlength="100" placeholder="Ej. Libro 001 / Folio 25"
-                    autocomplete="off" />
+            <div
+                style="
+                    width:220px;
+                    min-width:180px;
+                "
+            >
+
+                <label for="referenciaLibro">
+                    Referencia a libro
+                </label>
+
+                <input
+                    type="text"
+                    id="referenciaLibro"
+                    maxlength="100"
+                    placeholder="Ej. Libro 001 / Folio 25"
+                    autocomplete="off"
+                />
+
             </div>
 
-            <div class="top-actions" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; width:100%;">
-                <button id="btnAddToCart" class="btn-primary">
-                    <i class="fas fa-cart-plus"></i> Añadir
+            <div
+                class="top-actions"
+                style="
+                    display:flex;
+                    gap:8px;
+                    align-items:flex-end;
+                    flex-wrap:wrap;
+                    width:100%;
+                "
+            >
+
+                <button
+                    id="btnAddToCart"
+                    class="btn-primary"
+                    type="button"
+                >
+                    <i class="fas fa-cart-plus"></i>
+                    Añadir
                 </button>
-                <button id="btnClearCart" class="btn-outline">
+
+                <button
+                    id="btnClearCart"
+                    class="btn-outline"
+                    type="button"
+                >
                     Limpiar
                 </button>
+
             </div>
+
         </div>
 
         <section class="table-section sales-table-card">
+
             <div class="section-header">
+
                 <div>
-                    <h2>Carrito</h2>
-                    <p class="sales-table-note">Mantén <strong>Shift</strong> y haz clic en más de una columna para
-                        ordenar por varios campos.</p>
+
+                    <h2>
+                        Carrito
+                    </h2>
+
+                    <p class="sales-table-note">
+                        Mantén <strong>Shift</strong> y haz clic
+                        en más de una columna para ordenar por
+                        varios campos.
+                    </p>
+
                 </div>
+
             </div>
 
             <div class="table-container sales-dt-container">
-                <table id="cartTable" class="table sales-table">
+
+                <table
+                    id="cartTable"
+                    class="table sales-table"
+                >
+
                     <thead>
+
                         <tr>
-                            <th>Producto</th>
-                            <th>Cantidad</th>
-                            <th>Precio</th>
-                            <th>Total</th>
-                            <th>Acciones</th>
+
+                            <th>
+                                Producto
+                            </th>
+
+                            <th>
+                                Cantidad
+                            </th>
+
+                            <th>
+                                Precio
+                            </th>
+
+                            <th>
+                                Total
+                            </th>
+
+                            <th>
+                                Acciones
+                            </th>
+
                         </tr>
+
                     </thead>
+
                     <tbody>
+
                         <tr>
-                            <td colspan="5">El carrito está vacío.</td>
+
+                            <td colspan="5">
+                                El carrito está vacío.
+                            </td>
+
                         </tr>
+
                     </tbody>
+
                 </table>
 
                 <div
-                    style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; gap:12px; flex-wrap:wrap;">
+                    style="
+                        display:flex;
+                        justify-content:space-between;
+                        align-items:center;
+                        margin-top:10px;
+                        gap:12px;
+                        flex-wrap:wrap;
+                    "
+                >
+
                     <div>
-                        <strong>Subtotal:</strong>
-                        <span id="cartSubtotal">$0.00</span>
+
+                        <strong>
+                            Subtotal:
+                        </strong>
+
+                        <span id="cartSubtotal">
+                            $0.00
+                        </span>
+
                     </div>
 
-                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        <button id="btnFinalize" class="btn-primary" disabled>
-                            <i class="fas fa-check"></i> Finalizar Venta
+                    <div
+                        style="
+                            display:flex;
+                            gap:8px;
+                            flex-wrap:wrap;
+                        "
+                    >
+
+                        <button
+                            id="btnFinalize"
+                            class="btn-primary"
+                            type="button"
+                            disabled
+                        >
+                            <i class="fas fa-check"></i>
+                            Finalizar Venta
                         </button>
-                        <button id="btnSaveDraft" class="btn-outline">
+
+                        <button
+                            id="btnSaveDraft"
+                            class="btn-outline"
+                            type="button"
+                        >
                             Guardar borrador
                         </button>
+
                     </div>
+
                 </div>
+
             </div>
+
         </section>
 
-        <section class="table-section sales-table-card" style="margin-top:18px;">
+        <section
+            class="table-section sales-table-card"
+            style="margin-top:18px;"
+        >
+
             <div class="section-header">
+
                 <div>
-                    <h2>Ventas Realizadas</h2>
-                    <p class="sales-table-note">Puedes ordenar varias columnas a la vez con <strong>Shift</strong>.</p>
+
+                    <h2>
+                        Ventas Realizadas
+                    </h2>
+
+                    <p class="sales-table-note">
+                        Los administradores pueden modificar
+                        los datos de una venta o eliminarla.
+                    </p>
+
                 </div>
+
             </div>
 
             <div class="table-container sales-dt-container">
-                <table id="salesTable" class="table sales-table">
+
+                <table
+                    id="salesTable"
+                    class="table sales-table"
+                >
+
                     <thead>
+
                         <tr>
-                            <th>Productos</th>
-                            <th>Unidades</th>
-                            <th>Total</th>
-                            <th>Usuario</th>
-                            <th>Fecha</th>
-                            <th>Hora</th>
+
+                            <th>
+                                Productos
+                            </th>
+
+                            <th>
+                                Unidades
+                            </th>
+
+                            <th>
+                                Total
+                            </th>
+
+                            <th>
+                                Referencia
+                            </th>
+
+                            <th>
+                                Usuario
+                            </th>
+
+                            <th>
+                                Fecha
+                            </th>
+
+                            <th>
+                                Hora
+                            </th>
+
+                            <th>
+                                Acciones
+                            </th>
+
                         </tr>
+
                     </thead>
+
                     <tbody></tbody>
+
                 </table>
+
             </div>
+
         </section>
+
     </main>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -192,19 +530,11 @@
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
+    <!-- app.js primero para disponer de auth, db y contexto -->
     <script src="assets/js/app.js"></script>
 
-    <script>
-        $(document).ready(function () {
-            $('#productSelect').select2({
-                placeholder: 'Buscar producto...',
-                width: '100%',
-                allowClear: true
-            });
-        });
-    </script>
-
     <script src="assets/js/sales.js"></script>
+
 </body>
 
 </html>

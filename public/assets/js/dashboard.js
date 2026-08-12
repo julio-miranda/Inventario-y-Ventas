@@ -1,2280 +1,2498 @@
 // assets/js/dashboard.js
-// El rango de fechas seleccionado controla:
-// - Historial de ventas
-// - Historial de gastos
-// - Historial de movimientos de inventario
-// - Exportación CSV de ventas filtradas
-// - Exportación CSV de gastos filtradas
-// - Exportación CSV de movimientos de inventario
-// - Tarjetas
-// - Gráfico
-// - Utilidades
-// - Productos vendidos
 //
-// Vista predeterminada: mes actual
+// DASHBOARD
 //
-// Filtro por local:
-// - Se obtiene id_local desde el usuario autenticado
-// - Se consulta la colección "local"
-// - Todas las vistas del dashboard se filtran por el local del usuario
-// - El filtrado por fecha se hace en memoria para evitar índices compuestos
+// Arquitectura optimizada:
 //
-// REPORTE DE MOVIMIENTOS:
-// - Precio de venta -> Costo unitario
-// - Unidades vendidas -> Valor del inventario en la transacción
-// - Valor inventario = costo unitario × saldo actual
-// - El saldo actual corresponde al saldo registrado por el movimiento
-// - Se incluye referencia a libro
-// - El valor NO se calcula usando el stock actual de la colección productos
+// 1. app.js resuelve:
+//    - usuario autenticado
+//    - empleado
+//    - rol
+//    - local
+//    - datos fiscales
+//
+// 2. dashboard.js reutiliza:
+//    window.getCurrentUserContext()
+//
+// 3. dashboard.js NO consulta:
+//    - empleados
+//    - local
+//
+// 4. Los datos del dashboard se consultan una sola vez
+//    por carga de la página:
+//
+//      ventas
+//      gastos
+//      stock_movimientos
+//      productos
+//
+// 5. Cambiar rango:
+//    NO vuelve a consultar Firestore.
+//
+// 6. Buscar:
+//    NO vuelve a consultar Firestore.
+//
+// 7. Exportar:
+//    utiliza las cachés existentes.
+//
+// 8. Cierre de caja:
+//    utiliza rawSalesDocs, sin volver a consultar ventas.
+//
+// MOVIMIENTOS:
+//
+// - Costo unitario.
+// - Valor inventario = costo unitario × saldo actual.
+// - Referencia de libro.
+// - Sin columna Usuario.
+//
+// EXCEL:
+//
+// - SheetJS.
+// - Datos fiscales.
+// - Período independiente.
+// - Sin Usuario.
+// - Área de impresión.
+// - Orientación horizontal.
+//
 
-document.addEventListener("DOMContentLoaded", () => {
-  const DEBUG_DASHBOARD = true;
-  const MAX_DEBUG_DOCS = 5;
+document.addEventListener(
+  "DOMContentLoaded",
+  () => {
 
-  const greetingEls = document.querySelectorAll(".userGreeting");
-  const logoutButtons = document.querySelectorAll("#logoutButton, #logoutButtonMobile");
+    const DEBUG_DASHBOARD =
+      true;
 
-  const salesTableBody = document.querySelector("#salesTable tbody");
-  const expensesTableBody = document.querySelector("#expensesTable tbody");
-  const movementsTableBody = document.querySelector("#movementsTable tbody");
+    const LOW_STOCK_THRESHOLD =
+      5;
 
-  const rangeFrom = document.getElementById("rangeFrom");
-  const rangeTo = document.getElementById("rangeTo");
-  const rangeSearch = document.getElementById("rangeSearch");
+    const SALES_COLLECTION_NAME =
+      "ventas";
 
-  const salesRangeLabel = document.getElementById("salesRangeLabel");
-  const expenseRangeLabel = document.getElementById("expenseRangeLabel");
-  const movementRangeLabel = document.getElementById("movementRangeLabel");
+    const EXPENSES_COLLECTION_NAME =
+      "gastos";
 
-  const salesCountLabel = document.getElementById("salesCountLabel");
-  const expenseCountLabel = document.getElementById("expenseCountLabel");
-  const movementCountLabel = document.getElementById("movementCountLabel");
+    const MOVEMENTS_COLLECTION_NAME =
+      "stock_movimientos";
 
-  const lowStockPanel = document.getElementById("lowStockPanel");
-  const btnGoInventory = document.getElementById("btnGoInventory");
-  const btnCloseDay = document.getElementById("btnCloseDay");
-  const btnExportSalesCSV = document.getElementById("btnExportSalesCSV");
-  const btnExportExpensesCSV = document.getElementById("btnExportExpensesCSV");
-  const btnExportMovementsCSV = document.getElementById("btnExportMovementsCSV");
-  const btnApplyRange = document.getElementById("btnApplyRange");
-  const btnResetRange = document.getElementById("btnResetRange");
+    const PRODUCTS_COLLECTION_NAME =
+      "productos";
 
-  const statSalesEl = document.getElementById("statSales");
-  const statExpensesEl = document.getElementById("statExpenses");
-  const statNetEl = document.getElementById("statNet");
-  const statUnitsSoldEl = document.getElementById("statUnitsSold");
-  const statProductsSoldEl = document.getElementById("statProductsSold");
-  const statLowStockEl = document.getElementById("statLowStock");
+    /*
+     * ==========================================================
+     * DOM
+     * ==========================================================
+     */
 
-  const heroNote = document.querySelector(".hero-note");
-
-  const LOW_STOCK_THRESHOLD = 5;
-  const EMPLOYEE_COLLECTION_NAME = "empleados";
-  const LOCAL_COLLECTION_NAME = "local";
-
-  let cachedSales = [];
-  let cachedExpenses = [];
-  let cachedMovements = [];
-
-  let visibleSales = [];
-  let visibleExpenses = [];
-  let visibleMovements = [];
-
-  let selectedRange = {
-    from: null,
-    to: null
-  };
-
-  let productsMap = new Map();
-
-  let currentUserInfo = {
-    uid: "",
-    email: "",
-    name: "Usuario",
-    role: "Empleado"
-  };
-
-  let currentLocalId = "";
-  let currentLocalInfo = {
-    id: "",
-    nombre: "",
-    numeroDocumento: "",
-    ubicacion: "",
-    contribuyente: ""
-  };
-
-  injectDashboardStyles();
-
-  function debugLog(...args) {
-    if (DEBUG_DASHBOARD) console.log("[Dashboard][ventas]", ...args);
-  }
-
-  function debugWarn(...args) {
-    if (DEBUG_DASHBOARD) console.warn("[Dashboard][ventas]", ...args);
-  }
-
-  function debugError(...args) {
-    if (DEBUG_DASHBOARD) console.error("[Dashboard]", ...args);
-  }
-
-  function numberOrZero(v) {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : 0;
-  }
-
-  function isPlainObject(value) {
-    return !!value && typeof value === "object" && !Array.isArray(value);
-  }
-
-  function escapeHtml(s) {
-    return String(s ?? "").replace(/[&<>"'`=\/]/g, c => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-      "/": "&#x2F;",
-      "`": "&#96;",
-      "=": "&#61;"
-    }[c]));
-  }
-
-  function formatMoney(value) {
-    if (
-      typeof appChartUtils !== "undefined" &&
-      typeof appChartUtils.formatCurrency === "function"
-    ) {
-      return appChartUtils.formatCurrency(value);
-    }
-
-    return new Intl.NumberFormat("es-ES", {
-      style: "currency",
-      currency: "USD"
-    }).format(Number(value || 0));
-  }
-
-  function toLocalInputDate(date) {
-    const d = new Date(date);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }
-
-  function startOfMonth(date = new Date()) {
-    return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
-  }
-
-  function endOfToday(date = new Date()) {
-    return new Date(
-      date.getFullYear(),
-      date.getMonth(),
-      date.getDate(),
-      23,
-      59,
-      59,
-      999
-    );
-  }
-
-  function startOfDay(dateStr) {
-    if (!dateStr) return null;
-
-    const d = new Date(`${dateStr}T00:00:00`);
-
-    return isNaN(d.getTime()) ? null : d;
-  }
-
-  function endOfDay(dateStr) {
-    if (!dateStr) return null;
-
-    const d = new Date(`${dateStr}T23:59:59.999`);
-
-    return isNaN(d.getTime()) ? null : d;
-  }
-
-  function sanitizeFilePart(text) {
-    return String(text || "")
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/gi, "_")
-      .replace(/^_+|_+$/g, "") || "local";
-  }
-
-  function getStoredCurrentUser() {
-    try {
-      return JSON.parse(
-        localStorage.getItem("currentUser") || "null"
+    const greetingEls =
+      document.querySelectorAll(
+        ".userGreeting"
       );
-    } catch {
-      return null;
-    }
-  }
 
-  function saveStoredCurrentUserPatch(patch) {
-    try {
-      const stored = getStoredCurrentUser();
-
-      if (!stored) return;
-
-      localStorage.setItem(
-        "currentUser",
-        JSON.stringify({
-          ...stored,
-          ...patch
-        })
+    const salesTableBody =
+      document.querySelector(
+        "#salesTable tbody"
       );
-    } catch {
-      // ignore
-    }
-  }
 
-  function getLocalFieldValue(data = {}) {
-    return String(
-      data.id_local ||
-      data.idLocal ||
-      data.localId ||
-      data.idlocal ||
-      ""
-    ).trim();
-  }
+    const expensesTableBody =
+      document.querySelector(
+        "#expensesTable tbody"
+      );
 
-  function normalizeLocalInfo(data = {}, idFallback = "") {
-    return {
-      id: String(
-        idFallback ||
-        data.id_local ||
-        data.idLocal ||
-        data.localId ||
-        ""
-      ).trim(),
+    const movementsTableBody =
+      document.querySelector(
+        "#movementsTable tbody"
+      );
 
-      nombre: String(
-        data.nombre ||
-        data.name ||
-        data.localName ||
-        data.nombre_local ||
-        ""
-      ).trim(),
+    const rangeFrom =
+      document.getElementById(
+        "rangeFrom"
+      );
 
-      numeroDocumento: String(
-        data.numeroDocumento ||
-        data.numero_documento ||
-        data.documentNumber ||
-        data.nDocumento ||
-        data.n_documento ||
-        ""
-      ).trim(),
+    const rangeTo =
+      document.getElementById(
+        "rangeTo"
+      );
 
-      ubicacion: String(
-        data.ubicacion ||
-        data.location ||
-        data.direccion ||
-        data.address ||
-        data.sede ||
-        ""
-      ).trim(),
+    const rangeSearch =
+      document.getElementById(
+        "rangeSearch"
+      );
 
-      contribuyente: String(
-        data.contribuyente ||
-        data.nombreContribuyente ||
-        data.nombre_contribuyente ||
-        data.razonSocial ||
-        data.razon_social ||
-        data.companyName ||
-        data.company_name ||
-        ""
-      ).trim()
+    const salesRangeLabel =
+      document.getElementById(
+        "salesRangeLabel"
+      );
+
+    const expenseRangeLabel =
+      document.getElementById(
+        "expenseRangeLabel"
+      );
+
+    const movementRangeLabel =
+      document.getElementById(
+        "movementRangeLabel"
+      );
+
+    const salesCountLabel =
+      document.getElementById(
+        "salesCountLabel"
+      );
+
+    const expenseCountLabel =
+      document.getElementById(
+        "expenseCountLabel"
+      );
+
+    const movementCountLabel =
+      document.getElementById(
+        "movementCountLabel"
+      );
+
+    const lowStockPanel =
+      document.getElementById(
+        "lowStockPanel"
+      );
+
+    const heroNote =
+      document.querySelector(
+        ".hero-note"
+      );
+
+    const btnGoInventory =
+      document.getElementById(
+        "btnGoInventory"
+      );
+
+    const btnCloseDay =
+      document.getElementById(
+        "btnCloseDay"
+      );
+
+    const btnExportSalesCSV =
+      document.getElementById(
+        "btnExportSalesCSV"
+      );
+
+    const btnExportExpensesCSV =
+      document.getElementById(
+        "btnExportExpensesCSV"
+      );
+
+    const btnExportMovementsExcel =
+      document.getElementById(
+        "btnExportMovementsExcel"
+      );
+
+    const btnApplyRange =
+      document.getElementById(
+        "btnApplyRange"
+      );
+
+    const btnResetRange =
+      document.getElementById(
+        "btnResetRange"
+      );
+
+    const statSalesEl =
+      document.getElementById(
+        "statSales"
+      );
+
+    const statExpensesEl =
+      document.getElementById(
+        "statExpenses"
+      );
+
+    const statNetEl =
+      document.getElementById(
+        "statNet"
+      );
+
+    const statUnitsSoldEl =
+      document.getElementById(
+        "statUnitsSold"
+      );
+
+    const statProductsSoldEl =
+      document.getElementById(
+        "statProductsSold"
+      );
+
+    const statLowStockEl =
+      document.getElementById(
+        "statLowStock"
+      );
+
+    /*
+     * ==========================================================
+     * CACHÉ RAW
+     * ==========================================================
+     */
+
+    let rawSalesDocs = [];
+    let rawExpensesDocs = [];
+    let rawMovementsDocs = [];
+    let rawProductsDocs = [];
+
+    /*
+     * ==========================================================
+     * CACHÉ PROCESADA
+     * ==========================================================
+     */
+
+    let cachedSales = [];
+    let cachedExpenses = [];
+    let cachedMovements = [];
+
+    let visibleSales = [];
+    let visibleExpenses = [];
+    let visibleMovements = [];
+
+    let productsMap =
+      new Map();
+
+    /*
+     * ==========================================================
+     * ESTADO
+     * ==========================================================
+     */
+
+    let dashboardDataLoaded =
+      false;
+
+    let dashboardLoadingPromise =
+      null;
+
+    let selectedRange = {
+      from: null,
+      to: null
     };
-  }
 
-  function renderLocalBanner() {
-    if (!heroNote) return;
+    let currentUserInfo = {
+      uid: "",
+      email: "",
+      name: "Usuario",
+      role: "Empleado"
+    };
 
-    if (!currentLocalId) {
-      heroNote.innerHTML = `
-        <p class="hero-subtitle">
-          No se pudo identificar el local del usuario autenticado.
-        </p>
-      `;
-      return;
-    }
+    let currentLocalId =
+      "";
 
-    heroNote.innerHTML = `
-      <p class="hero-subtitle" style="margin-top:0">
-        <strong>Local:</strong> ${escapeHtml(currentLocalInfo.nombre || "—")}<br>
-        <strong>Número de documento:</strong> ${escapeHtml(currentLocalInfo.numeroDocumento || "—")}<br>
-        <strong>Contribuyente:</strong> ${escapeHtml(currentLocalInfo.contribuyente || "—")}<br>
-        <strong>Ubicación:</strong> ${escapeHtml(currentLocalInfo.ubicacion || "—")}
-      </p>
-
-      <p class="hero-subtitle">
-        La vista se filtra automáticamente por este local.
-      </p>
-    `;
-  }
-
-  function setDocumentTitle() {
-    const localName = currentLocalInfo.nombre
-      ? ` - ${currentLocalInfo.nombre}`
-      : "";
-
-    document.title = `Dashboard${localName}`;
-  }
-
-  function refreshLocalHeader() {
-    renderLocalBanner();
-    setDocumentTitle();
-    updateRangeLabels();
-  }
-
-  async function loadEmployeeAndLocalContext(user) {
-    currentUserInfo.uid = user.uid;
-    currentUserInfo.email = user.email || "";
-    currentUserInfo.name = "Usuario";
-    currentUserInfo.role = "Empleado";
-
-    currentLocalId = "";
-
-    currentLocalInfo = {
+    let currentLocalInfo = {
       id: "",
       nombre: "",
       numeroDocumento: "",
       ubicacion: "",
-      contribuyente: ""
+      contribuyente: "",
+      tipoDocumento: "",
+      nit: "",
+      nrc: ""
     };
 
-    const stored = getStoredCurrentUser();
+    /*
+     * Evita inicializaciones duplicadas
+     * si el script llegara a ejecutarse
+     * más de una vez.
+     */
+    let initialized =
+      false;
 
-    if (stored && stored.uid === user.uid) {
-      currentUserInfo.name =
-        stored.name || currentUserInfo.name;
+    injectDashboardStyles();
 
-      currentUserInfo.role =
-        stored.role || currentUserInfo.role;
+    /*
+     * ==========================================================
+     * DEBUG
+     * ==========================================================
+     */
 
-      if (stored.email) {
-        currentUserInfo.email = stored.email;
-      }
-
-      if (stored.id_local) {
-        currentLocalId = String(stored.id_local).trim();
-      }
-
+    function debugLog(
+      ...args
+    ) {
       if (
-        stored.localNombre ||
-        stored.localNumeroDocumento ||
-        stored.localUbicacion ||
-        stored.localContribuyente
+        DEBUG_DASHBOARD
       ) {
-        currentLocalInfo = normalizeLocalInfo(
-          {
-            nombre: stored.localNombre || "",
-            numeroDocumento: stored.localNumeroDocumento || "",
-            ubicacion: stored.localUbicacion || "",
-            contribuyente: stored.localContribuyente || ""
-          },
-          currentLocalId
+        console.log(
+          "[Dashboard]",
+          ...args
         );
       }
     }
 
-    let employeeData = null;
-
-    try {
-      const direct = await db
-        .collection(EMPLOYEE_COLLECTION_NAME)
-        .doc(user.uid)
-        .get();
-
-      if (direct.exists) {
-        employeeData = direct.data() || {};
-      }
-    } catch (err) {
-      // ignore
-    }
-
-    if (!employeeData) {
-      try {
-        const byEmail = await db
-          .collection(EMPLOYEE_COLLECTION_NAME)
-          .where("email", "==", user.email)
-          .limit(1)
-          .get();
-
-        if (!byEmail.empty) {
-          employeeData = byEmail.docs[0].data() || {};
-        }
-      } catch (err) {
-        // ignore
-      }
-    }
-
-    if (employeeData) {
-      currentUserInfo.name =
-        employeeData.name || currentUserInfo.name;
-
-      currentUserInfo.role =
-        employeeData.position ||
-        employeeData.role ||
-        currentUserInfo.role;
-
-      currentLocalId = String(
-        employeeData.id_local ||
-        employeeData.idLocal ||
-        employeeData.localId ||
-        currentLocalId ||
-        ""
-      ).trim();
-
-      saveStoredCurrentUserPatch({
-        uid: currentUserInfo.uid,
-        email: currentUserInfo.email,
-        name: currentUserInfo.name,
-        role: currentUserInfo.role,
-        id_local: currentLocalId || null
-      });
-    }
-
-    if (!currentLocalId) {
-      currentLocalInfo = {
-        id: "",
-        nombre: "",
-        numeroDocumento: "",
-        ubicacion: "",
-        contribuyente: ""
-      };
-
-      refreshLocalHeader();
-
-      throw new Error(
-        "El usuario autenticado no tiene un id_local asignado."
-      );
-    }
-
-    let localData = null;
-
-    try {
-      const directLocal = await db
-        .collection(LOCAL_COLLECTION_NAME)
-        .doc(currentLocalId)
-        .get();
-
-      if (directLocal.exists) {
-        localData = directLocal.data() || {};
-      }
-    } catch (err) {
-      // ignore
-    }
-
-    if (!localData) {
-      try {
-        const byField = await db
-          .collection(LOCAL_COLLECTION_NAME)
-          .where("id_local", "==", currentLocalId)
-          .limit(1)
-          .get();
-
-        if (!byField.empty) {
-          localData = byField.docs[0].data() || {};
-        }
-      } catch (err) {
-        // ignore
-      }
-    }
-
-    currentLocalInfo = normalizeLocalInfo(
-      localData || {},
-      currentLocalId
-    );
-
-    saveStoredCurrentUserPatch({
-      id_local: currentLocalId,
-      localNombre: currentLocalInfo.nombre || "",
-      localNumeroDocumento:
-        currentLocalInfo.numeroDocumento || "",
-      localUbicacion:
-        currentLocalInfo.ubicacion || "",
-      localContribuyente:
-        currentLocalInfo.contribuyente || ""
-    });
-
-    refreshLocalHeader();
-  }
-
-  function getUnitsPerBox(product) {
-    const v = numberOrZero(
-      product && product.unitsPerBox
-    );
-
-    return v > 0 ? v : 1;
-  }
-
-  function getStockUnits(product) {
-    const qty = numberOrZero(
-      product && product.quantity
-    );
-
-    if (qty > 0) return qty;
-
-    const boxes = numberOrZero(
-      product && product.boxes
-    );
-
-    const upb = getUnitsPerBox(product);
-
-    return boxes > 0 ? boxes * upb : 0;
-  }
-
-  function getStockBoxes(product) {
-    const boxes = numberOrZero(
-      product && product.boxes
-    );
-
-    if (boxes > 0) return boxes;
-
-    const units = getStockUnits(product);
-    const upb = getUnitsPerBox(product);
-
-    return upb > 0 ? units / upb : 0;
-  }
-
-  function getDisplayDate(createdAt) {
-    if (!createdAt) return "—";
-
-    if (createdAt.seconds) {
-      return new Date(
-        createdAt.seconds * 1000
-      ).toLocaleDateString("es-ES");
-    }
-
-    const d = new Date(createdAt);
-
-    return isNaN(d.getTime())
-      ? "—"
-      : d.toLocaleDateString("es-ES");
-  }
-
-  function getDisplayTime(createdAt) {
-    if (!createdAt) return "—";
-
-    const d = createdAt.seconds
-      ? new Date(createdAt.seconds * 1000)
-      : new Date(createdAt);
-
-    return isNaN(d.getTime())
-      ? "—"
-      : d.toLocaleTimeString("es-ES", {
-        hour: "2-digit",
-        minute: "2-digit"
-      });
-  }
-
-  function getTextFromProducts(products) {
-    if (!Array.isArray(products) || !products.length) {
-      return "—";
-    }
-
-    return products
-      .map(
-        p =>
-          `${p.name || "Producto"} x${numberOrZero(
-            p.quantity || p.unitsTotal || 0
-          )}`
-      )
-      .join(" | ");
-  }
-
-  /*
-   * Obtiene el costo unitario de un producto.
-   *
-   * IMPORTANTE:
-   * No utiliza precio de venta para calcular el costo.
-   *
-   * Orden de prioridad:
-   * 1. costo unitario almacenado directamente.
-   * 2. costo por unidad equivalente.
-   * 3. costo de caja / unidades por caja.
-   */
-  function getProductUnitCost(product) {
-    if (!product) return 0;
-
-    const upb = getUnitsPerBox(product);
-
-    const directUnitCost = [
-      product.unitCost,
-      product.costoUnitario,
-      product.costPerUnit,
-      product.costoPorUnidad,
-      product.lastCostPerUnit,
-      product.ultimoCostoUnitario
-    ];
-
-    for (const candidate of directUnitCost) {
-      const n = Number(candidate);
-
-      if (Number.isFinite(n) && n > 0) {
-        return n;
-      }
-    }
-
-    const directCost = [
-      product.cost,
-      product.costo,
-      product.unitCostValue,
-      product.costValue
-    ];
-
-    for (const candidate of directCost) {
-      const n = Number(candidate);
-
-      if (Number.isFinite(n) && n > 0) {
-        return n;
-      }
-    }
-
-    const boxCost = [
-      product.costPerBox,
-      product.costoPorCaja,
-      product.lastCostPerBox,
-      product.ultimoCostoPorCaja
-    ];
-
-    for (const candidate of boxCost) {
-      const n = Number(candidate);
-
+    function debugWarn(
+      ...args
+    ) {
       if (
-        Number.isFinite(n) &&
-        n > 0 &&
-        upb > 0
+        DEBUG_DASHBOARD
       ) {
-        return n / upb;
+        console.warn(
+          "[Dashboard]",
+          ...args
+        );
       }
     }
 
-    return 0;
-  }
-
-  /*
-   * Obtiene el costo unitario directamente desde el
-   * movimiento, producto relacionado o venta relacionada.
-   */
-  function getMovementUnitCost(movement, product, saleProduct) {
-    const candidates = [
-      movement && movement.costoUnitario,
-      movement && movement.unitCost,
-      movement && movement.costPerUnit,
-      movement && movement.costoPorUnidad,
-      movement && movement.lastCostPerUnit,
-
-      saleProduct && saleProduct.costoUnitario,
-      saleProduct && saleProduct.unitCost,
-      saleProduct && saleProduct.costPerUnit,
-      saleProduct && saleProduct.costoPorUnidad,
-      saleProduct && saleProduct.lastCostPerUnit,
-
-      product && product.costoUnitario,
-      product && product.unitCost,
-      product && product.costPerUnit,
-      product && product.costoPorUnidad,
-      product && product.lastCostPerUnit
-    ];
-
-    for (const candidate of candidates) {
-      const n = Number(candidate);
-
-      if (Number.isFinite(n) && n > 0) {
-        return n;
+    function debugError(
+      ...args
+    ) {
+      if (
+        DEBUG_DASHBOARD
+      ) {
+        console.error(
+          "[Dashboard]",
+          ...args
+        );
       }
     }
 
     /*
-     * Si el movimiento/producto no tiene costo unitario directo,
-     * se utiliza la función centralizada de costo del producto.
+     * ==========================================================
+     * UTILIDADES
+     * ==========================================================
      */
-    return getProductUnitCost(product);
-  }
 
-  function getSaleMode(item) {
-    return String(
-      item &&
-      (item.mode ||
-        item.saleMode ||
-        item.saleType) ||
-      "unit"
-    ).toLowerCase();
-  }
-
-  function getSaleProducts(sale) {
-    return Array.isArray(sale && sale.products)
-      ? sale.products
-      : [];
-  }
-
-  function getSalePrimaryProduct(sale) {
-    const products = getSaleProducts(sale);
-
-    return products.length
-      ? products[0] || {}
-      : {};
-  }
-
-  function getSaleProductPrice(product) {
-    if (!product) return 0;
-
-    const direct = [
-      product.price,
-      product.salePrice,
-      product.precioVenta,
-      product.unitPrice,
-      product.unitSalePrice
-    ];
-
-    for (const candidate of direct) {
-      const n = Number(candidate);
-
-      if (Number.isFinite(n) && n > 0) {
-        return n;
-      }
-    }
-
-    const total = Number(product.total);
-    const units = getSaleProductUnits(product);
-
-    if (
-      Number.isFinite(total) &&
-      total > 0 &&
-      units > 0
+    function numberOrZero(
+      value
     ) {
-      const byUnit = total / units;
-
-      if (
-        Number.isFinite(byUnit) &&
-        byUnit > 0
-      ) {
-        return byUnit;
-      }
-    }
-
-    return 0;
-  }
-
-  function getSaleProductUnits(product) {
-    if (!product) return 0;
-
-    const unitsTotal = Number(product.unitsTotal);
-
-    if (
-      Number.isFinite(unitsTotal) &&
-      unitsTotal > 0
-    ) {
-      return unitsTotal;
-    }
-
-    const quantity = Number(product.quantity);
-
-    if (
-      Number.isFinite(quantity) &&
-      quantity > 0
-    ) {
-      const mode = String(
-        product.mode ||
-        product.saleMode ||
-        product.saleType ||
-        "unit"
-      ).toLowerCase();
-
-      const unitsPerBox =
-        getUnitsPerBox(product);
-
-      if (mode === "box") {
-        return quantity * unitsPerBox;
-      }
-
-      return quantity;
-    }
-
-    const boxes = Number(product.boxes);
-
-    if (
-      Number.isFinite(boxes) &&
-      boxes > 0
-    ) {
-      return boxes * getUnitsPerBox(product);
-    }
-
-    return 0;
-  }
-
-  function getSoldUnitsFromSaleProduct(p) {
-    if (!p) return 0;
-
-    return getSaleProductUnits(p);
-  }
-
-  function getSoldBoxesFromSaleProduct(p) {
-    if (!p) return 0;
-
-    const unitsPerBox =
-      getUnitsPerBox(p);
-
-    const units =
-      getSaleProductUnits(p);
-
-    if (
-      unitsPerBox > 1 &&
-      units > 0
-    ) {
-      return units / unitsPerBox;
-    }
-
-    return 0;
-  }
-
-  function normalizeLookupValue(v) {
-    return String(v || "")
-      .trim()
-      .toLowerCase();
-  }
-
-  function isSameDayMs(a, b) {
-    if (
-      !Number.isFinite(a) ||
-      !Number.isFinite(b) ||
-      a <= 0 ||
-      b <= 0
-    ) {
-      return false;
-    }
-
-    const da = new Date(a);
-    const db = new Date(b);
-
-    return (
-      da.getFullYear() === db.getFullYear() &&
-      da.getMonth() === db.getMonth() &&
-      da.getDate() === db.getDate()
-    );
-  }
-
-  function pickSaleProductForMovement(
-    sale,
-    movement
-  ) {
-    const products =
-      getSaleProducts(sale);
-
-    if (!products.length) {
-      return null;
-    }
-
-    const movementCode =
-      normalizeLookupValue(
-        movement.productCode ||
-        movement.codigoProducto ||
-        movement.productId ||
-        movement.sku ||
-        movement.code ||
-        ""
-      );
-
-    const movementName =
-      normalizeLookupValue(
-        movement.productName ||
-        movement.name ||
-        movement.nombre ||
-        ""
-      );
-
-    const matched = products.find(p => {
-      const pid =
-        normalizeLookupValue(
-          p.productId ||
-          p.codigoProducto ||
-          p.sku ||
-          p.code ||
-          ""
+      const n =
+        Number(
+          value
         );
 
-      const pname =
-        normalizeLookupValue(
-          p.name ||
-          p.productName ||
-          p.nombre ||
+      return Number.isFinite(
+        n
+      )
+        ? n
+        : 0;
+    }
+
+    function isPlainObject(
+      value
+    ) {
+      return (
+        !!value &&
+        typeof value ===
+          "object" &&
+        !Array.isArray(
+          value
+        )
+      );
+    }
+
+    function escapeHtml(
+      value
+    ) {
+      return String(
+        value ?? ""
+      ).replace(
+        /[&<>"'`=\/]/g,
+        char =>
+          ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+            "/": "&#x2F;",
+            "`": "&#96;",
+            "=": "&#61;"
+          }[char])
+      );
+    }
+
+    function formatMoney(
+      value
+    ) {
+      if (
+        typeof appChartUtils !==
+          "undefined" &&
+        typeof appChartUtils.formatCurrency ===
+          "function"
+      ) {
+        return appChartUtils.formatCurrency(
+          value
+        );
+      }
+
+      return new Intl.NumberFormat(
+        "es-ES",
+        {
+          style: "currency",
+          currency: "USD"
+        }
+      ).format(
+        Number(
+          value || 0
+        )
+      );
+    }
+
+    function sanitizeFilePart(
+      value
+    ) {
+      return String(
+        value || ""
+      )
+        .trim()
+        .toLowerCase()
+        .replace(
+          /[^a-z0-9]+/gi,
+          "_"
+        )
+        .replace(
+          /^_+|_+$/g,
           ""
+        ) ||
+        "local";
+    }
+
+    function getTimestampMs(
+      value
+    ) {
+      if (
+        !value
+      ) {
+        return 0;
+      }
+
+      if (
+        typeof value.seconds ===
+        "number"
+      ) {
+        return (
+          value.seconds *
+          1000
+        );
+      }
+
+      if (
+        typeof value.toDate ===
+        "function"
+      ) {
+        const date =
+          value.toDate();
+
+        return isNaN(
+          date.getTime()
+        )
+          ? 0
+          : date.getTime();
+      }
+
+      const date =
+        new Date(
+          value
+        );
+
+      return isNaN(
+        date.getTime()
+      )
+        ? 0
+        : date.getTime();
+    }
+
+    function getDisplayDate(
+      value
+    ) {
+      const timestamp =
+        getTimestampMs(
+          value
+        );
+
+      if (
+        !timestamp
+      ) {
+        return "—";
+      }
+
+      return new Date(
+        timestamp
+      ).toLocaleDateString(
+        "es-ES"
+      );
+    }
+
+    function getDisplayTime(
+      value
+    ) {
+      const timestamp =
+        getTimestampMs(
+          value
+        );
+
+      if (
+        !timestamp
+      ) {
+        return "—";
+      }
+
+      return new Date(
+        timestamp
+      ).toLocaleTimeString(
+        "es-ES",
+        {
+          hour:
+            "2-digit",
+
+          minute:
+            "2-digit"
+        }
+      );
+    }
+
+    function toLocalInputDate(
+      date
+    ) {
+      const d =
+        new Date(
+          date
+        );
+
+      const y =
+        d.getFullYear();
+
+      const m =
+        String(
+          d.getMonth() + 1
+        ).padStart(
+          2,
+          "0"
+        );
+
+      const day =
+        String(
+          d.getDate()
+        ).padStart(
+          2,
+          "0"
+        );
+
+      return `${y}-${m}-${day}`;
+    }
+
+    function startOfMonth(
+      date = new Date()
+    ) {
+      return new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        1,
+        0,
+        0,
+        0,
+        0
+      );
+    }
+
+    function endOfToday(
+      date = new Date()
+    ) {
+      return new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+    }
+
+    function startOfDay(
+      dateString
+    ) {
+      if (
+        !dateString
+      ) {
+        return null;
+      }
+
+      const date =
+        new Date(
+          `${dateString}T00:00:00`
+        );
+
+      return isNaN(
+        date.getTime()
+      )
+        ? null
+        : date;
+    }
+
+    function endOfDay(
+      dateString
+    ) {
+      if (
+        !dateString
+      ) {
+        return null;
+      }
+
+      const date =
+        new Date(
+          `${dateString}T23:59:59.999`
+        );
+
+      return isNaN(
+        date.getTime()
+      )
+        ? null
+        : date;
+    }
+
+    /*
+     * ==========================================================
+     * CONTEXTO DESDE APP.JS
+     * ==========================================================
+     *
+     * No se consulta empleados ni local.
+     */
+
+    async function resolveDashboardContext(
+      user
+    ) {
+      if (
+        !user
+      ) {
+        throw new Error(
+          "No existe un usuario autenticado."
+        );
+      }
+
+      if (
+        typeof window.getCurrentUserContext !==
+        "function"
+      ) {
+        throw new Error(
+          "app.js no expuso getCurrentUserContext()."
+        );
+      }
+
+      const context =
+        await window.getCurrentUserContext(
+          user
+        );
+
+      if (
+        !context
+      ) {
+        throw new Error(
+          "No se pudo resolver el contexto del usuario."
+        );
+      }
+
+      currentUserInfo = {
+        uid:
+          context.uid ||
+          user.uid,
+
+        email:
+          context.email ||
+          user.email ||
+          "",
+
+        name:
+          context.name ||
+          user.displayName ||
+          "Usuario",
+
+        role:
+          context.role ||
+          "Empleado"
+      };
+
+      currentLocalId =
+        String(
+          context.id_local ||
+          ""
+        ).trim();
+
+      currentLocalInfo = {
+        id:
+          currentLocalId,
+
+        nombre:
+          String(
+            context.localNombre ||
+            ""
+          ).trim(),
+
+        numeroDocumento:
+          String(
+            context.localNumeroDocumento ||
+            ""
+          ).trim(),
+
+        ubicacion:
+          String(
+            context.localUbicacion ||
+            ""
+          ).trim(),
+
+        contribuyente:
+          String(
+            context.localContribuyente ||
+            ""
+          ).trim(),
+
+        tipoDocumento:
+          String(
+            context.localTipoDocumento ||
+            ""
+          ).trim(),
+
+        nit:
+          String(
+            context.localNIT ||
+            ""
+          ).trim(),
+
+        nrc:
+          String(
+            context.localNRC ||
+            ""
+          ).trim()
+      };
+
+      if (
+        !currentLocalId
+      ) {
+        throw new Error(
+          "El usuario autenticado no tiene un id_local asignado."
+        );
+      }
+
+      greetingEls.forEach(
+        element => {
+          element.textContent =
+            `Hola, ${currentUserInfo.name} (${currentUserInfo.role})`;
+        }
+      );
+
+      if (
+        typeof window.renderNavigationForRole ===
+          "function"
+      ) {
+        window.renderNavigationForRole(
+          currentUserInfo.role
+        );
+      }
+
+      renderLocalBanner();
+
+      updateDocumentTitle();
+
+      return context;
+    }
+
+    function renderLocalBanner() {
+      if (
+        !heroNote
+      ) {
+        return;
+      }
+
+      if (
+        !currentLocalId
+      ) {
+        heroNote.innerHTML = `
+          <p class="hero-subtitle">
+            No se pudo identificar el local
+            del usuario autenticado.
+          </p>
+        `;
+
+        return;
+      }
+
+      heroNote.innerHTML = `
+        <p
+          class="hero-subtitle"
+          style="margin-top:0"
+        >
+          <strong>Local:</strong>
+          ${escapeHtml(
+            currentLocalInfo.nombre ||
+              "—"
+          )}
+          <br>
+
+          <strong>Número de documento:</strong>
+          ${escapeHtml(
+            currentLocalInfo.numeroDocumento ||
+              "—"
+          )}
+          <br>
+
+          <strong>Contribuyente:</strong>
+          ${escapeHtml(
+            currentLocalInfo.contribuyente ||
+              "—"
+          )}
+          <br>
+
+          <strong>Tipo de documento:</strong>
+          ${escapeHtml(
+            currentLocalInfo.tipoDocumento ||
+              "—"
+          )}
+          <br>
+
+          <strong>NIT:</strong>
+          ${escapeHtml(
+            currentLocalInfo.nit ||
+              "—"
+          )}
+          <br>
+
+          <strong>NRC:</strong>
+          ${escapeHtml(
+            currentLocalInfo.nrc ||
+              "—"
+          )}
+          <br>
+
+          <strong>Ubicación:</strong>
+          ${escapeHtml(
+            currentLocalInfo.ubicacion ||
+              "—"
+          )}
+        </p>
+
+        <p class="hero-subtitle">
+          La vista se filtra automáticamente
+          por este local.
+        </p>
+      `;
+    }
+
+    function updateDocumentTitle() {
+      const suffix =
+        currentLocalInfo.nombre
+          ? ` - ${currentLocalInfo.nombre}`
+          : "";
+
+      document.title =
+        `Dashboard${suffix}`;
+    }
+
+    /*
+     * ==========================================================
+     * PRODUCTOS
+     * ==========================================================
+     */
+
+    function rebuildProductsMap() {
+      productsMap =
+        new Map();
+
+      rawProductsDocs.forEach(
+        ({
+          id,
+          data
+        }) => {
+          productsMap.set(
+            id,
+            {
+              id,
+              ...data
+            }
+          );
+        }
+      );
+    }
+
+    function getUnitsPerBox(
+      product
+    ) {
+      const units =
+        numberOrZero(
+          product?.unitsPerBox
+        );
+
+      return units > 0
+        ? units
+        : 1;
+    }
+
+    function getStockUnits(
+      product
+    ) {
+      const quantity =
+        numberOrZero(
+          product?.quantity
+        );
+
+      if (
+        quantity > 0
+      ) {
+        return quantity;
+      }
+
+      const boxes =
+        numberOrZero(
+          product?.boxes
         );
 
       return (
-        (movementCode &&
-          pid &&
-          pid === movementCode) ||
-        (movementName &&
-          pname &&
-          pname === movementName)
-      );
-    });
-
-    return matched || products[0] || null;
-  }
-
-  function buildSalesIndex(salesDocs) {
-    const byReference = new Map();
-    const flatProducts = [];
-
-    salesDocs.forEach(({ id, data }) => {
-      const sale = {
-        id,
-        ...data,
-        createdAtMs:
-          getTimestampMs(data.createdAt)
-      };
-
-      const aliases = [
-        id,
-        sale.docNumber,
-        sale.documentNumber,
-        sale.numeroDocumento,
-        sale.numeroDocumentoVenta,
-        sale.saleId,
-        sale.reference,
-        sale.referenceId,
-        sale.transactionId
-      ].filter(Boolean);
-
-      aliases.forEach(alias => {
-        byReference.set(
-          normalizeLookupValue(alias),
-          sale
-        );
-      });
-
-      const products =
-        getSaleProducts(sale);
-
-      products.forEach(
-        (product, productIndex) => {
-          flatProducts.push({
-            saleId: id,
-            sale,
-            product,
-            productIndex
-          });
-        }
-      );
-    });
-
-    return {
-      byReference,
-      flatProducts
-    };
-  }
-
-  function findRelatedSaleForMovement(
-    movement,
-    salesIndex
-  ) {
-    const possibleRefs = [
-      movement.docNumber,
-      movement.documentNumber,
-      movement.numeroDocumento,
-      movement.saleId,
-      movement.ventaId,
-      movement.referenceBook,
-      movement.libro,
-      movement.referenciaLibro,
-      movement.reference,
-      movement.referenceId
-    ].filter(Boolean);
-
-    for (const ref of possibleRefs) {
-      const sale =
-        salesIndex.byReference.get(
-          normalizeLookupValue(ref)
-        );
-
-      if (sale) {
-        return {
-          sale,
-          product:
-            pickSaleProductForMovement(
-              sale,
-              movement
-            ),
-          source: `ref:${ref}`
-        };
-      }
-    }
-
-    const movementCode =
-      normalizeLookupValue(
-        movement.productCode ||
-        movement.codigoProducto ||
-        movement.productId ||
-        movement.sku ||
-        movement.code ||
-        ""
-      );
-
-    const movementName =
-      normalizeLookupValue(
-        movement.productName ||
-        movement.name ||
-        movement.nombre ||
-        ""
-      );
-
-    const movementMs =
-      getTimestampMs(
-        movement.createdAt
-      );
-
-    let hit =
-      salesIndex.flatProducts.find(
-        item => {
-          const pid =
-            normalizeLookupValue(
-              item.product &&
-              (
-                item.product.productId ||
-                item.product.codigoProducto ||
-                item.product.sku ||
-                item.product.code ||
-                ""
-              )
-            );
-
-          const pname =
-            normalizeLookupValue(
-              item.product &&
-              (
-                item.product.name ||
-                item.product.productName ||
-                item.product.nombre ||
-                ""
-              )
-            );
-
-          return (
-            (movementCode &&
-              pid &&
-              pid === movementCode) ||
-            (movementName &&
-              pname &&
-              pname === movementName)
-          );
-        }
-      );
-
-    if (!hit && movementMs > 0) {
-      const sameDay =
-        salesIndex.flatProducts.filter(
-          item =>
-            isSameDayMs(
-              item.sale.createdAtMs,
-              movementMs
-            )
-        );
-
-      hit =
-        sameDay.find(item => {
-          const pid =
-            normalizeLookupValue(
-              item.product &&
-              (
-                item.product.productId ||
-                item.product.codigoProducto ||
-                item.product.sku ||
-                item.product.code ||
-                ""
-              )
-            );
-
-          const pname =
-            normalizeLookupValue(
-              item.product &&
-              (
-                item.product.name ||
-                item.product.productName ||
-                item.product.nombre ||
-                ""
-              )
-            );
-
-          return (
-            (movementCode &&
-              pid &&
-              pid === movementCode) ||
-            (movementName &&
-              pname &&
-              pname === movementName)
-          );
-        }) ||
-        sameDay[0] ||
-        null;
-    }
-
-    if (hit) {
-      return {
-        sale: hit.sale,
-        product: hit.product,
-        source: hit.saleId
-          ? `match:${hit.saleId}`
-          : "match"
-      };
-    }
-
-    return {
-      sale: null,
-      product: null,
-      source: "none"
-    };
-  }
-
-  function getMovementPrimaryProduct(m) {
-    if (
-      m &&
-      Array.isArray(m.products) &&
-      m.products.length > 0
-    ) {
-      const candidate =
-        m.products[0];
-
-      if (isPlainObject(candidate)) {
-        return candidate;
-      }
-    }
-
-    const fallbackKeys = [
-      "product",
-      "producto",
-      "item",
-      "detalleProducto",
-      "movimiento",
-      "sale",
-      "venta"
-    ];
-
-    for (const key of fallbackKeys) {
-      if (isPlainObject(m?.[key])) {
-        return m[key];
-      }
-    }
-
-    return {};
-  }
-
-  function deepPickNumber(
-    source,
-    keys,
-    defaultValue = 0,
-    maxDepth = 3
-  ) {
-    const visited = new WeakSet();
-
-    function walk(value, depth) {
-      if (!value || depth < 0) {
-        return undefined;
-      }
-
-      if (typeof value === "object") {
-        if (visited.has(value)) {
-          return undefined;
-        }
-
-        visited.add(value);
-      }
-
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          const found =
-            walk(item, depth - 1);
-
-          if (found !== undefined) {
-            return found;
-          }
-        }
-
-        return undefined;
-      }
-
-      if (isPlainObject(value)) {
-        for (const key of keys) {
-          if (
-            Object.prototype.hasOwnProperty.call(
-              value,
-              key
-            )
-          ) {
-            const candidate =
-              value[key];
-
-            const n = Number(candidate);
-
-            if (Number.isFinite(n)) {
-              return n;
-            }
-          }
-        }
-
-        for (const k of Object.keys(value)) {
-          const child = value[k];
-
-          const found =
-            walk(child, depth - 1);
-
-          if (found !== undefined) {
-            return found;
-          }
-        }
-      }
-
-      return undefined;
-    }
-
-    const result =
-      walk(source, maxDepth);
-
-    return Number.isFinite(result)
-      ? result
-      : defaultValue;
-  }
-
-  function deepPickString(
-    source,
-    keys,
-    defaultValue = "—",
-    maxDepth = 3
-  ) {
-    const visited = new WeakSet();
-
-    function walk(value, depth) {
-      if (!value || depth < 0) {
-        return undefined;
-      }
-
-      if (typeof value === "object") {
-        if (visited.has(value)) {
-          return undefined;
-        }
-
-        visited.add(value);
-      }
-
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          const found =
-            walk(item, depth - 1);
-
-          if (found !== undefined) {
-            return found;
-          }
-        }
-
-        return undefined;
-      }
-
-      if (isPlainObject(value)) {
-        for (const key of keys) {
-          if (
-            Object.prototype.hasOwnProperty.call(
-              value,
-              key
-            )
-          ) {
-            const candidate =
-              value[key];
-
-            if (
-              candidate !== null &&
-              candidate !== undefined &&
-              String(candidate).trim() !== ""
-            ) {
-              return String(candidate);
-            }
-          }
-        }
-
-        for (const k of Object.keys(value)) {
-          const child = value[k];
-
-          const found =
-            walk(child, depth - 1);
-
-          if (found !== undefined) {
-            return found;
-          }
-        }
-      }
-
-      return undefined;
-    }
-
-    const result =
-      walk(source, maxDepth);
-
-    return result !== undefined
-      ? result
-      : defaultValue;
-  }
-
-  function getMovementProductCode(m) {
-    const p =
-      getMovementPrimaryProduct(m);
-
-    return String(
-      deepPickString(
-        {
-          direct: m,
-          product: p
-        },
-        [
-          "codigoProducto",
-          "productCode",
-          "sku",
-          "code",
-          "codigo",
-          "productId"
-        ],
-        ""
-      )
-    ).trim() || "—";
-  }
-
-  function getMovementProductName(m) {
-    const p =
-      getMovementPrimaryProduct(m);
-
-    return String(
-      deepPickString(
-        {
-          direct: m,
-          product: p
-        },
-        [
-          "productName",
-          "name",
-          "nombre",
-          "descripcion",
-          "description"
-        ],
-        ""
-      )
-    ).trim() || "—";
-  }
-
-  function getMovementDocumentNumber(m) {
-    return String(
-      m &&
-      (
-        m.numeroDocumento ||
-        m.documentNumber ||
-        m.docNumber ||
-        "—"
-      )
-    ) || "—";
-  }
-
-  /*
-   * Referencia al libro.
-   *
-   * Se aceptan diferentes nombres para mantener
-   * compatibilidad con documentos existentes.
-   */
-  function getMovementBookReference(m) {
-    return String(
-      m &&
-      (
-        m.libro ||
-        m.referenceBook ||
-        m.referenciaLibro ||
-        m.bookReference ||
-        m.libroReferencia ||
-        m.referenciaLibroInventario ||
-        ""
-      )
-    ).trim() || "—";
-  }
-
-  function getMovementEntry(m) {
-    return numberOrZero(
-      m &&
-      (
-        m.entrada ??
-        m.entry ??
-        m.unitsIn ??
-        0
-      )
-    );
-  }
-
-  function getMovementExit(m) {
-    return numberOrZero(
-      m &&
-      (
-        m.salida ??
-        m.exit ??
-        m.unitsOut ??
-        0
-      )
-    );
-  }
-
-  function getMovementBalanceBefore(m) {
-    return numberOrZero(
-      m &&
-      (
-        m.saldoAnterior ??
-        m.balanceBefore ??
-        m.previousBalance ??
-        0
-      )
-    );
-  }
-
-  function getMovementBalanceAfter(m) {
-    return numberOrZero(
-      m &&
-      (
-        m.saldoActual ??
-        m.balance ??
-        m.saldo ??
-        m.currentBalance ??
-        0
-      )
-    );
-  }
-
-  /*
-   * El valor del inventario de la transacción
-   * SIEMPRE se calcula usando el saldo actual
-   * registrado por el movimiento.
-   *
-   * Fórmula:
-   *
-   * valorInventario = costoUnitario × saldoActual
-   */
-  function calculateTransactionInventoryValue(
-    unitCost,
-    balanceAfter
-  ) {
-    const cost = numberOrZero(unitCost);
-    const balance =
-      numberOrZero(balanceAfter);
-
-    return cost * balance;
-  }
-
-  function getMovementDetail(m) {
-    return String(
-      m &&
-      (
-        m.detalle ||
-        m.detail ||
-        m.notes ||
-        ""
-      )
-    ) || "";
-  }
-
-  function getMovementTypeLabel(m) {
-    const type = String(
-      m &&
-      (
-        m.tipoMovimiento ||
-        m.type ||
-        ""
-      )
-    ).toLowerCase();
-
-    if (type === "entrada") {
-      return "Entrada";
-    }
-
-    if (type === "salida") {
-      return "Salida";
-    }
-
-    if (type === "ajuste") {
-      return "Ajuste";
-    }
-
-    return "Movimiento";
-  }
-
-  function getTimestampMs(createdAt) {
-    if (!createdAt) return 0;
-
-    if (createdAt.seconds) {
-      return createdAt.seconds * 1000;
-    }
-
-    const d = new Date(createdAt);
-
-    return isNaN(d.getTime())
-      ? 0
-      : d.getTime();
-  }
-
-  function buildMovementSortKey(data = {}) {
-    const createdAtMs =
-      getTimestampMs(data.createdAt);
-
-    const datePart =
-      String(
-        data.fecha ||
-        data.date ||
-        data.fechaMovimiento ||
-        ""
-      ).trim();
-
-    const timePart =
-      String(
-        data.hora ||
-        data.time ||
-        data.horaMovimiento ||
-        ""
-      ).trim();
-
-    if (createdAtMs > 0) {
-      return createdAtMs;
-    }
-
-    if (datePart) {
-      const parsed = new Date(
-        `${datePart}T${timePart || "00:00:00"}`
-      );
-
-      if (!isNaN(parsed.getTime())) {
-        return parsed.getTime();
-      }
-    }
-
-    return 0;
-  }
-
-  function matchesCurrentLocal(data = {}) {
-    if (!currentLocalId) {
-      return false;
-    }
-
-    return (
-      getLocalFieldValue(data) ===
-      String(currentLocalId).trim()
-    );
-  }
-
-  function isWithinSelectedRange(createdAt) {
-    if (
-      !selectedRange.from ||
-      !selectedRange.to
-    ) {
-      return true;
-    }
-
-    const date = createdAt?.seconds
-      ? new Date(createdAt.seconds * 1000)
-      : new Date(createdAt);
-
-    if (isNaN(date.getTime())) {
-      return false;
-    }
-
-    return (
-      date >= selectedRange.from &&
-      date <= selectedRange.to
-    );
-  }
-
-  function sortByCreatedAtDesc(a, b) {
-    const da =
-      a &&
-        typeof a.createdAtMs === "number"
-        ? a.createdAtMs
-        : 0;
-
-    const db =
-      b &&
-        typeof b.createdAtMs === "number"
-        ? b.createdAtMs
-        : 0;
-
-    return db - da;
-  }
-
-  function sortByCreatedAtAsc(a, b) {
-    const da =
-      a &&
-        typeof a.createdAtMs === "number"
-        ? a.createdAtMs
-        : getTimestampMs(a?.createdAt);
-
-    const db =
-      b &&
-        typeof b.createdAtMs === "number"
-        ? b.createdAtMs
-        : getTimestampMs(b?.createdAt);
-
-    return da - db;
-  }
-
-  async function loadCollectionDocs(
-    collectionName
-  ) {
-    const snap = await db
-      .collection(collectionName)
-      .orderBy("createdAt", "desc")
-      .get();
-
-    const docs = [];
-
-    snap.forEach(doc => {
-      docs.push({
-        id: doc.id,
-        data: doc.data() || {}
-      });
-    });
-
-    return docs;
-  }
-
-  function logSalesDocumentInspection(
-    saleDoc,
-    index
-  ) {
-    if (
-      !DEBUG_DASHBOARD ||
-      index >= MAX_DEBUG_DOCS
-    ) {
-      return;
-    }
-
-    const sale =
-      saleDoc.data || {};
-
-    const products =
-      getSaleProducts(sale);
-
-    const firstProduct =
-      products[0] || null;
-
-    console.groupCollapsed(
-      `[Dashboard][ventas] Documento #${index + 1}: ${saleDoc.id}`
-    );
-
-    console.log(
-      "campos:",
-      Object.keys(sale)
-    );
-
-    console.log(
-      "createdAt:",
-      sale.createdAt
-    );
-
-    console.log(
-      "id_local:",
-      sale.id_local
-    );
-
-    console.log(
-      "userName:",
-      sale.userName
-    );
-
-    console.log(
-      "products.length:",
-      products.length
-    );
-
-    console.log(
-      "products[0]:",
-      firstProduct
-    );
-
-    if (firstProduct) {
-      console.log(
-        "precio de venta detectado:",
-        getSaleProductPrice(firstProduct)
-      );
-
-      console.log(
-        "unidades vendidas detectadas:",
-        getSaleProductUnits(firstProduct)
-      );
-    }
-
-    console.groupEnd();
-  }
-
-  function aggregateSalesFromDocs(
-    salesDocs
-  ) {
-    const unitsMap = {};
-    const boxesMap = {};
-
-    let totalSales = 0;
-    let totalUnitsSold = 0;
-
-    salesDocs.forEach(
-      ({ data: sale }) => {
-        totalSales += numberOrZero(
-          sale.total
-        );
-
-        const products =
-          Array.isArray(sale.products)
-            ? sale.products
-            : [];
-
-        products.forEach(p => {
-          if (!p || !p.productId) {
-            return;
-          }
-
-          const soldUnits =
-            getSoldUnitsFromSaleProduct(p);
-
-          const soldBoxes =
-            getSoldBoxesFromSaleProduct(p);
-
-          unitsMap[p.productId] =
-            (unitsMap[p.productId] || 0) +
-            soldUnits;
-
-          boxesMap[p.productId] =
-            (boxesMap[p.productId] || 0) +
-            soldBoxes;
-
-          totalUnitsSold += soldUnits;
-        });
-      }
-    );
-
-    const distinctProductsSold =
-      Object.keys(unitsMap).filter(
-        productId =>
-          numberOrZero(
-            unitsMap[productId]
-          ) > 0
-      ).length;
-
-    return {
-      unitsMap,
-      boxesMap,
-      totalSales,
-      totalUnitsSold,
-      distinctProductsSold
-    };
-  }
-
-  function setDefaultRangeToMonth() {
-    const today = new Date();
-
-    const from =
-      startOfMonth(today);
-
-    const to = today;
-
-    selectedRange = {
-      from,
-      to
-    };
-
-    if (rangeFrom) {
-      rangeFrom.value =
-        toLocalInputDate(from);
-    }
-
-    if (rangeTo) {
-      rangeTo.value =
-        toLocalInputDate(to);
-    }
-
-    updateRangeLabels();
-  }
-
-  function updateRangeLabels() {
-    const fromText =
-      selectedRange.from
-        ? selectedRange.from.toLocaleDateString(
-          "es-ES"
+        boxes *
+        getUnitsPerBox(
+          product
         )
-        : "inicio";
-
-    const toText =
-      selectedRange.to
-        ? selectedRange.to.toLocaleDateString(
-          "es-ES"
-        )
-        : "hoy";
-
-    const localText =
-      currentLocalInfo.nombre
-        ? ` del local ${currentLocalInfo.nombre}`
-        : "";
-
-    if (salesRangeLabel) {
-      salesRangeLabel.textContent =
-        `Mostrando resultados${localText} desde ${fromText} hasta ${toText}.`;
+      );
     }
 
-    if (expenseRangeLabel) {
-      expenseRangeLabel.textContent =
-        `Mostrando resultados${localText} desde ${fromText} hasta ${toText}.`;
-    }
-
-    if (movementRangeLabel) {
-      movementRangeLabel.textContent =
-        `Mostrando resultados${localText} desde ${fromText} hasta ${toText}.`;
-    }
-  }
-
-  async function loadDashboardForRange() {
-    try {
-      if (!currentLocalId) {
-        throw new Error(
-          "No hay local asociado al usuario autenticado."
+    function getStockBoxes(
+      product
+    ) {
+      const boxes =
+        numberOrZero(
+          product?.boxes
         );
-      }
-
-      const range = {
-        from: rangeFrom?.value
-          ? startOfDay(rangeFrom.value)
-          : startOfMonth(new Date()),
-
-        to: rangeTo?.value
-          ? endOfDay(rangeTo.value)
-          : endOfToday(new Date())
-      };
 
       if (
-        !range.from ||
-        !range.to
+        boxes > 0
       ) {
-        Swal.fire(
-          "Fecha inválida",
-          "Revisa el rango seleccionado.",
-          "warning"
-        );
-
-        return;
+        return boxes;
       }
 
-      if (range.from > range.to) {
-        Swal.fire(
-          "Rango inválido",
-          "La fecha inicial no puede ser mayor que la fecha final.",
-          "warning"
-        );
-
-        return;
-      }
-
-      selectedRange = range;
-
-      updateRangeLabels();
-
-      const [
-        salesDocsRaw,
-        expensesDocsRaw,
-        movementsDocsRaw,
-        productsDocsRaw
-      ] = await Promise.all([
-        loadCollectionDocs("ventas"),
-        loadCollectionDocs("gastos"),
-        loadCollectionDocs("stock_movimientos"),
-        loadCollectionDocs("productos")
-      ]);
-
-      const salesDocs =
-        salesDocsRaw.filter(
-          item =>
-            matchesCurrentLocal(item.data) &&
-            isWithinSelectedRange(
-              item.data.createdAt
-            )
-        );
-
-      const expensesDocs =
-        expensesDocsRaw.filter(
-          item =>
-            matchesCurrentLocal(item.data) &&
-            isWithinSelectedRange(
-              item.data.createdAt
-            )
-        );
-
-      const movementsDocs =
-        movementsDocsRaw.filter(
-          item =>
-            matchesCurrentLocal(item.data) &&
-            isWithinSelectedRange(
-              item.data.createdAt
-            )
-        );
-
-      const productsDocs =
-        productsDocsRaw.filter(
-          item =>
-            matchesCurrentLocal(item.data)
-        );
-
-      const salesIndex =
-        buildSalesIndex(salesDocs);
-
-      debugLog(
-        "Consulta ventas:",
-        {
-          rawCount:
-            salesDocsRaw.length,
-          filteredCount:
-            salesDocs.length
-        }
+      return (
+        getStockUnits(
+          product
+        ) /
+        getUnitsPerBox(
+          product
+        )
       );
+    }
 
-      salesDocs
-        .slice(0, MAX_DEBUG_DOCS)
-        .forEach(
-          logSalesDocumentInspection
-        );
+    function getProductUnitCost(
+      product
+    ) {
+      if (
+        !product
+      ) {
+        return 0;
+      }
 
-      productsMap = new Map();
+      const directUnitCosts = [
+        product.unitCost,
+        product.costoUnitario,
+        product.costPerUnit,
+        product.costoPorUnidad,
+        product.lastCostPerUnit,
+        product.ultimoCostoUnitario
+      ];
 
-      const products = [];
+      for (
+        const candidate of
+          directUnitCosts
+      ) {
+        const value =
+          Number(
+            candidate
+          );
 
-      productsDocs.forEach(
-        ({ id, data }) => {
-          const p = {
-            id,
-            ...data
-          };
+        if (
+          Number.isFinite(
+            value
+          ) &&
+          value > 0
+        ) {
+          return value;
+        }
+      }
 
-          products.push(p);
+      const directCosts = [
+        product.cost,
+        product.costo,
+        product.unitCostValue,
+        product.costValue
+      ];
 
-          productsMap.set(
-            id,
-            p
+      for (
+        const candidate of
+          directCosts
+      ) {
+        const value =
+          Number(
+            candidate
+          );
+
+        if (
+          Number.isFinite(
+            value
+          ) &&
+          value > 0
+        ) {
+          return value;
+        }
+      }
+
+      const boxCosts = [
+        product.costPerBox,
+        product.costoPorCaja,
+        product.lastCostPerBox,
+        product.ultimoCostoPorCaja
+      ];
+
+      for (
+        const candidate of
+          boxCosts
+      ) {
+        const value =
+          Number(
+            candidate
+          );
+
+        if (
+          Number.isFinite(
+            value
+          ) &&
+          value > 0
+        ) {
+          return (
+            value /
+            getUnitsPerBox(
+              product
+            )
           );
         }
-      );
+      }
 
-      products.sort(
-        (a, b) =>
+      return 0;
+    }
+
+    /*
+     * ==========================================================
+     * VENTAS
+     * ==========================================================
+     */
+
+    function getSaleProducts(
+      sale
+    ) {
+      return Array.isArray(
+        sale?.products
+      )
+        ? sale.products
+        : [];
+    }
+
+    function getSaleProductUnits(
+      product
+    ) {
+      if (
+        !product
+      ) {
+        return 0;
+      }
+
+      const explicitUnits =
+        Number(
+          product.unitsTotal
+        );
+
+      if (
+        Number.isFinite(
+          explicitUnits
+        ) &&
+        explicitUnits > 0
+      ) {
+        return explicitUnits;
+      }
+
+      const quantity =
+        Number(
+          product.quantity
+        );
+
+      if (
+        Number.isFinite(
+          quantity
+        ) &&
+        quantity > 0
+      ) {
+        const mode =
           String(
-            a.name || ""
-          ).localeCompare(
-            String(
-              b.name || ""
-            )
-          )
-      );
+            product.mode ||
+            product.saleMode ||
+            product.saleType ||
+            "unit"
+          ).toLowerCase();
 
-      const salesAgg =
-        aggregateSalesFromDocs(
-          salesDocs
+        if (
+          mode === "box"
+        ) {
+          return (
+            quantity *
+            getUnitsPerBox(
+              product
+            )
+          );
+        }
+
+        return quantity;
+      }
+
+      const boxes =
+        Number(
+          product.boxes
         );
 
-      cachedSales =
-        salesDocs
-          .map(
-            ({ id, data: sale }) => {
-              const saleProducts =
-                Array.isArray(
-                  sale.products
-                )
-                  ? sale.products
-                  : [];
-
-              return {
-                id,
-
-                customerName:
-                  sale.customerName ||
-                  sale.userName ||
-                  sale.userId ||
-                  "—",
-
-                products:
-                  getTextFromProducts(
-                    saleProducts
-                  ),
-
-                total:
-                  numberOrZero(
-                    sale.total
-                  ),
-
-                userName:
-                  sale.userName ||
-                  "—",
-
-                dateStr:
-                  getDisplayDate(
-                    sale.createdAt
-                  ),
-
-                timeStr:
-                  getDisplayTime(
-                    sale.createdAt
-                  ),
-
-                createdAtMs:
-                  getTimestampMs(
-                    sale.createdAt
-                  ),
-
-                rawText: [
-                  sale.customerName ||
-                  "",
-
-                  sale.userName ||
-                  "",
-
-                  getTextFromProducts(
-                    saleProducts
-                  ),
-
-                  sale.total ??
-                  ""
-                ].join(" ")
-              };
-            }
+      if (
+        Number.isFinite(
+          boxes
+        ) &&
+        boxes > 0
+      ) {
+        return (
+          boxes *
+          getUnitsPerBox(
+            product
           )
-          .sort(
-            (a, b) =>
-              b.createdAtMs -
-              a.createdAtMs
+        );
+      }
+
+      return 0;
+    }
+
+    function aggregateSales(
+      source
+    ) {
+      const unitsMap =
+        {};
+
+      const boxesMap =
+        {};
+
+      let totalSales =
+        0;
+
+      let totalUnitsSold =
+        0;
+
+      source.forEach(
+        ({
+          data
+        }) => {
+          totalSales +=
+            numberOrZero(
+              data.total
+            );
+
+          getSaleProducts(
+            data
+          ).forEach(
+            product => {
+              if (
+                !product?.productId
+              ) {
+                return;
+              }
+
+              const units =
+                getSaleProductUnits(
+                  product
+                );
+
+              const unitsPerBox =
+                getUnitsPerBox(
+                  product
+                );
+
+              const boxes =
+                unitsPerBox > 1
+                  ? units /
+                    unitsPerBox
+                  : 0;
+
+              unitsMap[
+                product.productId
+              ] =
+                (
+                  unitsMap[
+                    product.productId
+                  ] || 0
+                ) +
+                units;
+
+              boxesMap[
+                product.productId
+              ] =
+                (
+                  boxesMap[
+                    product.productId
+                  ] || 0
+                ) +
+                boxes;
+
+              totalUnitsSold +=
+                units;
+            }
+          );
+        }
+      );
+
+      const distinctProductsSold =
+        Object.keys(
+          unitsMap
+        ).filter(
+          productId =>
+            numberOrZero(
+              unitsMap[
+                productId
+              ]
+            ) > 0
+        ).length;
+
+      return {
+        unitsMap,
+        boxesMap,
+        totalSales,
+        totalUnitsSold,
+        distinctProductsSold
+      };
+    }
+
+    function getTextFromProducts(
+      products
+    ) {
+      if (
+        !Array.isArray(
+          products
+        ) ||
+        !products.length
+      ) {
+        return "—";
+      }
+
+      return products
+        .map(
+          product =>
+            `${product.name || "Producto"} x${numberOrZero(
+              product.quantity ||
+              product.unitsTotal ||
+              0
+            )}`
+        )
+        .join(
+          " | "
+        );
+    }
+
+    /*
+     * ==========================================================
+     * MOVIMIENTOS
+     * ==========================================================
+     */
+
+    function normalizeLookupValue(
+      value
+    ) {
+      return String(
+        value || ""
+      )
+        .trim()
+        .toLowerCase();
+    }
+
+    function getMovementPrimaryProduct(
+      movement
+    ) {
+      if (
+        movement &&
+        Array.isArray(
+          movement.products
+        ) &&
+        movement.products.length
+      ) {
+        const candidate =
+          movement.products[0];
+
+        if (
+          isPlainObject(
+            candidate
+          )
+        ) {
+          return candidate;
+        }
+      }
+
+      const keys = [
+        "product",
+        "producto",
+        "item",
+        "detalleProducto",
+        "movimiento",
+        "sale",
+        "venta"
+      ];
+
+      for (
+        const key of keys
+      ) {
+        if (
+          isPlainObject(
+            movement?.[key]
+          )
+        ) {
+          return movement[
+            key
+          ];
+        }
+      }
+
+      return {};
+    }
+
+    function deepPickString(
+      source,
+      keys,
+      defaultValue = "—",
+      maxDepth = 3
+    ) {
+      const visited =
+        new WeakSet();
+
+      function walk(
+        value,
+        depth
+      ) {
+        if (
+          !value ||
+          depth < 0
+        ) {
+          return undefined;
+        }
+
+        if (
+          typeof value ===
+          "object"
+        ) {
+          if (
+            visited.has(
+              value
+            )
+          ) {
+            return undefined;
+          }
+
+          visited.add(
+            value
+          );
+        }
+
+        if (
+          Array.isArray(
+            value
+          )
+        ) {
+          for (
+            const item of
+              value
+          ) {
+            const found =
+              walk(
+                item,
+                depth - 1
+              );
+
+            if (
+              found !==
+              undefined
+            ) {
+              return found;
+            }
+          }
+
+          return undefined;
+        }
+
+        if (
+          isPlainObject(
+            value
+          )
+        ) {
+          for (
+            const key of
+              keys
+          ) {
+            if (
+              Object.prototype.hasOwnProperty.call(
+                value,
+                key
+              )
+            ) {
+              const candidate =
+                value[
+                  key
+                ];
+
+              if (
+                candidate !==
+                  null &&
+                candidate !==
+                  undefined &&
+                String(
+                  candidate
+                ).trim()
+              ) {
+                return String(
+                  candidate
+                );
+              }
+            }
+          }
+
+          for (
+            const key of
+              Object.keys(
+                value
+              )
+          ) {
+            const found =
+              walk(
+                value[
+                  key
+                ],
+                depth - 1
+              );
+
+            if (
+              found !==
+              undefined
+            ) {
+              return found;
+            }
+          }
+        }
+
+        return undefined;
+      }
+
+      const result =
+        walk(
+          source,
+          maxDepth
+        );
+
+      return (
+        result !==
+        undefined
+          ? result
+          : defaultValue
+      );
+    }
+
+    function getMovementProductCode(
+      movement
+    ) {
+      const product =
+        getMovementPrimaryProduct(
+          movement
+        );
+
+      return String(
+        deepPickString(
+          {
+            direct:
+              movement,
+
+            product
+          },
+          [
+            "codigoProducto",
+            "productCode",
+            "sku",
+            "code",
+            "codigo",
+            "productId"
+          ],
+          ""
+        )
+      ).trim() ||
+        "—";
+    }
+
+    function getMovementProductName(
+      movement
+    ) {
+      const product =
+        getMovementPrimaryProduct(
+          movement
+        );
+
+      return String(
+        deepPickString(
+          {
+            direct:
+              movement,
+
+            product
+          },
+          [
+            "productName",
+            "name",
+            "nombre",
+            "descripcion",
+            "description"
+          ],
+          ""
+        )
+      ).trim() ||
+        "—";
+    }
+
+    function getMovementDocumentNumber(
+      movement
+    ) {
+      return String(
+        movement &&
+        (
+          movement.numeroDocumento ||
+          movement.documentNumber ||
+          movement.docNumber ||
+          "—"
+        )
+      );
+    }
+
+    function getMovementBookReference(
+      movement
+    ) {
+      return String(
+        movement &&
+        (
+          movement.libro ||
+          movement.referenceBook ||
+          movement.referenciaLibro ||
+          movement.bookReference ||
+          movement.libroReferencia ||
+          movement.referenciaLibroInventario ||
+          ""
+        )
+      ).trim() ||
+        "—";
+    }
+
+    function getMovementEntry(
+      movement
+    ) {
+      return numberOrZero(
+        movement &&
+        (
+          movement.entrada ??
+          movement.entry ??
+          movement.unitsIn ??
+          0
+        )
+      );
+    }
+
+    function getMovementExit(
+      movement
+    ) {
+      return numberOrZero(
+        movement &&
+        (
+          movement.salida ??
+          movement.exit ??
+          movement.unitsOut ??
+          0
+        )
+      );
+    }
+
+    function getMovementBalanceBefore(
+      movement
+    ) {
+      return numberOrZero(
+        movement &&
+        (
+          movement.saldoAnterior ??
+          movement.balanceBefore ??
+          movement.previousBalance ??
+          0
+        )
+      );
+    }
+
+    function getMovementBalanceAfter(
+      movement
+    ) {
+      return numberOrZero(
+        movement &&
+        (
+          movement.saldoActual ??
+          movement.balance ??
+          movement.saldo ??
+          movement.currentBalance ??
+          0
+        )
+      );
+    }
+
+    function getMovementDetail(
+      movement
+    ) {
+      return String(
+        movement &&
+        (
+          movement.detalle ||
+          movement.detail ||
+          movement.notes ||
+          ""
+        )
+      );
+    }
+
+    function getMovementTypeLabel(
+      movement
+    ) {
+      const type =
+        String(
+          movement &&
+          (
+            movement.tipoMovimiento ||
+            movement.type ||
+            ""
+          )
+        ).toLowerCase();
+
+      if (
+        type ===
+        "entrada"
+      ) {
+        return "Entrada";
+      }
+
+      if (
+        type ===
+        "salida"
+      ) {
+        return "Salida";
+      }
+
+      if (
+        type ===
+        "ajuste"
+      ) {
+        return "Ajuste";
+      }
+
+      return "Movimiento";
+    }
+
+    function getMovementUnitCost(
+      movement,
+      product,
+      saleProduct = null
+    ) {
+      const candidates = [
+        movement?.costoUnitario,
+        movement?.unitCost,
+        movement?.costPerUnit,
+        movement?.costoPorUnidad,
+        movement?.lastCostPerUnit,
+
+        saleProduct?.costoUnitario,
+        saleProduct?.unitCost,
+        saleProduct?.costPerUnit,
+        saleProduct?.costoPorUnidad,
+        saleProduct?.lastCostPerUnit,
+
+        product?.costoUnitario,
+        product?.unitCost,
+        product?.costPerUnit,
+        product?.costoPorUnidad,
+        product?.lastCostPerUnit
+      ];
+
+      for (
+        const candidate of
+          candidates
+      ) {
+        const value =
+          Number(
+            candidate
           );
 
-      cachedExpenses =
-        expensesDocs.map(
-          ({ id, data }) => ({
+        if (
+          Number.isFinite(
+            value
+          ) &&
+          value > 0
+        ) {
+          return value;
+        }
+      }
+
+      return getProductUnitCost(
+        product
+      );
+    }
+
+    function calculateTransactionInventoryValue(
+      unitCost,
+      balanceAfter
+    ) {
+      return (
+        numberOrZero(
+          unitCost
+        ) *
+        numberOrZero(
+          balanceAfter
+        )
+      );
+    }
+
+    /*
+     * ==========================================================
+     * RELACIONES VENTA-MOVIMIENTO
+     * ==========================================================
+     */
+
+    function buildSalesIndex(
+      salesDocs
+    ) {
+      const byReference =
+        new Map();
+
+      const flatProducts =
+        [];
+
+      salesDocs.forEach(
+        ({
+          id,
+          data
+        }) => {
+          const sale = {
             id,
-
-            concept:
-              data.concept || "",
-
-            category:
-              data.category || "",
-
-            amount:
-              numberOrZero(
-                data.amount
-              ),
-
-            paymentMethod:
-              data.paymentMethod ||
-              "",
-
-            userName:
-              data.userName ||
-              "—",
-
-            notes:
-              data.notes || "",
-
-            dateStr:
-              getDisplayDate(
-                data.createdAt
-              ),
-
-            timeStr:
-              getDisplayTime(
-                data.createdAt
-              ),
+            ...data,
 
             createdAtMs:
               getTimestampMs(
                 data.createdAt
-              ),
+              )
+          };
 
-            rawText: [
-              data.concept ||
-              "",
+          const aliases = [
+            id,
+            sale.docNumber,
+            sale.documentNumber,
+            sale.numeroDocumento,
+            sale.numeroDocumentoVenta,
+            sale.saleId,
+            sale.reference,
+            sale.referenceId,
+            sale.transactionId
+          ].filter(
+            Boolean
+          );
 
-              data.category ||
-              "",
+          aliases.forEach(
+            alias => {
+              byReference.set(
+                normalizeLookupValue(
+                  alias
+                ),
+                sale
+              );
+            }
+          );
 
-              data.paymentMethod ||
-              "",
+          getSaleProducts(
+            sale
+          ).forEach(
+            product => {
+              flatProducts.push({
+                sale,
+                product
+              });
+            }
+          );
+        }
+      );
 
-              data.userName ||
-              "",
+      return {
+        byReference,
+        flatProducts
+      };
+    }
 
-              data.notes ||
-              "",
+    function isSameDayMs(
+      a,
+      b
+    ) {
+      if (
+        !Number.isFinite(
+          a
+        ) ||
+        !Number.isFinite(
+          b
+        )
+      ) {
+        return false;
+      }
 
-              data.amount ??
-              ""
-            ].join(" ")
-          })
+      const da =
+        new Date(
+          a
         );
 
-      /*
-       * Construcción del reporte de movimientos.
-       *
-       * IMPORTANTE:
-       * inventoryValue NO utiliza el stock actual
-       * de productos.
-       *
-       * Utiliza:
-       *
-       * costoUnitario × saldoActual
-       *
-       * donde saldoActual es el saldo registrado
-       * en ese movimiento.
-       */
-      cachedMovements =
-        movementsDocs
-          .map(({ id, data }) => {
-            const movementForRelation = {
-              docNumber:
-                getMovementDocumentNumber(
-                  data
-                ),
+      const db =
+        new Date(
+          b
+        );
 
-              productCode:
-                getMovementProductCode(
-                  data
-                ),
+      return (
+        da.getFullYear() ===
+          db.getFullYear() &&
+        da.getMonth() ===
+          db.getMonth() &&
+        da.getDate() ===
+          db.getDate()
+      );
+    }
 
-              productName:
-                getMovementProductName(
-                  data
-                ),
+    function pickSaleProductForMovement(
+      sale,
+      movement
+    ) {
+      const products =
+        getSaleProducts(
+          sale
+        );
 
-              createdAt:
-                data.createdAt,
+      if (
+        !products.length
+      ) {
+        return null;
+      }
 
-              libro:
-                getMovementBookReference(
-                  data
-                )
-            };
+      const movementCode =
+        normalizeLookupValue(
+          movement.productCode ||
+          movement.codigoProducto ||
+          movement.productId ||
+          movement.sku ||
+          ""
+        );
 
-            const related =
-              findRelatedSaleForMovement(
-                movementForRelation,
-                salesIndex
-              );
+      const movementName =
+        normalizeLookupValue(
+          movement.productName ||
+          movement.name ||
+          movement.nombre ||
+          ""
+        );
 
-            const fallbackProduct =
-              getMovementPrimaryProduct(
-                data
-              );
-
-            const saleProduct =
-              related.product ||
-              fallbackProduct;
-
-            /*
-             * Buscar el producto real en la colección
-             * productos cuando exista productId.
-             */
+      return (
+        products.find(
+          product => {
             const productId =
-              String(
-                saleProduct?.productId ||
-                saleProduct?.codigoProducto ||
-                data.productId ||
-                data.codigoProducto ||
+              normalizeLookupValue(
+                product.productId ||
+                product.codigoProducto ||
+                product.sku ||
+                product.code ||
                 ""
-              ).trim();
+              );
 
-            const product =
-              productsMap.get(
-                productId
+            const productName =
+              normalizeLookupValue(
+                product.name ||
+                product.productName ||
+                product.nombre ||
+                ""
+              );
+
+            return (
+              (
+                movementCode &&
+                productId &&
+                movementCode ===
+                  productId
               ) ||
-              fallbackProduct ||
-              {};
+              (
+                movementName &&
+                productName &&
+                movementName ===
+                  productName
+              )
+            );
+          }
+        ) ||
+        products[0] ||
+        null
+      );
+    }
 
-            const unitCost =
-              getMovementUnitCost(
-                data,
-                product,
-                saleProduct
+    function findRelatedSaleForMovement(
+      movement,
+      salesIndex
+    ) {
+      const possibleReferences = [
+        movement.docNumber,
+        movement.documentNumber,
+        movement.numeroDocumento,
+        movement.saleId,
+        movement.ventaId,
+        movement.referenceBook,
+        movement.libro,
+        movement.referenciaLibro,
+        movement.reference,
+        movement.referenceId
+      ].filter(
+        Boolean
+      );
+
+      for (
+        const reference of
+          possibleReferences
+      ) {
+        const sale =
+          salesIndex.byReference.get(
+            normalizeLookupValue(
+              reference
+            )
+          );
+
+        if (
+          sale
+        ) {
+          return {
+            sale,
+
+            product:
+              pickSaleProductForMovement(
+                sale,
+                movement
+              )
+          };
+        }
+      }
+
+      const code =
+        normalizeLookupValue(
+          movement.productCode ||
+          movement.codigoProducto ||
+          movement.productId ||
+          movement.sku ||
+          ""
+        );
+
+      const name =
+        normalizeLookupValue(
+          movement.productName ||
+          movement.name ||
+          movement.nombre ||
+          ""
+        );
+
+      const movementTimestamp =
+        getTimestampMs(
+          movement.createdAt
+        );
+
+      let match =
+        salesIndex.flatProducts.find(
+          item => {
+            const productId =
+              normalizeLookupValue(
+                item.product?.productId ||
+                item.product?.codigoProducto ||
+                item.product?.sku ||
+                item.product?.code ||
+                ""
               );
 
-            const balanceAfter =
-              getMovementBalanceAfter(
-                data
+            const productName =
+              normalizeLookupValue(
+                item.product?.name ||
+                item.product?.productName ||
+                item.product?.nombre ||
+                ""
               );
 
-            /*
-             * VALOR DEL INVENTARIO EN EL MOMENTO
-             * DE LA TRANSACCIÓN.
-             *
-             * costo unitario × saldo actual
-             */
-            const inventoryValue =
-              calculateTransactionInventoryValue(
-                unitCost,
-                balanceAfter
-              );
+            return (
+              (
+                code &&
+                productId &&
+                code ===
+                  productId
+              ) ||
+              (
+                name &&
+                productName &&
+                name ===
+                  productName
+              )
+            );
+          }
+        );
 
-            const bookReference =
-              getMovementBookReference(
-                data
-              );
+      if (
+        !match &&
+        movementTimestamp
+      ) {
+        const sameDay =
+          salesIndex.flatProducts.filter(
+            item =>
+              isSameDayMs(
+                item.sale.createdAtMs,
+                movementTimestamp
+              )
+          );
 
-            return {
+        match =
+          sameDay.find(
+            item => {
+              const productId =
+                normalizeLookupValue(
+                  item.product?.productId ||
+                  item.product?.codigoProducto ||
+                  item.product?.sku ||
+                  item.product?.code ||
+                  ""
+                );
+
+              const productName =
+                normalizeLookupValue(
+                  item.product?.name ||
+                  item.product?.productName ||
+                  item.product?.nombre ||
+                  ""
+                );
+
+              return (
+                (
+                  code &&
+                  productId &&
+                  code ===
+                    productId
+                ) ||
+                (
+                  name &&
+                  productName &&
+                  name ===
+                    productName
+                )
+              );
+            }
+          ) ||
+          sameDay[0] ||
+          null;
+      }
+
+      if (
+        match
+      ) {
+        return {
+          sale:
+            match.sale,
+
+          product:
+            match.product
+        };
+      }
+
+      return {
+        sale:
+          null,
+
+        product:
+          null
+      };
+    }
+
+    /*
+     * ==========================================================
+     * RANGO
+     * ==========================================================
+     */
+
+    function isWithinSelectedRange(
+      value
+    ) {
+      if (
+        !selectedRange.from ||
+        !selectedRange.to
+      ) {
+        return true;
+      }
+
+      const timestamp =
+        getTimestampMs(
+          value
+        );
+
+      if (
+        !timestamp
+      ) {
+        return false;
+      }
+
+      const date =
+        new Date(
+          timestamp
+        );
+
+      return (
+        date >=
+          selectedRange.from &&
+        date <=
+          selectedRange.to
+      );
+    }
+
+    function setDefaultRangeToMonth() {
+      const today =
+        new Date();
+
+      selectedRange = {
+        from:
+          startOfMonth(
+            today
+          ),
+
+        to:
+          today
+      };
+
+      if (
+        rangeFrom
+      ) {
+        rangeFrom.value =
+          toLocalInputDate(
+            selectedRange.from
+          );
+      }
+
+      if (
+        rangeTo
+      ) {
+        rangeTo.value =
+          toLocalInputDate(
+            selectedRange.to
+          );
+      }
+
+      updateRangeLabels();
+    }
+
+    function updateRangeLabels() {
+      const fromText =
+        selectedRange.from
+          ? selectedRange.from.toLocaleDateString(
+              "es-ES"
+            )
+          : "inicio";
+
+      const toText =
+        selectedRange.to
+          ? selectedRange.to.toLocaleDateString(
+              "es-ES"
+            )
+          : "hoy";
+
+      const localText =
+        currentLocalInfo.nombre
+          ? ` del local ${currentLocalInfo.nombre}`
+          : "";
+
+      const text =
+        `Mostrando resultados${localText} desde ${fromText} hasta ${toText}.`;
+
+      if (
+        salesRangeLabel
+      ) {
+        salesRangeLabel.textContent =
+          text;
+      }
+
+      if (
+        expenseRangeLabel
+      ) {
+        expenseRangeLabel.textContent =
+          text;
+      }
+
+      if (
+        movementRangeLabel
+      ) {
+        movementRangeLabel.textContent =
+          text;
+      }
+    }
+
+    /*
+     * ==========================================================
+     * CONSULTA DE DATOS DE NEGOCIO
+     * ==========================================================
+     *
+     * Una consulta por colección.
+     *
+     * No consulta empleados/local.
+     */
+
+    async function loadCollectionByLocal(
+      collectionName
+    ) {
+      const snapshot =
+        await db
+          .collection(
+            collectionName
+          )
+          .where(
+            "id_local",
+            "==",
+            currentLocalId
+          )
+          .get();
+
+      const documents =
+        [];
+
+      snapshot.forEach(
+        doc => {
+          documents.push({
+            id:
+              doc.id,
+
+            data:
+              doc.data() ||
+              {}
+          });
+        }
+      );
+
+      documents.sort(
+        (
+          a,
+          b
+        ) =>
+          getTimestampMs(
+            b.data.createdAt
+          ) -
+          getTimestampMs(
+            a.data.createdAt
+          )
+      );
+
+      return documents;
+    }
+
+    async function loadDashboardDataOnce() {
+      if (
+        dashboardDataLoaded
+      ) {
+        return;
+      }
+
+      if (
+        dashboardLoadingPromise
+      ) {
+        return dashboardLoadingPromise;
+      }
+
+      if (
+        !currentLocalId
+      ) {
+        throw new Error(
+          "No hay un local asociado al usuario autenticado."
+        );
+      }
+
+      dashboardLoadingPromise =
+        Promise.all([
+          loadCollectionByLocal(
+            SALES_COLLECTION_NAME
+          ),
+
+          loadCollectionByLocal(
+            EXPENSES_COLLECTION_NAME
+          ),
+
+          loadCollectionByLocal(
+            MOVEMENTS_COLLECTION_NAME
+          ),
+
+          loadCollectionByLocal(
+            PRODUCTS_COLLECTION_NAME
+          )
+        ])
+          .then(
+            results => {
+              rawSalesDocs =
+                results[0];
+
+              rawExpensesDocs =
+                results[1];
+
+              rawMovementsDocs =
+                results[2];
+
+              rawProductsDocs =
+                results[3];
+
+              rebuildProductsMap();
+
+              dashboardDataLoaded =
+                true;
+
+              debugLog(
+                "Datos cargados:",
+                {
+                  ventas:
+                    rawSalesDocs.length,
+
+                  gastos:
+                    rawExpensesDocs.length,
+
+                  movimientos:
+                    rawMovementsDocs.length,
+
+                  productos:
+                    rawProductsDocs.length
+                }
+              );
+            }
+          )
+          .finally(
+            () => {
+              dashboardLoadingPromise =
+                null;
+            }
+          );
+
+      return dashboardLoadingPromise;
+    }
+
+    /*
+     * ==========================================================
+     * CACHE DE VENTAS
+     * ==========================================================
+     */
+
+    function rebuildSalesCache() {
+      cachedSales =
+        rawSalesDocs
+          .filter(
+            ({
+              data
+            }) =>
+              isWithinSelectedRange(
+                data.createdAt
+              )
+          )
+          .map(
+            ({
+              id,
+              data
+            }) => {
+              const productText =
+                getTextFromProducts(
+                  getSaleProducts(
+                    data
+                  )
+                );
+
+              return {
+                id,
+
+                products:
+                  productText,
+
+                total:
+                  numberOrZero(
+                    data.total
+                  ),
+
+                userName:
+                  data.userName ||
+                  "—",
+
+                dateStr:
+                  getDisplayDate(
+                    data.createdAt
+                  ),
+
+                timeStr:
+                  getDisplayTime(
+                    data.createdAt
+                  ),
+
+                createdAtMs:
+                  getTimestampMs(
+                    data.createdAt
+                  ),
+
+                rawText:
+                  [
+                    productText,
+                    data.total ||
+                      "",
+                    data.userName ||
+                      ""
+                  ].join(
+                    " "
+                  )
+              };
+            }
+          )
+          .sort(
+            (
+              a,
+              b
+            ) =>
+              b.createdAtMs -
+              a.createdAtMs
+          );
+    }
+
+    function rebuildExpensesCache() {
+      cachedExpenses =
+        rawExpensesDocs
+          .filter(
+            ({
+              data
+            }) =>
+              isWithinSelectedRange(
+                data.createdAt
+              )
+          )
+          .map(
+            ({
+              id,
+              data
+            }) => ({
               id,
 
-              productCode:
-                getMovementProductCode(
-                  data
+              concept:
+                data.concept ||
+                "",
+
+              category:
+                data.category ||
+                "",
+
+              amount:
+                numberOrZero(
+                  data.amount
                 ),
 
-              productName:
-                getMovementProductName(
-                  data
-                ),
-
-              unitCost,
-
-              balanceBefore:
-                getMovementBalanceBefore(
-                  data
-                ),
-
-              balanceAfter,
-
-              inventoryValue,
-
-              bookReference,
-
-              docNumber:
-                getMovementDocumentNumber(
-                  data
-                ),
-
-              entry:
-                getMovementEntry(
-                  data
-                ),
-
-              exit:
-                getMovementExit(
-                  data
-                ),
+              paymentMethod:
+                data.paymentMethod ||
+                "",
 
               userName:
                 data.userName ||
                 "—",
 
-              detail:
-                getMovementDetail(
-                  data
-                ),
-
-              typeLabel:
-                getMovementTypeLabel(
-                  data
-                ),
-
-              createdAtMs:
-                buildMovementSortKey(
-                  data
-                ),
+              notes:
+                data.notes ||
+                "",
 
               dateStr:
                 getDisplayDate(
@@ -2286,75 +2504,649 @@ document.addEventListener("DOMContentLoaded", () => {
                   data.createdAt
                 ),
 
-              rawText: [
-                getMovementProductCode(
-                  data
+              createdAtMs:
+                getTimestampMs(
+                  data.createdAt
                 ),
 
+              rawText:
+                [
+                  data.concept ||
+                    "",
+                  data.category ||
+                    "",
+                  data.paymentMethod ||
+                    "",
+                  data.userName ||
+                    "",
+                  data.notes ||
+                    "",
+                  data.amount ||
+                    ""
+                ].join(
+                  " "
+                )
+            })
+          )
+          .sort(
+            (
+              a,
+              b
+            ) =>
+              b.createdAtMs -
+              a.createdAtMs
+          );
+    }
+
+    function rebuildMovementsCache() {
+      const salesIndex =
+        buildSalesIndex(
+          rawSalesDocs
+        );
+
+      cachedMovements =
+        rawMovementsDocs
+          .filter(
+            ({
+              data
+            }) =>
+              isWithinSelectedRange(
+                data.createdAt
+              )
+          )
+          .map(
+            ({
+              id,
+              data
+            }) => {
+              const movementInfo = {
+                docNumber:
+                  getMovementDocumentNumber(
+                    data
+                  ),
+
+                productCode:
+                  getMovementProductCode(
+                    data
+                  ),
+
+                productName:
+                  getMovementProductName(
+                    data
+                  ),
+
+                createdAt:
+                  data.createdAt,
+
+                libro:
+                  getMovementBookReference(
+                    data
+                  )
+              };
+
+              const related =
+                findRelatedSaleForMovement(
+                  movementInfo,
+                  salesIndex
+                );
+
+              const fallbackProduct =
+                getMovementPrimaryProduct(
+                  data
+                );
+
+              const productId =
+                String(
+                  fallbackProduct?.productId ||
+                  fallbackProduct?.codigoProducto ||
+                  data.productId ||
+                  data.codigoProducto ||
+                  ""
+                ).trim();
+
+              const product =
+                productsMap.get(
+                  productId
+                ) ||
+                fallbackProduct ||
+                {};
+
+              const unitCost =
+                getMovementUnitCost(
+                  data,
+                  product,
+                  related.product
+                );
+
+              const balanceAfter =
+                getMovementBalanceAfter(
+                  data
+                );
+
+              const inventoryValue =
+                calculateTransactionInventoryValue(
+                  unitCost,
+                  balanceAfter
+                );
+
+              const productCode =
+                getMovementProductCode(
+                  data
+                );
+
+              const productName =
                 getMovementProductName(
                   data
-                ),
+                );
+
+              const docNumber =
+                getMovementDocumentNumber(
+                  data
+                );
+
+              const bookReference =
+                getMovementBookReference(
+                  data
+                );
+
+              const entry =
+                getMovementEntry(
+                  data
+                );
+
+              const exit =
+                getMovementExit(
+                  data
+                );
+
+              const balanceBefore =
+                getMovementBalanceBefore(
+                  data
+                );
+
+              const detail =
+                getMovementDetail(
+                  data
+                );
+
+              const typeLabel =
+                getMovementTypeLabel(
+                  data
+                );
+
+              return {
+                id,
+
+                productCode,
+
+                productName,
 
                 unitCost,
 
-                balanceAfter,
-
                 inventoryValue,
+
+                balanceBefore,
+
+                balanceAfter,
 
                 bookReference,
 
-                getMovementDocumentNumber(
-                  data
-                ),
+                docNumber,
 
-                getMovementEntry(
-                  data
-                ),
+                entry,
 
-                getMovementExit(
-                  data
-                ),
+                exit,
 
-                getMovementBalanceBefore(
-                  data
-                ),
+                userName:
+                  data.userName ||
+                  "—",
 
-                getMovementBalanceAfter(
-                  data
-                ),
+                detail,
 
-                data.userName ||
-                "",
+                typeLabel,
 
-                getMovementDetail(
-                  data
-                ),
+                createdAtMs:
+                  getTimestampMs(
+                    data.createdAt
+                  ),
 
-                getMovementTypeLabel(
-                  data
-                )
-              ].join(" ")
-            };
-          })
+                dateStr:
+                  getDisplayDate(
+                    data.createdAt
+                  ),
+
+                timeStr:
+                  getDisplayTime(
+                    data.createdAt
+                  ),
+
+                rawText:
+                  [
+                    productCode,
+                    productName,
+                    unitCost,
+                    inventoryValue,
+                    balanceBefore,
+                    balanceAfter,
+                    bookReference,
+                    docNumber,
+                    entry,
+                    exit,
+                    detail,
+                    typeLabel
+                  ].join(
+                    " "
+                  )
+              };
+            }
+          )
           .sort(
-            (a, b) =>
-              sortByCreatedAtAsc(
-                a,
-                b
-              )
+            (
+              a,
+              b
+            ) =>
+              a.createdAtMs -
+              b.createdAtMs
+          );
+    }
+
+    function rebuildCachesForRange() {
+      rebuildProductsMap();
+
+      rebuildSalesCache();
+
+      rebuildExpensesCache();
+
+      rebuildMovementsCache();
+
+      visibleSales =
+        [
+          ...cachedSales
+        ];
+
+      visibleExpenses =
+        [
+          ...cachedExpenses
+        ];
+
+      visibleMovements =
+        [
+          ...cachedMovements
+        ];
+    }
+
+    /*
+     * ==========================================================
+     * RENDER
+     * ==========================================================
+     */
+
+    function renderSalesTable(
+      rows
+    ) {
+      if (
+        !salesTableBody
+      ) {
+        return;
+      }
+
+      salesTableBody.innerHTML =
+        "";
+
+      if (
+        !rows.length
+      ) {
+        salesTableBody.innerHTML =
+          "<tr><td colspan='5'>No hay ventas en el rango seleccionado.</td></tr>";
+
+        return;
+      }
+
+      rows.forEach(
+        row => {
+          const tr =
+            document.createElement(
+              "tr"
+            );
+
+          tr.innerHTML = `
+            <td>
+              ${escapeHtml(
+                row.products
+              )}
+            </td>
+
+            <td>
+              ${formatMoney(
+                row.total
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                row.userName
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                row.dateStr
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                row.timeStr
+              )}
+            </td>
+          `;
+
+          salesTableBody.appendChild(
+            tr
+          );
+        }
+      );
+    }
+
+    function renderExpensesTable(
+      rows
+    ) {
+      if (
+        !expensesTableBody
+      ) {
+        return;
+      }
+
+      expensesTableBody.innerHTML =
+        "";
+
+      if (
+        !rows.length
+      ) {
+        expensesTableBody.innerHTML =
+          "<tr><td colspan='8'>No hay gastos en el rango seleccionado.</td></tr>";
+
+        return;
+      }
+
+      rows.forEach(
+        item => {
+          const tr =
+            document.createElement(
+              "tr"
+            );
+
+          tr.innerHTML = `
+            <td>
+              ${escapeHtml(
+                item.concept ||
+                  "—"
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                item.category ||
+                  "—"
+              )}
+            </td>
+
+            <td>
+              ${formatMoney(
+                item.amount ||
+                  0
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                item.paymentMethod ||
+                  "—"
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                item.userName ||
+                  "—"
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                item.dateStr
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                item.timeStr
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                item.notes ||
+                  "—"
+              )}
+            </td>
+          `;
+
+          expensesTableBody.appendChild(
+            tr
+          );
+        }
+      );
+    }
+
+    function renderMovementsTable(
+      rows
+    ) {
+      if (
+        !movementsTableBody
+      ) {
+        return;
+      }
+
+      movementsTableBody.innerHTML =
+        "";
+
+      if (
+        !rows.length
+      ) {
+        movementsTableBody.innerHTML =
+          "<tr><td colspan='13'>No hay movimientos en el rango seleccionado.</td></tr>";
+
+        return;
+      }
+
+      rows.forEach(
+        item => {
+          const tr =
+            document.createElement(
+              "tr"
+            );
+
+          tr.innerHTML = `
+            <td>
+              ${escapeHtml(
+                item.dateStr
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                item.timeStr
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                item.productName ||
+                  "—"
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                item.productCode ||
+                  "—"
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                item.docNumber ||
+                  "—"
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                item.bookReference ||
+                  "—"
+              )}
+            </td>
+
+            <td>
+              ${formatMoney(
+                item.unitCost ||
+                  0
+              )}
+            </td>
+
+            <td>
+              ${formatMoney(
+                item.inventoryValue ||
+                  0
+              )}
+            </td>
+
+            <td>
+              ${numberOrZero(
+                item.entry
+              )}
+            </td>
+
+            <td>
+              ${numberOrZero(
+                item.exit
+              )}
+            </td>
+
+            <td>
+              ${numberOrZero(
+                item.balanceBefore
+              )}
+            </td>
+
+            <td>
+              ${numberOrZero(
+                item.balanceAfter
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                item.detail ||
+                  "—"
+              )}
+            </td>
+          `;
+
+          movementsTableBody.appendChild(
+            tr
+          );
+        }
+      );
+    }
+
+    function updateCounts() {
+      if (
+        salesCountLabel
+      ) {
+        salesCountLabel.textContent =
+          `${visibleSales.length} registros`;
+      }
+
+      if (
+        expenseCountLabel
+      ) {
+        expenseCountLabel.textContent =
+          `${visibleExpenses.length} registros`;
+      }
+
+      if (
+        movementCountLabel
+      ) {
+        movementCountLabel.textContent =
+          `${visibleMovements.length} registros`;
+      }
+    }
+
+    /*
+     * ==========================================================
+     * BÚSQUEDA
+     * ==========================================================
+     */
+
+    function applySearchFilter() {
+      const query =
+        String(
+          rangeSearch?.value ||
+            ""
+        )
+          .trim()
+          .toLowerCase();
+
+      if (
+        !query
+      ) {
+        visibleSales =
+          [
+            ...cachedSales
+          ];
+
+        visibleExpenses =
+          [
+            ...cachedExpenses
+          ];
+
+        visibleMovements =
+          [
+            ...cachedMovements
+          ];
+      } else {
+        visibleSales =
+          cachedSales.filter(
+            item =>
+              `${item.products} ${item.total} ${item.userName} ${item.dateStr} ${item.timeStr}`
+                .toLowerCase()
+                .includes(
+                  query
+                )
           );
 
-      visibleSales = [
-        ...cachedSales
-      ];
+        visibleExpenses =
+          cachedExpenses.filter(
+            item =>
+              `${item.concept} ${item.category} ${item.amount} ${item.paymentMethod} ${item.userName} ${item.dateStr} ${item.timeStr} ${item.notes}`
+                .toLowerCase()
+                .includes(
+                  query
+                )
+          );
 
-      visibleExpenses = [
-        ...cachedExpenses
-      ];
-
-      visibleMovements = [
-        ...cachedMovements
-      ];
+        visibleMovements =
+          cachedMovements.filter(
+            item =>
+              `${item.productCode} ${item.productName} ${item.unitCost} ${item.inventoryValue} ${item.bookReference} ${item.docNumber} ${item.entry} ${item.exit} ${item.balanceBefore} ${item.balanceAfter} ${item.dateStr} ${item.timeStr} ${item.detail} ${item.typeLabel}`
+                .toLowerCase()
+                .includes(
+                  query
+                )
+          );
+      }
 
       renderSalesTable(
         visibleSales
@@ -2368,24 +3160,502 @@ document.addEventListener("DOMContentLoaded", () => {
         visibleMovements
       );
 
-      if (salesCountLabel) {
-        salesCountLabel.textContent =
-          `${visibleSales.length} registros`;
+      updateCounts();
+    }
+
+    /*
+     * ==========================================================
+     * ESTADÍSTICAS
+     * ==========================================================
+     */
+
+    function renderProfitStatus(
+      products,
+      totalSales,
+      totalExpenses,
+      salesAgg
+    ) {
+      const profitEl =
+        document.getElementById(
+          "profitStatus"
+        );
+
+      if (
+        !profitEl
+      ) {
+        return;
       }
 
-      if (expenseCountLabel) {
-        expenseCountLabel.textContent =
-          `${visibleExpenses.length} registros`;
+      let estimatedCostOfSales =
+        0;
+
+      Object.entries(
+        salesAgg.unitsMap
+      ).forEach(
+        ([
+          productId,
+          unitsSold
+        ]) => {
+          const product =
+            productsMap.get(
+              productId
+            );
+
+          estimatedCostOfSales +=
+            numberOrZero(
+              unitsSold
+            ) *
+            getProductUnitCost(
+              product
+            );
+        }
+      );
+
+      const grossProfit =
+        totalSales -
+        estimatedCostOfSales;
+
+      const netProfit =
+        totalSales -
+        totalExpenses;
+
+      let tone =
+        "success";
+
+      let message =
+        `Neto positivo del período: ${formatMoney(
+          netProfit
+        )}`;
+
+      if (
+        netProfit < 0
+      ) {
+        tone =
+          "danger";
+
+        message =
+          `Pérdida neta del período: ${formatMoney(
+            netProfit
+          )}`;
+      } else if (
+        netProfit <
+        grossProfit * 0.4
+      ) {
+        tone =
+          "warning";
+
+        message =
+          `Neto por debajo de lo esperado: ${formatMoney(
+            netProfit
+          )}`;
       }
 
-      if (movementCountLabel) {
-        movementCountLabel.textContent =
-          `${visibleMovements.length} registros`;
+      profitEl.className =
+        `info-card status-panel status-panel--${tone}`;
+
+      profitEl.innerHTML = `
+        <div class="status-panel__label">
+          Utilidad del período
+        </div>
+
+        <div class="status-panel__value">
+          ${escapeHtml(
+            message
+          )}
+        </div>
+
+        <div
+          class="small"
+          style="margin-top:8px;"
+        >
+          Costo estimado:
+          <strong>
+            ${formatMoney(
+              estimatedCostOfSales
+            )}
+          </strong>
+
+          ·
+
+          Bruto estimado:
+          <strong>
+            ${formatMoney(
+              grossProfit
+            )}
+          </strong>
+
+          ·
+
+          Neto:
+          <strong>
+            ${formatMoney(
+              netProfit
+            )}
+          </strong>
+        </div>
+      `;
+    }
+
+    function renderLowStockAlerts(
+      products,
+      salesAgg
+    ) {
+      if (
+        !lowStockPanel
+      ) {
+        return;
       }
+
+      const lowStock =
+        [];
+
+      products.forEach(
+        product => {
+          const stockUnits =
+            getStockUnits(
+              product
+            );
+
+          const stockBoxes =
+            getStockBoxes(
+              product
+            );
+
+          const soldUnits =
+            numberOrZero(
+              salesAgg.unitsMap[
+                product.id
+              ]
+            );
+
+          let daysLeft =
+            "-";
+
+          if (
+            soldUnits >
+            0
+          ) {
+            const dailyRate =
+              soldUnits /
+              30;
+
+            if (
+              dailyRate >
+              0
+            ) {
+              daysLeft =
+                Math.floor(
+                  stockUnits /
+                    dailyRate
+                );
+            }
+          }
+
+          if (
+            stockUnits <=
+            LOW_STOCK_THRESHOLD
+          ) {
+            lowStock.push({
+              name:
+                product.name ||
+                "Sin nombre",
+
+              stockUnits,
+
+              stockBoxes,
+
+              unitsPerBox:
+                getUnitsPerBox(
+                  product
+                ),
+
+              daysLeft
+            });
+          }
+        }
+      );
+
+      lowStock.sort(
+        (
+          a,
+          b
+        ) =>
+          a.stockUnits -
+          b.stockUnits
+      );
+
+      if (
+        statLowStockEl
+      ) {
+        statLowStockEl.textContent =
+          lowStock.length;
+      }
+
+      lowStockPanel.innerHTML =
+        "";
+
+      if (
+        !lowStock.length
+      ) {
+        lowStockPanel.innerHTML =
+          "<div class='no-alerts'>No hay productos en stock crítico.</div>";
+
+        return;
+      }
+
+      lowStock
+        .slice(
+          0,
+          10
+        )
+        .forEach(
+          item => {
+            const element =
+              document.createElement(
+                "div"
+              );
+
+            element.className =
+              "low-stock-item low-stock-item--rich";
+
+            element.innerHTML = `
+              <div class="low-stock-item__left">
+
+                <strong>
+                  ${escapeHtml(
+                    item.name
+                  )}
+                </strong>
+
+                <div class="low-stock-item__muted">
+                  Stock crítico detectado
+                </div>
+
+              </div>
+
+              <div class="low-stock-item__right">
+
+                <div>
+                  <span>
+                    Stock
+                  </span>
+
+                  <strong>
+                    ${item.stockUnits}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    Cajas
+                  </span>
+
+                  <strong>
+                    ${item.stockBoxes.toFixed(
+                      2
+                    )}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    U/caja
+                  </span>
+
+                  <strong>
+                    ${item.unitsPerBox}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    Se agota en
+                  </span>
+
+                  <strong>
+                    ${item.daysLeft}
+                    días
+                  </strong>
+                </div>
+
+              </div>
+            `;
+
+            lowStockPanel.appendChild(
+              element
+            );
+          }
+        );
+    }
+
+    function updateChartAndStats(
+      {
+        totalSales,
+        totalExpenses,
+        totalUnitsSold,
+        distinctProductsSold,
+        salesAgg,
+        products
+      }
+    ) {
+      if (
+        typeof appChartUtils !==
+          "undefined" &&
+        typeof appChartUtils.drawSalesChart ===
+          "function"
+      ) {
+        appChartUtils.drawSalesChart(
+          "salesChart",
+          totalSales,
+          0,
+          totalExpenses
+        );
+      }
+
+      if (
+        statSalesEl
+      ) {
+        statSalesEl.textContent =
+          formatMoney(
+            totalSales
+          );
+      }
+
+      if (
+        statExpensesEl
+      ) {
+        statExpensesEl.textContent =
+          formatMoney(
+            totalExpenses
+          );
+      }
+
+      if (
+        statNetEl
+      ) {
+        statNetEl.textContent =
+          formatMoney(
+            totalSales -
+              totalExpenses
+          );
+      }
+
+      if (
+        statUnitsSoldEl
+      ) {
+        statUnitsSoldEl.textContent =
+          numberOrZero(
+            totalUnitsSold
+          );
+      }
+
+      if (
+        statProductsSoldEl
+      ) {
+        statProductsSoldEl.textContent =
+          numberOrZero(
+            distinctProductsSold
+          );
+      }
+
+      renderProfitStatus(
+        products,
+        totalSales,
+        totalExpenses,
+        salesAgg
+      );
+
+      renderLowStockAlerts(
+        products,
+        salesAgg
+      );
+    }
+
+    /*
+     * ==========================================================
+     * CARGA DEL DASHBOARD
+     * ==========================================================
+     */
+
+    async function loadDashboardForRange() {
+      if (
+        !currentLocalId
+      ) {
+        throw new Error(
+          "No hay un local asociado al usuario autenticado."
+        );
+      }
+
+      const from =
+        rangeFrom?.value
+          ? startOfDay(
+              rangeFrom.value
+            )
+          : startOfMonth();
+
+      const to =
+        rangeTo?.value
+          ? endOfDay(
+              rangeTo.value
+            )
+          : endOfToday();
+
+      if (
+        !from ||
+        !to
+      ) {
+        throw new Error(
+          "El rango de fechas no es válido."
+        );
+      }
+
+      if (
+        from >
+        to
+      ) {
+        throw new Error(
+          "La fecha inicial no puede ser mayor que la fecha final."
+        );
+      }
+
+      selectedRange = {
+        from,
+        to
+      };
+
+      updateRangeLabels();
+
+      /*
+       * IMPORTANTE:
+       *
+       * loadDashboardDataOnce() solo consulta si
+       * dashboardDataLoaded === false.
+       */
+      await loadDashboardDataOnce();
+
+      rebuildCachesForRange();
+
+      const salesInRange =
+        rawSalesDocs.filter(
+          ({
+            data
+          }) =>
+            isWithinSelectedRange(
+              data.createdAt
+            )
+        );
+
+      const salesAgg =
+        aggregateSales(
+          salesInRange
+        );
 
       const totalExpenses =
         cachedExpenses.reduce(
-          (sum, item) =>
+          (
+            sum,
+            item
+          ) =>
             sum +
             numberOrZero(
               item.amount
@@ -2393,1870 +3663,1663 @@ document.addEventListener("DOMContentLoaded", () => {
           0
         );
 
-      const totalSales =
-        salesAgg.totalSales;
+      renderSalesTable(
+        visibleSales
+      );
 
-      const totalUnitsSold =
-        salesAgg.totalUnitsSold;
+      renderExpensesTable(
+        visibleExpenses
+      );
 
-      const distinctProductsSold =
-        salesAgg.distinctProductsSold;
+      renderMovementsTable(
+        visibleMovements
+      );
 
-      recalcGlobalIndicators({
-        totalSales,
+      updateCounts();
+
+      updateChartAndStats({
+        totalSales:
+          salesAgg.totalSales,
+
         totalExpenses,
-        totalUnitsSold,
-        distinctProductsSold,
+
+        totalUnitsSold:
+          salesAgg.totalUnitsSold,
+
+        distinctProductsSold:
+          salesAgg.distinctProductsSold,
+
         salesAgg,
-        products
+
+        products:
+          Array.from(
+            productsMap.values()
+          )
       });
 
       applySearchFilter();
-
-    } catch (err) {
-      debugError(
-        "Error cargando dashboard por rango:",
-        err
-      );
-
-      if (salesTableBody) {
-        salesTableBody.innerHTML =
-          "<tr><td colspan='6'>Error cargando ventas.</td></tr>";
-      }
-
-      if (expensesTableBody) {
-        expensesTableBody.innerHTML =
-          "<tr><td colspan='8'>Error cargando gastos.</td></tr>";
-      }
-
-      if (movementsTableBody) {
-        movementsTableBody.innerHTML =
-          "<tr><td colspan='14'>Error cargando movimientos.</td></tr>";
-      }
-
-      Swal.fire({
-        icon: "error",
-        title:
-          "No se pudo cargar el dashboard",
-        text:
-          err.message ||
-          "Revisa el local asignado al usuario y las reglas de Firestore."
-      });
     }
-  }
-
-  function renderSalesTable(rows) {
-    if (!salesTableBody) return;
-
-    salesTableBody.innerHTML = "";
-
-    if (!rows.length) {
-      salesTableBody.innerHTML =
-        "<tr><td colspan='6'>No hay ventas en el rango seleccionado.</td></tr>";
-
-      return;
-    }
-
-    rows.forEach(row => {
-      const tr =
-        document.createElement("tr");
-
-      tr.innerHTML = `
-        <td>${escapeHtml(row.customerName)}</td>
-        <td>${escapeHtml(row.products)}</td>
-        <td>${formatMoney(row.total)}</td>
-        <td>${escapeHtml(row.userName)}</td>
-        <td>${escapeHtml(row.dateStr)}</td>
-        <td>${escapeHtml(row.timeStr)}</td>
-      `;
-
-      salesTableBody.appendChild(tr);
-    });
-  }
-
-  function renderExpensesTable(rows) {
-    if (!expensesTableBody) return;
-
-    expensesTableBody.innerHTML = "";
-
-    if (!rows.length) {
-      expensesTableBody.innerHTML =
-        "<tr><td colspan='8'>No hay gastos en el rango seleccionado.</td></tr>";
-
-      return;
-    }
-
-    rows.forEach(item => {
-      const tr =
-        document.createElement("tr");
-
-      tr.innerHTML = `
-        <td>${escapeHtml(item.concept || "—")}</td>
-        <td>${escapeHtml(item.category || "—")}</td>
-        <td>${formatMoney(item.amount || 0)}</td>
-        <td>${escapeHtml(item.paymentMethod || "—")}</td>
-        <td>${escapeHtml(item.userName || "—")}</td>
-        <td>${escapeHtml(item.dateStr)}</td>
-        <td>${escapeHtml(item.timeStr)}</td>
-        <td>${escapeHtml(item.notes || "—")}</td>
-      `;
-
-      expensesTableBody.appendChild(tr);
-    });
-  }
-
-  function renderMovementsTable(rows) {
-    if (!movementsTableBody) return;
-
-    movementsTableBody.innerHTML = "";
-
-    if (!rows.length) {
-      movementsTableBody.innerHTML =
-        "<tr><td colspan='14'>No hay movimientos en el rango seleccionado.</td></tr>";
-
-      return;
-    }
-
-    rows.forEach(item => {
-      const tr =
-        document.createElement("tr");
-
-      tr.innerHTML = `
-        <td>${escapeHtml(item.dateStr)}</td>
-        <td>${escapeHtml(item.timeStr)}</td>
-        <td>${escapeHtml(item.productName || "—")}</td>
-        <td>${escapeHtml(item.productCode || "—")}</td>
-        <td>${escapeHtml(item.docNumber || "—")}</td>
-        <td>${formatMoney(item.unitCost || 0)}</td>
-        <td>${formatMoney(item.inventoryValue || 0)}</td>
-        <td>${numberOrZero(item.entry)}</td>
-        <td>${numberOrZero(item.exit)}</td>
-        <td>${numberOrZero(item.balanceAfter)}</td>
-        <td>${numberOrZero(item.balanceBefore)}</td>
-        <td>${escapeHtml(item.userName || "—")}</td>
-        <td>${escapeHtml(item.detail || "—")}</td>
-      `;
-
-      movementsTableBody.appendChild(tr);
-    });
-  }
-
-  function applySearchFilter() {
-    const q =
-      String(
-        rangeSearch?.value || ""
-      )
-        .toLowerCase()
-        .trim();
-
-    if (!q) {
-      visibleSales = [
-        ...cachedSales
-      ];
-
-      visibleExpenses = [
-        ...cachedExpenses
-      ];
-
-      visibleMovements = [
-        ...cachedMovements
-      ];
-    } else {
-      visibleSales =
-        cachedSales.filter(row => {
-          const haystack =
-            `${row.customerName} ${row.products} ${row.total} ${row.userName} ${row.dateStr} ${row.timeStr} ${row.rawText}`
-              .toLowerCase();
-
-          return haystack.includes(q);
-        });
-
-      visibleExpenses =
-        cachedExpenses.filter(row => {
-          const haystack =
-            `${row.concept} ${row.category} ${row.amount} ${row.paymentMethod} ${row.userName} ${row.dateStr} ${row.timeStr} ${row.notes} ${row.rawText}`
-              .toLowerCase();
-
-          return haystack.includes(q);
-        });
-
-      visibleMovements =
-        cachedMovements.filter(row => {
-          const haystack =
-            `${row.productCode} ${row.productName} ${row.unitCost} ${row.balanceAfter} ${row.inventoryValue} ${row.bookReference} ${row.docNumber} ${row.entry} ${row.exit} ${row.balanceBefore} ${row.userName} ${row.dateStr} ${row.timeStr} ${row.detail} ${row.typeLabel} ${row.rawText}`
-              .toLowerCase();
-
-          return haystack.includes(q);
-        });
-    }
-
-    renderSalesTable(
-      visibleSales
-    );
-
-    renderExpensesTable(
-      visibleExpenses
-    );
-
-    renderMovementsTable(
-      visibleMovements
-    );
-
-    if (salesCountLabel) {
-      salesCountLabel.textContent =
-        `${visibleSales.length} registros`;
-    }
-
-    if (expenseCountLabel) {
-      expenseCountLabel.textContent =
-        `${visibleExpenses.length} registros`;
-    }
-
-    if (movementCountLabel) {
-      movementCountLabel.textContent =
-        `${visibleMovements.length} registros`;
-    }
-  }
-
-  function updateChartAndStats({
-    totalSales,
-    totalExpenses,
-    totalUnitsSold,
-    distinctProductsSold,
-    salesAgg,
-    products
-  }) {
-    if (
-      typeof appChartUtils !==
-      "undefined" &&
-      typeof appChartUtils.drawSalesChart ===
-      "function"
-    ) {
-      appChartUtils.drawSalesChart(
-        "salesChart",
-        totalSales,
-        0,
-        totalExpenses
-      );
-    }
-
-    if (statSalesEl) {
-      statSalesEl.textContent =
-        formatMoney(totalSales);
-    }
-
-    if (statExpensesEl) {
-      statExpensesEl.textContent =
-        formatMoney(totalExpenses);
-    }
-
-    if (statNetEl) {
-      statNetEl.textContent =
-        formatMoney(
-          totalSales -
-          totalExpenses
-        );
-    }
-
-    if (statUnitsSoldEl) {
-      statUnitsSoldEl.textContent =
-        numberOrZero(
-          totalUnitsSold
-        );
-    }
-
-    if (statProductsSoldEl) {
-      statProductsSoldEl.textContent =
-        numberOrZero(
-          distinctProductsSold
-        );
-    }
-
-    renderGoalInfo(
-      products,
-      totalSales,
-      totalExpenses
-    );
-
-    renderProfitStatus(
-      products,
-      totalSales,
-      totalExpenses,
-      salesAgg
-    );
-
-    renderLowStockAlerts(
-      products,
-      salesAgg
-    );
-  }
-
-  function recalcGlobalIndicators(
-    payload
-  ) {
-    updateChartAndStats(
-      payload
-    );
-  }
-
-  function renderGoalInfo(
-    products,
-    totalSales,
-    totalExpenses
-  ) {
-    const goalInfo =
-      document.getElementById(
-        "goalInfo"
-      );
-
-    if (!goalInfo) return;
-
-    let initialInventoryUnits = 0;
-    let initialInventoryValue = 0;
-
-    products.forEach(p => {
-      const stockUnits =
-        getStockUnits(p);
-
-      const price =
-        numberOrZero(p.price);
-
-      initialInventoryUnits +=
-        stockUnits;
-
-      initialInventoryValue +=
-        stockUnits * price;
-    });
-
-    const monthlyGoal =
-      Math.round(
-        initialInventoryValue
-      );
-
-    const remaining =
-      Math.max(
-        0,
-        monthlyGoal -
-        totalSales
-      );
-
-    goalInfo.innerHTML = `
-      <div class="info-card__title">
-        Meta automática del período
-      </div>
-
-      <div class="info-card__amount">
-        ${formatMoney(monthlyGoal)}
-      </div>
-
-      <div class="info-card__meta">
-        <span>
-          Inventario actual:
-          <strong>
-            ${initialInventoryUnits} unidades
-          </strong>
-        </span>
-
-        <span>
-          Valor actual:
-          <strong>
-            ${formatMoney(initialInventoryValue)}
-          </strong>
-        </span>
-
-        <span>
-          Ventas:
-          <strong>
-            ${formatMoney(totalSales)}
-          </strong>
-        </span>
-
-        <span>
-          Gastos:
-          <strong>
-            ${formatMoney(totalExpenses)}
-          </strong>
-        </span>
-
-        <span>
-          Falta para meta:
-          <strong>
-            ${formatMoney(remaining)}
-          </strong>
-        </span>
-      </div>
-    `;
-  }
-
-  function renderProfitStatus(
-    products,
-    totalSales,
-    totalExpenses,
-    salesAgg
-  ) {
-    const profitEl =
-      document.getElementById(
-        "profitStatus"
-      );
-
-    if (!profitEl) return;
-
-    let estimatedCostOfSales = 0;
-
-    Object.entries(
-      salesAgg.unitsMap
-    ).forEach(
-      ([productId, unitsSold]) => {
-        const product =
-          productsMap.get(
-            productId
-          );
-
-        const unitCost =
-          getProductUnitCost(
-            product
-          );
-
-        estimatedCostOfSales +=
-          numberOrZero(
-            unitsSold
-          ) * unitCost;
-      }
-    );
-
-    const grossProfit =
-      totalSales -
-      estimatedCostOfSales;
-
-    const netProfit =
-      totalSales -
-      totalExpenses;
-
-    let tone = "success";
-
-    let message =
-      `Neto positivo del período: ${formatMoney(netProfit)}`;
-
-    if (netProfit < 0) {
-      tone = "danger";
-
-      message =
-        `Pérdida neta del período: ${formatMoney(netProfit)}`;
-    } else if (
-      netProfit <
-      grossProfit * 0.4
-    ) {
-      tone = "warning";
-
-      message =
-        `Neto por debajo de lo esperado: ${formatMoney(netProfit)}`;
-    }
-
-    profitEl.className =
-      `info-card status-panel status-panel--${tone}`;
-
-    profitEl.innerHTML = `
-      <div class="status-panel__label">
-        Utilidad del período
-      </div>
-
-      <div class="status-panel__value">
-        ${escapeHtml(message)}
-      </div>
-
-      <div class="small" style="margin-top:8px;">
-        Costo estimado:
-        <strong>
-          ${formatMoney(estimatedCostOfSales)}
-        </strong>
-        ·
-
-        Bruto estimado:
-        <strong>
-          ${formatMoney(grossProfit)}
-        </strong>
-        ·
-
-        Neto:
-        <strong>
-          ${formatMoney(netProfit)}
-        </strong>
-      </div>
-    `;
-  }
-
-  function renderLowStockAlerts(
-    products,
-    salesAgg
-  ) {
-    if (!lowStockPanel) return;
-
-    const lowStock = [];
-
-    products.forEach(p => {
-      const stockUnits =
-        getStockUnits(p);
-
-      const stockBoxes =
-        getStockBoxes(p);
-
-      const soldUnitsMonth =
-        numberOrZero(
-          salesAgg.unitsMap[p.id]
-        );
-
-      let daysLeft = "-";
-
-      if (soldUnitsMonth > 0) {
-        const dailyRate =
-          soldUnitsMonth / 30;
-
-        daysLeft =
-          dailyRate > 0
-            ? Math.floor(
-              stockUnits /
-              dailyRate
-            )
-            : "-";
-      }
-
-      if (
-        stockUnits <=
-        LOW_STOCK_THRESHOLD
-      ) {
-        lowStock.push({
-          name:
-            p.name ||
-            "Sin nombre",
-
-          stockUnits,
-
-          stockBoxes,
-
-          unitsPerBox:
-            getUnitsPerBox(p),
-
-          daysLeft
-        });
-      }
-    });
-
-    lowStock.sort(
-      (a, b) =>
-        a.stockUnits -
-        b.stockUnits
-    );
-
-    if (statLowStockEl) {
-      statLowStockEl.textContent =
-        lowStock.length;
-    }
-
-    lowStockPanel.innerHTML = "";
-
-    if (!lowStock.length) {
-      lowStockPanel.innerHTML =
-        "<div class='no-alerts'>No hay productos en stock crítico.</div>";
-
-      return;
-    }
-
-    lowStock
-      .slice(0, 10)
-      .forEach(item => {
-        const el =
-          document.createElement(
-            "div"
-          );
-
-        el.className =
-          "low-stock-item low-stock-item--rich";
-
-        el.innerHTML = `
-          <div class="low-stock-item__left">
-            <strong>
-              ${escapeHtml(item.name)}
-            </strong>
-
-            <div class="low-stock-item__muted">
-              Stock crítico detectado
-            </div>
-          </div>
-
-          <div class="low-stock-item__right">
-            <div>
-              <span>Stock</span>
-              <strong>
-                ${item.stockUnits}
-              </strong>
-            </div>
-
-            <div>
-              <span>Cajas</span>
-              <strong>
-                ${item.stockBoxes.toFixed(2)}
-              </strong>
-            </div>
-
-            <div>
-              <span>U/caja</span>
-              <strong>
-                ${item.unitsPerBox}
-              </strong>
-            </div>
-
-            <div>
-              <span>Se agota en</span>
-              <strong>
-                ${item.daysLeft} días
-              </strong>
-            </div>
-          </div>
-        `;
-
-        lowStockPanel.appendChild(
-          el
-        );
-      });
-  }
-
-  function toCSVCell(value) {
-    const text =
-      String(value ?? "");
-
-    return `"${text.replace(
-      /"/g,
-      '""'
-    )}"`;
-  }
-
-  function downloadCSV(
-    filename,
-    headers,
-    rows
-  ) {
-    const delimiter = ";";
-
-    const csvLines = [
-      headers
-        .map(toCSVCell)
-        .join(delimiter),
-
-      ...rows.map(
-        row =>
-          row
-            .map(toCSVCell)
-            .join(delimiter)
-      )
-    ];
-
-    const blob =
-      new Blob(
-        [
-          "\uFEFF" +
-          csvLines.join(
-            "\n"
-          )
-        ],
-        {
-          type:
-            "text/csv;charset=utf-8;"
-        }
-      );
-
-    const url =
-      URL.createObjectURL(
-        blob
-      );
-
-    const a =
-      document.createElement(
-        "a"
-      );
-
-    a.href = url;
-    a.download = filename;
-    a.click();
-
-    URL.revokeObjectURL(
-      url
-    );
-  }
-
-  function exportSalesCSV() {
-    const source =
-      visibleSales.length
-        ? visibleSales
-        : cachedSales;
-
-    if (!source.length) {
-      Swal.fire(
-        "Sin datos",
-        "No hay ventas para exportar.",
-        "info"
-      );
-
-      return;
-    }
-
-    const headers = [
-      "Local",
-      "Número documento local",
-      "Ubicación local",
-      "Cliente",
-      "Productos",
-      "Total",
-      "Usuario",
-      "Fecha",
-      "Hora"
-    ];
-
-    const rows =
-      source.map(r => [
-        currentLocalInfo.nombre ||
-        "",
-
-        currentLocalInfo.numeroDocumento ||
-        "",
-
-        currentLocalInfo.ubicacion ||
-        "",
-
-        r.customerName,
-
-        r.products,
-
-        formatMoney(
-          r.total
-        ),
-
-        r.userName,
-
-        r.dateStr,
-
-        r.timeStr
-      ]);
-
-    const fromTag =
-      rangeFrom?.value ||
-      "inicio";
-
-    const toTag =
-      rangeTo?.value ||
-      "fin";
-
-    const localTag =
-      sanitizeFilePart(
-        currentLocalInfo.nombre ||
-        currentLocalInfo.id ||
-        "local"
-      );
-
-    downloadCSV(
-      `${localTag}_ventas_${fromTag}_a_${toTag}.csv`,
-      headers,
-      rows
-    );
-  }
-
-  function exportExpensesCSV() {
-    const source =
-      visibleExpenses.length
-        ? visibleExpenses
-        : cachedExpenses;
-
-    if (!source.length) {
-      Swal.fire(
-        "Sin datos",
-        "No hay gastos para exportar.",
-        "info"
-      );
-
-      return;
-    }
-
-    const headers = [
-      "Local",
-      "Número documento local",
-      "Ubicación local",
-      "Concepto",
-      "Categoría",
-      "Monto",
-      "Método",
-      "Usuario",
-      "Fecha",
-      "Hora",
-      "Observación"
-    ];
-
-    const rows =
-      source.map(item => [
-        currentLocalInfo.nombre ||
-        "",
-
-        currentLocalInfo.numeroDocumento ||
-        "",
-
-        currentLocalInfo.ubicacion ||
-        "",
-
-        item.concept ||
-        "",
-
-        item.category ||
-        "",
-
-        formatMoney(
-          item.amount || 0
-        ),
-
-        item.paymentMethod ||
-        "",
-
-        item.userName ||
-        "",
-
-        item.dateStr ||
-        "",
-
-        item.timeStr ||
-        "",
-
-        item.notes ||
-        ""
-      ]);
-
-    const fromTag =
-      rangeFrom?.value ||
-      "inicio";
-
-    const toTag =
-      rangeTo?.value ||
-      "fin";
-
-    const localTag =
-      sanitizeFilePart(
-        currentLocalInfo.nombre ||
-        currentLocalInfo.id ||
-        "local"
-      );
-
-    downloadCSV(
-      `${localTag}_gastos_${fromTag}_a_${toTag}.csv`,
-      headers,
-      rows
-    );
-  }
-
-  function getMovementExportFileName(
-    source
-  ) {
-    const fromTag =
-      rangeFrom?.value ||
-      "inicio";
-
-    const toTag =
-      rangeTo?.value ||
-      "fin";
-
-    const localTag =
-      sanitizeFilePart(
-        currentLocalInfo.nombre ||
-        currentLocalInfo.id ||
-        "local"
-      );
-
-    const companyDocTag =
-      sanitizeFilePart(
-        currentLocalInfo.numeroDocumento ||
-        "sin_documento"
-      );
-
-    const first =
-      source[0] || {};
-
-    const codeTag =
-      sanitizeFilePart(
-        first.productCode ||
-        "codigo_producto"
-      );
-
-    const nameTag =
-      sanitizeFilePart(
-        first.productName ||
-        "nombre_producto"
-      );
-
-    return `${localTag}_${companyDocTag}_${codeTag}_${nameTag}_inventario_${fromTag}_a_${toTag}.csv`;
-  }
-
-  function exportMovementsCSV() {
-    const source =
-      visibleMovements.length
-        ? visibleMovements
-        : cachedMovements;
-
-    if (!source.length) {
-      Swal.fire(
-        "Sin datos",
-        "No hay movimientos de inventario para exportar.",
-        "info"
-      );
-
-      return;
-    }
-
-    const first =
-      source[0] || {};
-
-    const reportHeaderRows = [
-      ["Reporte de inventario"],
-
-      [
-        "Nombre del local",
-        currentLocalInfo.nombre || ""
-      ],
-
-      [
-        "Nombre del contribuyente",
-        currentLocalInfo.contribuyente ||
-        currentLocalInfo.nombre ||
-        ""
-      ],
-
-      [
-        "Número de documento de la empresa",
-        currentLocalInfo.numeroDocumento ||
-        ""
-      ],
-
-      [
-        "Código de producto",
-        first.productCode || ""
-      ],
-
-      [
-        "Nombre de producto",
-        first.productName || ""
-      ],
-
-      []
-    ];
 
     /*
-     * CSV DEL REPORTE DE MOVIMIENTOS
-     *
-     * El valor del inventario corresponde al
-     * momento de cada transacción:
-     *
-     * Costo unitario × Saldo actual
+     * ==========================================================
+     * CSV
+     * ==========================================================
      */
-    const tableHeaders = [
-      "Fecha",
-      "Hora",
-      "Producto",
-      "Código producto",
-      "Número documento",
-      "Referencia libro",
-      "Costo unitario",
-      "Saldo actual",
-      "Valor inventario",
-      "Entrada",
-      "Salida",
-      "Saldo anterior",
-      "Usuario",
-      "Detalle"
-    ];
 
-    const tableRows =
-      source.map(item => [
-        item.dateStr || "",
-
-        item.timeStr || "",
-
-        item.productName || "",
-
-        item.productCode || "",
-
-        item.docNumber || "",
-
-        item.bookReference || "",
-
-        formatMoney(
-          item.unitCost || 0
-        ),
-
-        item.balanceAfter || 0,
-
-        formatMoney(
-          item.inventoryValue || 0
-        ),
-
-        item.entry || 0,
-
-        item.exit || 0,
-
-        item.balanceBefore || 0,
-
-        item.userName || "",
-
-        item.detail || ""
-      ]);
-
-    const csvLines = [
-      ...reportHeaderRows.map(
-        row =>
-          row
-            .map(toCSVCell)
-            .join(";")
-      ),
-
-      tableHeaders
-        .map(toCSVCell)
-        .join(";"),
-
-      ...tableRows.map(
-        row =>
-          row
-            .map(toCSVCell)
-            .join(";")
-      )
-    ];
-
-    const blob =
-      new Blob(
-        [
-          "\uFEFF" +
-          csvLines.join(
-            "\n"
-          )
-        ],
-        {
-          type:
-            "text/csv;charset=utf-8;"
-        }
-      );
-
-    const url =
-      URL.createObjectURL(
-        blob
-      );
-
-    const a =
-      document.createElement(
-        "a"
-      );
-
-    a.href = url;
-    a.download =
-      getMovementExportFileName(
-        source
-      );
-
-    a.click();
-
-    URL.revokeObjectURL(
-      url
-    );
-  }
-
-  async function refreshEverything() {
-    await loadDashboardForRange();
-  }
-
-  async function applyRange() {
-    const fromStr =
-      rangeFrom?.value ||
-      "";
-
-    const toStr =
-      rangeTo?.value ||
-      "";
-
-    if (
-      fromStr &&
-      toStr
+    function toCSVCell(
+      value
     ) {
-      const from =
-        new Date(
-          `${fromStr}T00:00:00`
+      return `"${String(
+        value ?? ""
+      ).replace(
+        /"/g,
+        '""'
+      )}"`;
+    }
+
+    function downloadCSV(
+      filename,
+      headers,
+      rows
+    ) {
+      const lines = [
+        headers
+          .map(
+            toCSVCell
+          )
+          .join(";"),
+
+        ...rows.map(
+          row =>
+            row
+              .map(
+                toCSVCell
+              )
+              .join(";")
+        )
+      ];
+
+      const blob =
+        new Blob(
+          [
+            "\uFEFF" +
+            lines.join(
+              "\n"
+            )
+          ],
+          {
+            type:
+              "text/csv;charset=utf-8;"
+          }
         );
 
-      const to =
-        new Date(
-          `${toStr}T23:59:59.999`
+      const url =
+        URL.createObjectURL(
+          blob
         );
 
-      if (from > to) {
+      const link =
+        document.createElement(
+          "a"
+        );
+
+      link.href =
+        url;
+
+      link.download =
+        filename;
+
+      document.body.appendChild(
+        link
+      );
+
+      link.click();
+
+      document.body.removeChild(
+        link
+      );
+
+      URL.revokeObjectURL(
+        url
+      );
+    }
+
+    function getExportRangeTags() {
+      return {
+        from:
+          rangeFrom?.value ||
+          "inicio",
+
+        to:
+          rangeTo?.value ||
+          "fin"
+      };
+    }
+
+    function exportSalesCSV() {
+      const source =
+        visibleSales.length
+          ? visibleSales
+          : cachedSales;
+
+      if (
+        !source.length
+      ) {
         Swal.fire(
-          "Rango inválido",
-          "La fecha inicial no puede ser mayor que la fecha final.",
-          "warning"
+          "Sin datos",
+          "No hay ventas para exportar.",
+          "info"
         );
 
         return;
       }
+
+      const headers = [
+        "Local",
+        "Número documento local",
+        "Ubicación local",
+        "Productos",
+        "Total",
+        "Usuario",
+        "Fecha",
+        "Hora"
+      ];
+
+      const rows =
+        source.map(
+          item => [
+            currentLocalInfo.nombre ||
+              "",
+
+            currentLocalInfo.numeroDocumento ||
+              "",
+
+            currentLocalInfo.ubicacion ||
+              "",
+
+            item.products,
+
+            formatMoney(
+              item.total
+            ),
+
+            item.userName,
+
+            item.dateStr,
+
+            item.timeStr
+          ]
+        );
+
+      const {
+        from,
+        to
+      } =
+        getExportRangeTags();
+
+      const localTag =
+        sanitizeFilePart(
+          currentLocalInfo.nombre ||
+          currentLocalInfo.id ||
+          "local"
+        );
+
+      downloadCSV(
+        `${localTag}_ventas_${from}_a_${to}.csv`,
+        headers,
+        rows
+      );
     }
 
-    await refreshEverything();
-  }
+    function exportExpensesCSV() {
+      const source =
+        visibleExpenses.length
+          ? visibleExpenses
+          : cachedExpenses;
 
-  async function resetRange() {
-    setDefaultRangeToMonth();
+      if (
+        !source.length
+      ) {
+        Swal.fire(
+          "Sin datos",
+          "No hay gastos para exportar.",
+          "info"
+        );
 
-    if (rangeSearch) {
-      rangeSearch.value = "";
+        return;
+      }
+
+      const headers = [
+        "Local",
+        "Número documento local",
+        "Ubicación local",
+        "Concepto",
+        "Categoría",
+        "Monto",
+        "Método",
+        "Usuario",
+        "Fecha",
+        "Hora",
+        "Observación"
+      ];
+
+      const rows =
+        source.map(
+          item => [
+            currentLocalInfo.nombre ||
+              "",
+
+            currentLocalInfo.numeroDocumento ||
+              "",
+
+            currentLocalInfo.ubicacion ||
+              "",
+
+            item.concept ||
+              "",
+
+            item.category ||
+              "",
+
+            formatMoney(
+              item.amount ||
+                0
+            ),
+
+            item.paymentMethod ||
+              "",
+
+            item.userName ||
+              "",
+
+            item.dateStr ||
+              "",
+
+            item.timeStr ||
+              "",
+
+            item.notes ||
+              ""
+          ]
+        );
+
+      const {
+        from,
+        to
+      } =
+        getExportRangeTags();
+
+      const localTag =
+        sanitizeFilePart(
+          currentLocalInfo.nombre ||
+          currentLocalInfo.id ||
+          "local"
+        );
+
+      downloadCSV(
+        `${localTag}_gastos_${from}_a_${to}.csv`,
+        headers,
+        rows
+      );
     }
 
-    await refreshEverything();
-  }
+    /*
+     * ==========================================================
+     * EXCEL
+     * ==========================================================
+     */
 
-  function closeDay() {
-    const now =
-      new Date();
+    function formatPeriodForExcel() {
+      const from =
+        selectedRange.from
+          ? selectedRange.from.toLocaleDateString(
+              "es-ES"
+            )
+          : "—";
 
-    const start =
-      new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-        0,
-        0,
-        0,
-        0
-      );
+      const to =
+        selectedRange.to
+          ? selectedRange.to.toLocaleDateString(
+              "es-ES"
+            )
+          : "—";
 
-    const end =
-      new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-        23,
-        59,
-        59,
-        999
-      );
+      return `${from} al ${to}`;
+    }
 
-    Swal.fire({
-      title:
-        "¿Registrar cierre de caja?",
+    function exportMovementsExcel() {
+      try {
+        const source =
+          visibleMovements.length
+            ? visibleMovements
+            : cachedMovements;
 
-      html:
-        "Se calcularán solo las ventas registradas hoy y del local actual.",
+        if (
+          !source.length
+        ) {
+          Swal.fire(
+            "Sin datos",
+            "No hay movimientos de inventario para exportar.",
+            "info"
+          );
 
-      icon: "question",
-
-      showCancelButton:
-        true,
-
-      confirmButtonText:
-        "Sí, registrar",
-
-      cancelButtonText:
-        "Cancelar"
-
-    }).then(
-      async res => {
-        if (!res.isConfirmed) {
           return;
         }
 
-        try {
-          if (!currentLocalId) {
-            throw new Error(
-              "No hay local asociado al usuario autenticado."
-            );
-          }
-
-          const snapshot =
-            await db
-              .collection("ventas")
-              .orderBy(
-                "createdAt",
-                "desc"
-              )
-              .get();
-
-          let total = 0;
-
-          snapshot.forEach(
-            doc => {
-              const data =
-                doc.data() || {};
-
-              if (
-                !matchesCurrentLocal(
-                  data
-                )
-              ) {
-                return;
-              }
-
-              if (
-                !isWithinSelectedRange(
-                  data.createdAt
-                )
-              ) {
-                return;
-              }
-
-              const created =
-                data.createdAt?.seconds
-                  ? new Date(
-                    data.createdAt.seconds *
-                    1000
-                  )
-                  : new Date(
-                    data.createdAt
-                  );
-
-              if (
-                created < start ||
-                created > end
-              ) {
-                return;
-              }
-
-              total +=
-                numberOrZero(
-                  data.total ||
-                  0
-                );
-            }
-          );
-
-          await db
-            .collection(
-              "cierres_caja"
-            )
-            .add({
-              date:
-                firebase.firestore
-                  .FieldValue
-                  .serverTimestamp(),
-
-              dateString:
-                toLocalInputDate(
-                  start
-                ),
-
-              total,
-
-              createdBy:
-                auth.currentUser
-                  ? auth.currentUser
-                    .uid
-                  : null,
-
-              type:
-                "ventas",
-
-              id_local:
-                currentLocalId,
-
-              localNombre:
-                currentLocalInfo
-                  .nombre || "",
-
-              localNumeroDocumento:
-                currentLocalInfo
-                  .numeroDocumento ||
-                "",
-
-              localUbicacion:
-                currentLocalInfo
-                  .ubicacion || "",
-
-              localContribuyente:
-                currentLocalInfo
-                  .contribuyente ||
-                ""
-            });
-
-          Swal.fire({
-            icon: "success",
-
-            title:
-              "Cierre registrado",
-
-            text:
-              `Total del día: ${formatMoney(total)}`
-          });
-
-        } catch (err) {
-          debugError(err);
-
+        if (
+          typeof XLSX ===
+          "undefined"
+        ) {
           Swal.fire(
             "Error",
-            err.message ||
-            "No se pudo registrar el cierre.",
+            "La librería SheetJS no está cargada.",
             "error"
           );
+
+          return;
         }
-      }
-    );
-  }
 
-  async function bootUser(user) {
-    try {
-      const storedUser =
-        getStoredCurrentUser();
+        const localName =
+          currentLocalInfo.nombre ||
+          "—";
 
-      let displayName =
-        "Usuario";
+        const contributor =
+          currentLocalInfo.contribuyente ||
+          "—";
 
-      let role =
-        "Empleado";
+        const documentType =
+          currentLocalInfo.tipoDocumento ||
+          "—";
 
-      if (
-        storedUser &&
-        storedUser.uid === user.uid
-      ) {
-        displayName =
-          storedUser.name ||
-          "Usuario";
+        const nit =
+          currentLocalInfo.nit ||
+          "—";
 
-        role =
-          storedUser.role ||
-          "Empleado";
+        const nrc =
+          currentLocalInfo.nrc ||
+          "—";
 
-      } else {
-        const snapshot =
-          await db
-            .collection(
-              EMPLOYEE_COLLECTION_NAME
-            )
-            .where(
-              "email",
-              "==",
-              user.email
-            )
-            .limit(1)
-            .get();
+        const documentNumber =
+          currentLocalInfo.numeroDocumento ||
+          "—";
 
-        if (!snapshot.empty) {
-          const data =
-            snapshot.docs[0]
-              .data();
+        const location =
+          currentLocalInfo.ubicacion ||
+          "—";
 
-          displayName =
-            data.name ||
-            "Usuario";
+        const period =
+          formatPeriodForExcel();
 
-          role =
-            data.position ||
-            data.role ||
-            "Empleado";
+        const headers = [
+          "Fecha",
+          "Hora",
+          "Producto",
+          "Código producto",
+          "Número documento",
+          "Referencia libro",
+          "Costo unitario",
+          "Valor inventario",
+          "Entrada",
+          "Salida",
+          "Saldo anterior",
+          "Saldo actual",
+          "Detalle"
+        ];
 
-          localStorage.setItem(
-            "currentUser",
-            JSON.stringify({
-              uid:
-                user.uid,
-
-              name:
-                displayName,
-
-              email:
-                user.email,
-
-              phone:
-                data.phone ||
+        const rows =
+          source.map(
+            item => [
+              item.dateStr ||
                 "",
 
-              role,
+              item.timeStr ||
+                "",
 
-              id_local:
-                data.id_local ||
-                data.idLocal ||
-                data.localId ||
+              item.productName ||
+                "",
+
+              item.productCode ||
+                "",
+
+              item.docNumber ||
+                "",
+
+              item.bookReference ||
+                "",
+
+              numberOrZero(
+                item.unitCost
+              ),
+
+              numberOrZero(
+                item.inventoryValue
+              ),
+
+              numberOrZero(
+                item.entry
+              ),
+
+              numberOrZero(
+                item.exit
+              ),
+
+              numberOrZero(
+                item.balanceBefore
+              ),
+
+              numberOrZero(
+                item.balanceAfter
+              ),
+
+              item.detail ||
                 ""
-            })
+            ]
           );
+
+        const sheetData = [
+          [
+            "REPORTE DE MOVIMIENTOS DE INVENTARIO"
+          ],
+
+          [
+            "Nombre del local",
+            localName
+          ],
+
+          [
+            "Nombre del contribuyente",
+            contributor
+          ],
+
+          [
+            "Tipo de documento",
+            documentType,
+            "",
+            "",
+            "NIT",
+            nit,
+            "",
+            "",
+            "NRC",
+            nrc
+          ],
+
+          [
+            "Número de documento",
+            documentNumber,
+            "",
+            "",
+            "Ubicación",
+            location
+          ],
+
+          [
+            "Período",
+            period
+          ],
+
+          [],
+
+          headers,
+
+          ...rows
+        ];
+
+        const worksheet =
+          XLSX.utils.aoa_to_sheet(
+            sheetData
+          );
+
+        worksheet["!cols"] = [
+          {
+            wch:
+              10
+          },
+          {
+            wch:
+              9
+          },
+          {
+            wch:
+              22
+          },
+          {
+            wch:
+              15
+          },
+          {
+            wch:
+              18
+          },
+          {
+            wch:
+              18
+          },
+          {
+            wch:
+              15
+          },
+          {
+            wch:
+              17
+          },
+          {
+            wch:
+              10
+          },
+          {
+            wch:
+              10
+          },
+          {
+            wch:
+              14
+          },
+          {
+            wch:
+              14
+          },
+          {
+            wch:
+              24
+          }
+        ];
+
+        worksheet["!rows"] = [
+          {
+            hpt:
+              24
+          },
+          {
+            hpt:
+              18
+          },
+          {
+            hpt:
+              18
+          },
+          {
+            hpt:
+              18
+          },
+          {
+            hpt:
+              18
+          },
+          {
+            hpt:
+              18
+          },
+          {
+            hpt:
+              7
+          },
+          {
+            hpt:
+              24
+          }
+        ];
+
+        worksheet["!merges"] = [
+          {
+            s: {
+              r:
+                0,
+              c:
+                0
+            },
+
+            e: {
+              r:
+                0,
+              c:
+                12
+            }
+          },
+
+          {
+            s: {
+              r:
+                1,
+              c:
+                1
+            },
+
+            e: {
+              r:
+                1,
+              c:
+                12
+            }
+          },
+
+          {
+            s: {
+              r:
+                2,
+              c:
+                1
+            },
+
+            e: {
+              r:
+                2,
+              c:
+                12
+            }
+          },
+
+          {
+            s: {
+              r:
+                3,
+              c:
+                1
+            },
+
+            e: {
+              r:
+                3,
+              c:
+                3
+            }
+          },
+
+          {
+            s: {
+              r:
+                3,
+              c:
+                5
+            },
+
+            e: {
+              r:
+                3,
+              c:
+                7
+            }
+          },
+
+          {
+            s: {
+              r:
+                3,
+              c:
+                9
+            },
+
+            e: {
+              r:
+                3,
+              c:
+                12
+            }
+          },
+
+          {
+            s: {
+              r:
+                4,
+              c:
+                1
+            },
+
+            e: {
+              r:
+                4,
+              c:
+                3
+            }
+          },
+
+          {
+            s: {
+              r:
+                4,
+              c:
+                5
+            },
+
+            e: {
+              r:
+                4,
+              c:
+                12
+            }
+          },
+
+          {
+            s: {
+              r:
+                5,
+              c:
+                1
+            },
+
+            e: {
+              r:
+                5,
+              c:
+                12
+            }
+          }
+        ];
+
+        const firstDataRow =
+          9;
+
+        const lastDataRow =
+          sheetData.length;
+
+        for (
+          let row =
+            firstDataRow;
+
+          row <=
+          lastDataRow;
+
+          row++
+        ) {
+          if (
+            worksheet[
+              `G${row}`
+            ]
+          ) {
+            worksheet[
+              `G${row}`
+            ].z =
+              "$#,##0.00";
+          }
+
+          if (
+            worksheet[
+              `H${row}`
+            ]
+          ) {
+            worksheet[
+              `H${row}`
+            ].z =
+              "$#,##0.00";
+          }
         }
-      }
 
-      currentUserInfo.name =
-        displayName;
+        worksheet[
+          "!printArea"
+        ] =
+          `A1:M${lastDataRow}`;
 
-      currentUserInfo.role =
-        role;
+        const workbook =
+          XLSX.utils.book_new();
 
-      greetingEls.forEach(
-        el => {
-          el.textContent =
-            `Hola, ${displayName} (${role})`;
-        }
-      );
+        workbook.Props = {
+          Title:
+            "Reporte de movimientos de inventario",
 
-      if (
-        typeof renderNavigationForRole ===
-        "function"
+          Subject:
+            "Movimientos de inventario",
+
+          Author:
+            currentUserInfo.name ||
+            "Sistema de Gestión",
+
+          Company:
+            localName,
+
+          CreatedDate:
+            new Date()
+        };
+
+        XLSX.utils.book_append_sheet(
+          workbook,
+          worksheet,
+          "Movimientos"
+        );
+
+        /*
+         * Configuración adicional compatible
+         * con lectores que reconozcan estas propiedades.
+         */
+        worksheet["!pageSetup"] = {
+          paperSize:
+            1,
+
+          orientation:
+            "landscape",
+
+          fitToWidth:
+            1,
+
+          fitToHeight:
+            1
+        };
+
+        worksheet[
+          "!margins"
+        ] = {
+          left:
+            0.20,
+
+          right:
+            0.20,
+
+          top:
+            0.35,
+
+          bottom:
+            0.35,
+
+          header:
+            0.15,
+
+          footer:
+            0.15
+        };
+
+        const {
+          from,
+          to
+        } =
+          getExportRangeTags();
+
+        const localTag =
+          sanitizeFilePart(
+            currentLocalInfo.nombre ||
+            currentLocalInfo.id ||
+            "local"
+          );
+
+        const fileName =
+          `${localTag}_movimientos_inventario_${from}_a_${to}.xlsx`;
+
+        XLSX.writeFile(
+          workbook,
+          fileName,
+          {
+            bookType:
+              "xlsx",
+
+            compression:
+              true
+          }
+        );
+
+        Swal.fire(
+          "Excel generado",
+          "El reporte de movimientos fue generado correctamente.",
+          "success"
+        );
+      } catch (
+        error
       ) {
-        renderNavigationForRole(
-          role
+        debugError(
+          "Error exportando movimientos a Excel:",
+          error
+        );
+
+        Swal.fire(
+          "Error",
+          error.message ||
+            "No se pudo generar el archivo Excel.",
+          "error"
         );
       }
-
-      await loadEmployeeAndLocalContext(
-        user
-      );
-
-      greetingEls.forEach(
-        el => {
-          el.textContent =
-            `Hola, ${currentUserInfo.name} (${currentUserInfo.role})`;
-        }
-      );
-
-      refreshLocalHeader();
-
-    } catch (err) {
-      debugError(
-        "Error leyendo usuario o local:",
-        err
-      );
-
-      throw err;
     }
-  }
 
-  auth.onAuthStateChanged(
-    async user => {
-      if (!user) {
-        window.location.href =
-          "index.html";
+    /*
+     * ==========================================================
+     * CIERRE DE CAJA
+     * ==========================================================
+     *
+     * No consulta ventas nuevamente.
+     */
 
+    async function closeDay() {
+      const confirmation =
+        await Swal.fire({
+          title:
+            "¿Registrar cierre de caja?",
+
+          html:
+            "Se calcularán las ventas registradas hoy y del local actual.",
+
+          icon:
+            "question",
+
+          showCancelButton:
+            true,
+
+          confirmButtonText:
+            "Sí, registrar",
+
+          cancelButtonText:
+            "Cancelar"
+        });
+
+      if (
+        !confirmation.isConfirmed
+      ) {
         return;
       }
 
       try {
-        await bootUser(user);
+        await loadDashboardDataOnce();
 
-        setDefaultRangeToMonth();
+        const now =
+          new Date();
 
-        await refreshEverything();
+        const start =
+          new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+            0,
+            0,
+            0,
+            0
+          );
 
-      } catch (err) {
-        debugError(
-          "Error inicializando dashboard:",
-          err
+        const end =
+          new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+            23,
+            59,
+            59,
+            999
+          );
+
+        let total =
+          0;
+
+        rawSalesDocs.forEach(
+          ({
+            data
+          }) => {
+            const timestamp =
+              getTimestampMs(
+                data.createdAt
+              );
+
+            if (
+              !timestamp
+            ) {
+              return;
+            }
+
+            const created =
+              new Date(
+                timestamp
+              );
+
+            if (
+              created <
+                start ||
+              created >
+                end
+            ) {
+              return;
+            }
+
+            total +=
+              numberOrZero(
+                data.total
+              );
+          }
         );
 
+        await db
+          .collection(
+            "cierres_caja"
+          )
+          .add({
+            date:
+              firebase.firestore
+                .FieldValue
+                .serverTimestamp(),
+
+            dateString:
+              toLocalInputDate(
+                start
+              ),
+
+            total,
+
+            createdBy:
+              auth.currentUser
+                ? auth.currentUser.uid
+                : null,
+
+            type:
+              "ventas",
+
+            id_local:
+              currentLocalId,
+
+            localNombre:
+              currentLocalInfo.nombre ||
+              "",
+
+            localNumeroDocumento:
+              currentLocalInfo.numeroDocumento ||
+              "",
+
+            localUbicacion:
+              currentLocalInfo.ubicacion ||
+              "",
+
+            localContribuyente:
+              currentLocalInfo.contribuyente ||
+              "",
+
+            localTipoDocumento:
+              currentLocalInfo.tipoDocumento ||
+              "",
+
+            localNIT:
+              currentLocalInfo.nit ||
+              "",
+
+            localNRC:
+              currentLocalInfo.nrc ||
+              ""
+          });
+
         Swal.fire({
-          icon: "error",
+          icon:
+            "success",
 
           title:
-            "Sin local asignado",
+            "Cierre registrado",
 
           text:
-            err.message ||
-            "No se pudo cargar el local del usuario."
+            `Total del día: ${formatMoney(
+              total
+            )}`
+        });
+
+      } catch (
+        error
+      ) {
+        debugError(
+          "Error en cierre de caja:",
+          error
+        );
+
+        Swal.fire(
+          "Error",
+          error.message ||
+            "No se pudo registrar el cierre.",
+          "error"
+        );
+      }
+    }
+
+    /*
+     * ==========================================================
+     * RANGO
+     * ==========================================================
+     */
+
+    async function applyRange() {
+      const fromValue =
+        rangeFrom?.value ||
+        "";
+
+      const toValue =
+        rangeTo?.value ||
+        "";
+
+      if (
+        fromValue &&
+        toValue
+      ) {
+        const from =
+          startOfDay(
+            fromValue
+          );
+
+        const to =
+          endOfDay(
+            toValue
+          );
+
+        if (
+          from &&
+          to &&
+          from >
+            to
+        ) {
+          Swal.fire(
+            "Rango inválido",
+            "La fecha inicial no puede ser mayor que la fecha final.",
+            "warning"
+          );
+
+          return;
+        }
+      }
+
+      try {
+        await loadDashboardForRange();
+      } catch (
+        error
+      ) {
+        debugError(
+          "Error aplicando rango:",
+          error
+        );
+
+        await Swal.fire(
+          "Error",
+          error.message ||
+            "No se pudo aplicar el rango.",
+          "error"
+        );
+      }
+    }
+
+    async function resetRange() {
+      setDefaultRangeToMonth();
+
+      if (
+        rangeSearch
+      ) {
+        rangeSearch.value =
+          "";
+      }
+
+      try {
+        await loadDashboardForRange();
+      } catch (
+        error
+      ) {
+        debugError(
+          "Error restaurando rango:",
+          error
+        );
+
+        await Swal.fire(
+          "Error",
+          error.message ||
+            "No se pudo restaurar el rango.",
+          "error"
+        );
+      }
+    }
+
+    /*
+     * ==========================================================
+     * INICIALIZACIÓN
+     * ==========================================================
+     */
+
+    async function initializeDashboard(
+      user
+    ) {
+      if (
+        initialized
+      ) {
+        return;
+      }
+
+      initialized =
+        true;
+
+      try {
+        /*
+         * Aquí se reutiliza directamente app.js.
+         *
+         * NO se consulta:
+         * - empleados
+         * - local
+         */
+        await resolveDashboardContext(
+          user
+        );
+
+        /*
+         * Datos iniciales.
+         */
+        setDefaultRangeToMonth();
+
+        /*
+         * Carga única:
+         * ventas
+         * gastos
+         * movimientos
+         * productos
+         */
+        await loadDashboardForRange();
+
+      } catch (
+        error
+      ) {
+        initialized =
+          false;
+
+        debugError(
+          "Error inicializando dashboard:",
+          error
+        );
+
+        await Swal.fire({
+          icon:
+            "error",
+
+          title:
+            "No se pudo cargar el dashboard",
+
+          text:
+            error.message ||
+            "No se pudo cargar la información del dashboard."
         });
       }
     }
-  );
 
-  logoutButtons.forEach(
-    btn => {
-      btn.addEventListener(
+    /*
+     * ==========================================================
+     * AUTH
+     * ==========================================================
+     */
+
+    auth.onAuthStateChanged(
+      async user => {
+        if (
+          !user
+        ) {
+          window.location.href =
+            "index.html";
+
+          return;
+        }
+
+        await initializeDashboard(
+          user
+        );
+      }
+    );
+
+    /*
+     * ==========================================================
+     * EVENTOS
+     * ==========================================================
+     */
+
+    if (
+      btnGoInventory
+    ) {
+      btnGoInventory.addEventListener(
         "click",
         () => {
-          auth
-            .signOut()
-            .then(() => {
-              localStorage.removeItem(
-                "currentUser"
-              );
-
-              window.location.href =
-                "index.html";
-            })
-            .catch(() => {
-              Swal.fire(
-                "Error",
-                "No se pudo cerrar sesión.",
-                "error"
-              );
-            });
+          window.location.href =
+            "inventory.html";
         }
       );
     }
-  );
 
-  if (btnGoInventory) {
-    btnGoInventory.addEventListener(
-      "click",
-      () => {
-        window.location.href =
-          "inventory.html";
-      }
-    );
-  }
-
-  if (btnCloseDay) {
-    btnCloseDay.addEventListener(
-      "click",
-      closeDay
-    );
-  }
-
-  if (btnApplyRange) {
-    btnApplyRange.addEventListener(
-      "click",
-      applyRange
-    );
-  }
-
-  if (btnResetRange) {
-    btnResetRange.addEventListener(
-      "click",
-      resetRange
-    );
-  }
-
-  if (btnExportSalesCSV) {
-    btnExportSalesCSV.addEventListener(
-      "click",
-      exportSalesCSV
-    );
-  }
-
-  if (btnExportExpensesCSV) {
-    btnExportExpensesCSV.addEventListener(
-      "click",
-      exportExpensesCSV
-    );
-  }
-
-  if (btnExportMovementsCSV) {
-    btnExportMovementsCSV.addEventListener(
-      "click",
-      exportMovementsCSV
-    );
-  }
-
-  if (rangeSearch) {
-    rangeSearch.addEventListener(
-      "input",
-      applySearchFilter
-    );
-  }
-
-  function injectDashboardStyles() {
     if (
-      document.getElementById(
-        "dashboardExtraStyles"
-      )
+      btnCloseDay
     ) {
-      return;
+      btnCloseDay.addEventListener(
+        "click",
+        closeDay
+      );
     }
 
-    const style =
-      document.createElement(
-        "style"
+    if (
+      btnApplyRange
+    ) {
+      btnApplyRange.addEventListener(
+        "click",
+        applyRange
       );
+    }
 
-    style.id =
-      "dashboardExtraStyles";
+    if (
+      btnResetRange
+    ) {
+      btnResetRange.addEventListener(
+        "click",
+        resetRange
+      );
+    }
 
-    style.textContent = `
-      .dashboard-hero {
-        display: flex;
-        justify-content: space-between;
-        gap: 16px;
-        align-items: stretch;
-        flex-wrap: wrap;
-        margin-bottom: 20px;
+    if (
+      btnExportSalesCSV
+    ) {
+      btnExportSalesCSV.addEventListener(
+        "click",
+        exportSalesCSV
+      );
+    }
+
+    if (
+      btnExportExpensesCSV
+    ) {
+      btnExportExpensesCSV.addEventListener(
+        "click",
+        exportExpensesCSV
+      );
+    }
+
+    if (
+      btnExportMovementsExcel
+    ) {
+      btnExportMovementsExcel.addEventListener(
+        "click",
+        exportMovementsExcel
+      );
+    }
+
+    if (
+      rangeSearch
+    ) {
+      rangeSearch.addEventListener(
+        "input",
+        applySearchFilter
+      );
+    }
+
+    /*
+     * ==========================================================
+     * ESTILOS
+     * ==========================================================
+     */
+
+    function injectDashboardStyles() {
+      if (
+        document.getElementById(
+          "dashboardExtraStyles"
+        )
+      ) {
+        return;
       }
 
-      .eyebrow {
-        margin: 0 0 8px;
-        text-transform: uppercase;
-        letter-spacing: .08em;
-        font-size: .8rem;
-        font-weight: 800;
-        color: #2563eb;
-      }
+      const style =
+        document.createElement(
+          "style"
+        );
 
-      .hero-subtitle {
-        margin: 8px 0 0;
-        color: #6b7280;
-      }
+      style.id =
+        "dashboardExtraStyles";
 
-      .hero-note {
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 14px;
-        padding: 16px;
-        box-shadow: 0 6px 20px rgba(15,23,42,.08);
-        min-width: 280px;
-        flex: 1;
-      }
+      style.textContent = `
+        .dashboard-hero {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          align-items: stretch;
+          flex-wrap: wrap;
+          margin-bottom: 20px;
+        }
 
-      .chart-card,
-      .panel-card,
-      .table-section,
-      .info-card,
-      .filter-panel {
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 16px;
-        box-shadow: 0 8px 24px rgba(15,23,42,.08);
-      }
+        .eyebrow {
+          margin: 0 0 8px;
+          text-transform: uppercase;
+          letter-spacing: .08em;
+          font-size: .8rem;
+          font-weight: 800;
+          color: #2563eb;
+        }
 
-      .chart-card {
-        padding: 18px;
-      }
+        .hero-subtitle {
+          margin: 8px 0 0;
+          color: #6b7280;
+        }
 
-      .dashboard-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1fr);
-        gap: 18px;
-        margin-bottom: 24px;
-      }
+        .hero-note {
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 14px;
+          padding: 16px;
+          box-shadow: 0 6px 20px rgba(15,23,42,.08);
+          min-width: 280px;
+          flex: 1;
+        }
 
-      .side-panel {
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-      }
+        .chart-card,
+        .panel-card,
+        .table-section,
+        .info-card,
+        .filter-panel {
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 16px;
+          box-shadow: 0 8px 24px rgba(15,23,42,.08);
+        }
 
-      .panel-card {
-        padding: 16px;
-      }
+        .chart-card {
+          padding: 18px;
+        }
 
-      .panel-actions {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-      }
-
-      .panel-actions button,
-      .secondary-btn,
-      .filter-actions button {
-        border: 0;
-        border-radius: 10px;
-        padding: 10px 14px;
-        font: inherit;
-        font-weight: 700;
-        cursor: pointer;
-      }
-
-      .secondary-btn {
-        background: #eef2ff;
-        color: #1d4ed8;
-      }
-
-      .table-section {
-        padding: 18px;
-        margin-bottom: 20px;
-      }
-
-      .section-header {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: center;
-        flex-wrap: wrap;
-        margin-bottom: 14px;
-      }
-
-      .section-header h2,
-      .section-header h3 {
-        margin: 0;
-      }
-
-      .section-header p {
-        margin: 6px 0 0;
-        color: #6b7280;
-      }
-
-      .section-header.compact {
-        margin-bottom: 0;
-      }
-
-      .table-toolbar {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: center;
-        flex-wrap: wrap;
-        margin-bottom: 12px;
-      }
-
-      .filter-panel {
-        padding: 14px;
-        margin-bottom: 18px;
-      }
-
-      .filter-grid {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 12px;
-        margin-bottom: 12px;
-      }
-
-      .filter-field label {
-        display: block;
-        font-size: .9rem;
-        font-weight: 700;
-        margin-bottom: 6px;
-        color: #374151;
-      }
-
-      .filter-field input {
-        width: 100%;
-      }
-
-      .filter-actions {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-      }
-
-      .loading,
-      .no-alerts {
-        color: #6b7280;
-      }
-
-      .status-panel__label {
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        opacity: 0.8;
-        margin-bottom: 6px;
-        font-weight: 700;
-      }
-
-      .status-panel__value {
-        font-size: 1rem;
-        font-weight: 800;
-        line-height: 1.35;
-      }
-
-      .status-panel--danger {
-        background: linear-gradient(135deg, #fee2e2, #fff);
-        border-color: #fecaca;
-        color: #991b1b;
-      }
-
-      .status-panel--warning {
-        background: linear-gradient(135deg, #fef3c7, #fff);
-        border-color: #fde68a;
-        color: #92400e;
-      }
-
-      .status-panel--success {
-        background: linear-gradient(135deg, #dcfce7, #fff);
-        border-color: #bbf7d0;
-        color: #166534;
-      }
-
-      .info-card__title {
-        font-size: 0.85rem;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: #6b7280;
-        margin-bottom: 8px;
-      }
-
-      .info-card__amount {
-        font-size: 1.6rem;
-        font-weight: 900;
-        color: #111827;
-        margin-bottom: 10px;
-      }
-
-      .info-card__meta {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px 12px;
-        font-size: 0.92rem;
-        color: #374151;
-      }
-
-      .low-stock-item--rich {
-        display: flex;
-        justify-content: space-between;
-        gap: 14px;
-        align-items: flex-start;
-        padding: 12px 14px;
-        border: 1px solid #fde68a;
-        border-radius: 12px;
-        background: linear-gradient(135deg, #fff, #fffbeb);
-        margin-bottom: 10px;
-      }
-
-      .low-stock-item__left {
-        min-width: 0;
-      }
-
-      .low-stock-item__left strong {
-        display: block;
-        font-size: 0.98rem;
-        color: #111827;
-        margin-bottom: 4px;
-      }
-
-      .low-stock-item__muted {
-        font-size: 0.85rem;
-        color: #6b7280;
-      }
-
-      .low-stock-item__right {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 6px 12px;
-        min-width: 180px;
-        text-align: right;
-      }
-
-      .low-stock-item__right span {
-        display: block;
-        font-size: 0.72rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: #6b7280;
-      }
-
-      .low-stock-item__right strong {
-        display: block;
-        font-size: 0.95rem;
-        color: #111827;
-      }
-
-      @media (max-width: 992px) {
         .dashboard-grid {
-          grid-template-columns: 1fr;
+          display: grid;
+          grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1fr);
+          gap: 18px;
+          margin-bottom: 24px;
+        }
+
+        .side-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+
+        .panel-card {
+          padding: 16px;
+        }
+
+        .panel-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .panel-actions button,
+        .secondary-btn,
+        .filter-actions button {
+          border: 0;
+          border-radius: 10px;
+          padding: 10px 14px;
+          font: inherit;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .secondary-btn {
+          background: #eef2ff;
+          color: #1d4ed8;
+        }
+
+        .table-section {
+          padding: 18px;
+          margin-bottom: 20px;
+        }
+
+        .section-header {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: center;
+          flex-wrap: wrap;
+          margin-bottom: 14px;
+        }
+
+        .section-header h2,
+        .section-header h3 {
+          margin: 0;
+        }
+
+        .section-header p {
+          margin: 6px 0 0;
+          color: #6b7280;
+        }
+
+        .section-header.compact {
+          margin-bottom: 0;
+        }
+
+        .table-toolbar {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: center;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+        }
+
+        .filter-panel {
+          padding: 14px;
+          margin-bottom: 18px;
         }
 
         .filter-grid {
-          grid-template-columns: 1fr;
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+          margin-bottom: 12px;
         }
-      }
 
-      @media (max-width: 768px) {
-        .info-card__meta {
-          grid-template-columns: 1fr;
+        .filter-field label {
+          display: block;
+          font-size: .9rem;
+          font-weight: 700;
+          margin-bottom: 6px;
+          color: #374151;
+        }
+
+        .filter-field input {
+          width: 100%;
+        }
+
+        .filter-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .loading,
+        .no-alerts {
+          color: #6b7280;
+        }
+
+        .status-panel__label {
+          font-size: 0.8rem;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          opacity: 0.8;
+          margin-bottom: 6px;
+          font-weight: 700;
+        }
+
+        .status-panel__value {
+          font-size: 1rem;
+          font-weight: 800;
+          line-height: 1.35;
+        }
+
+        .status-panel--danger {
+          background: linear-gradient(135deg, #fee2e2, #fff);
+          border-color: #fecaca;
+          color: #991b1b;
+        }
+
+        .status-panel--warning {
+          background: linear-gradient(135deg, #fef3c7, #fff);
+          border-color: #fde68a;
+          color: #92400e;
+        }
+
+        .status-panel--success {
+          background: linear-gradient(135deg, #dcfce7, #fff);
+          border-color: #bbf7d0;
+          color: #166534;
         }
 
         .low-stock-item--rich {
-          flex-direction: column;
+          display: flex;
+          justify-content: space-between;
+          gap: 14px;
+          align-items: flex-start;
+          padding: 12px 14px;
+          border: 1px solid #fde68a;
+          border-radius: 12px;
+          background: linear-gradient(135deg, #fff, #fffbeb);
+          margin-bottom: 10px;
+        }
+
+        .low-stock-item__left {
+          min-width: 0;
+        }
+
+        .low-stock-item__left strong {
+          display: block;
+          font-size: 0.98rem;
+          color: #111827;
+          margin-bottom: 4px;
+        }
+
+        .low-stock-item__muted {
+          font-size: 0.85rem;
+          color: #6b7280;
         }
 
         .low-stock-item__right {
-          width: 100%;
-          min-width: 0;
-          text-align: left;
+          display: grid;
           grid-template-columns: 1fr 1fr;
+          gap: 6px 12px;
+          min-width: 180px;
+          text-align: right;
         }
-      }
-    `;
 
-    document.head.appendChild(
-      style
-    );
+        .low-stock-item__right span {
+          display: block;
+          font-size: 0.72rem;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: #6b7280;
+        }
+
+        .low-stock-item__right strong {
+          display: block;
+          font-size: 0.95rem;
+          color: #111827;
+        }
+
+        @media (max-width: 992px) {
+
+          .dashboard-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .filter-grid {
+            grid-template-columns: 1fr;
+          }
+
+        }
+
+        @media (max-width: 768px) {
+
+          .low-stock-item--rich {
+            flex-direction: column;
+          }
+
+          .low-stock-item__right {
+            width: 100%;
+            min-width: 0;
+            text-align: left;
+            grid-template-columns: 1fr 1fr;
+          }
+
+        }
+      `;
+
+      document.head.appendChild(
+        style
+      );
+    }
+
   }
-});
+);

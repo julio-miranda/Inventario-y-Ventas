@@ -29,13 +29,25 @@
       </div>
     </div>
 
-    <button class="menu-toggle" id="menuToggle" type="button" aria-controls="fullscreenMenu" aria-expanded="false" aria-label="Abrir menú">
+    <button
+      class="menu-toggle"
+      id="menuToggle"
+      type="button"
+      aria-controls="fullscreenMenu"
+      aria-expanded="false"
+      aria-label="Abrir menú"
+    >
       <i class="fas fa-bars"></i>
     </button>
   </nav>
 
   <div class="fullscreen-menu" id="fullscreenMenu" aria-hidden="true">
-    <button class="close-menu" id="closeMenu" type="button" aria-label="Cerrar menú">
+    <button
+      class="close-menu"
+      id="closeMenu"
+      type="button"
+      aria-label="Cerrar menú"
+    >
       <i class="fas fa-times"></i>
     </button>
 
@@ -54,12 +66,15 @@
       <div>
         <p class="eyebrow">Módulo de control</p>
         <h1>Administración de locales y usuarios</h1>
-        <p class="hero-subtitle">Acceso exclusivo para el rol Desarrollador.</p>
+        <p class="hero-subtitle">
+          Acceso exclusivo para el rol Desarrollador.
+        </p>
       </div>
 
       <div class="hero-note" id="selectedLocalCard">
         <p class="hero-subtitle" style="margin-top:0">
-          Selecciona un local para ver su información, sus usuarios y sus intentos fallidos.
+          Selecciona un local para ver su información, sus usuarios y sus
+          intentos fallidos.
         </p>
       </div>
     </section>
@@ -104,18 +119,29 @@
 
         <div class="filter-field filter-search">
           <label for="globalSearch">Buscar</label>
-          <input type="text" id="globalSearch" placeholder="Nombre, documento, ubicación, correo, usuario...">
+          <input
+            type="text"
+            id="globalSearch"
+            placeholder="Local, contribuyente, documento, NIT, NRC, ubicación, correo..."
+          >
         </div>
 
         <div class="filter-field">
           <label>&nbsp;</label>
-          <button type="button" id="btnRefresh" class="btn-outline">Actualizar</button>
+          <button type="button" id="btnRefresh" class="btn-outline">
+            Actualizar
+          </button>
         </div>
       </div>
 
       <div class="filter-actions">
-        <button type="button" id="btnNewLocal" class="btn-primary">Nuevo local</button>
-        <button type="button" id="btnNewUser" class="btn-primary">Nuevo usuario</button>
+        <button type="button" id="btnNewLocal" class="btn-primary">
+          Nuevo local
+        </button>
+
+        <button type="button" id="btnNewUser" class="btn-primary">
+          Nuevo usuario
+        </button>
       </div>
     </section>
 
@@ -125,7 +151,10 @@
           <h2>Locales</h2>
           <p>CRUD de locales, bloqueo y eliminación.</p>
         </div>
-        <div class="small" id="localCountLabel">0 registros</div>
+
+        <div class="small" id="localCountLabel">
+          0 registros
+        </div>
       </div>
 
       <div class="table-container">
@@ -133,6 +162,10 @@
           <thead>
             <tr>
               <th>Nombre</th>
+              <th>Nombre del contribuyente</th>
+              <th>Tipo de documento</th>
+              <th>NIT</th>
+              <th>NRC</th>
               <th>Número documento</th>
               <th>Ubicación</th>
               <th>Estado</th>
@@ -141,8 +174,11 @@
               <th>Acciones</th>
             </tr>
           </thead>
+
           <tbody>
-            <tr><td colspan="7">Cargando locales...</td></tr>
+            <tr>
+              <td colspan="11">Cargando locales...</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -154,7 +190,10 @@
           <h2>Usuarios del local</h2>
           <p>Bloqueo, edición y creación de usuarios por local.</p>
         </div>
-        <div class="small" id="userCountLabel">0 registros</div>
+
+        <div class="small" id="userCountLabel">
+          0 registros
+        </div>
       </div>
 
       <div class="table-container">
@@ -166,14 +205,20 @@
               <th>Posición</th>
               <th>Teléfono</th>
               <th>Local</th>
+              <th>Contribuyente</th>
+              <th>NIT</th>
+              <th>NRC</th>
               <th>Fallidos</th>
               <th>Último acceso</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
           </thead>
+
           <tbody>
-            <tr><td colspan="9">Cargando usuarios...</td></tr>
+            <tr>
+              <td colspan="12">Cargando usuarios...</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -185,7 +230,10 @@
           <h2>Intentos fallidos</h2>
           <p>Registro de accesos fallidos y motivos de rechazo.</p>
         </div>
-        <div class="small" id="attemptCountLabel">0 registros</div>
+
+        <div class="small" id="attemptCountLabel">
+          0 registros
+        </div>
       </div>
 
       <div class="table-container">
@@ -200,8 +248,11 @@
               <th>Hora</th>
             </tr>
           </thead>
+
           <tbody>
-            <tr><td colspan="6">Cargando intentos...</td></tr>
+            <tr>
+              <td colspan="6">Cargando intentos...</td>
+            </tr>
           </tbody>
         </table>
       </div>

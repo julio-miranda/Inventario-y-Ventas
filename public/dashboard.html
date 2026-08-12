@@ -4,113 +4,330 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
   <title>Dashboard - Sistema de Gestión</title>
 
   <link rel="stylesheet" href="assets/css/styles.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
+
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+  >
+
+  <link
+    href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
+    rel="stylesheet"
+  >
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- SheetJS -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
+  ></script>
 </head>
 
 <body>
-  <nav class="navbar" role="navigation" aria-label="Barra principal">
+
+  <nav
+    class="navbar"
+    role="navigation"
+    aria-label="Barra principal"
+  >
+
     <div class="navbar-logo">
-      <a href="dashboard.html">MiEmpresa</a>
+      <a href="dashboard.html">
+        MiEmpresa
+      </a>
     </div>
 
     <div class="navbar-right">
+
       <div class="navbar-links">
         <ul>
-          <li><a href="dashboard.html" class="active">Inicio</a></li>
-          <li><a href="inventory.html">Inventario</a></li>
-          <li><a href="sales.html">Ventas</a></li>
-          <li><a href="gastos.html">Gastos</a></li>
-          <li><a href="attendance.html">Asistencia</a></li>
-          <li><a href="employees.html">Empleados</a></li>
+          <li>
+            <a href="dashboard.html" class="active">
+              Inicio
+            </a>
+          </li>
+
+          <li>
+            <a href="inventory.html">
+              Inventario
+            </a>
+          </li>
+
+          <li>
+            <a href="sales.html">
+              Ventas
+            </a>
+          </li>
+
+          <li>
+            <a href="gastos.html">
+              Gastos
+            </a>
+          </li>
+
+          <li>
+            <a href="attendance.html">
+              Asistencia
+            </a>
+          </li>
+
+          <li>
+            <a href="employees.html">
+              Empleados
+            </a>
+          </li>
         </ul>
       </div>
 
       <div class="navbar-user">
-        <span class="userGreeting">Hola, Usuario</span>
-        <button id="logoutButton" type="button">Cerrar sesión</button>
+
+        <span class="userGreeting">
+          Hola, Usuario
+        </span>
+
+        <button
+          id="logoutButton"
+          type="button"
+        >
+          Cerrar sesión
+        </button>
+
       </div>
+
     </div>
 
-    <button class="menu-toggle" id="menuToggle" type="button" aria-controls="fullscreenMenu" aria-expanded="false"
-      aria-label="Abrir menú">
+    <button
+      class="menu-toggle"
+      id="menuToggle"
+      type="button"
+      aria-controls="fullscreenMenu"
+      aria-expanded="false"
+      aria-label="Abrir menú"
+    >
       <i class="fas fa-bars"></i>
     </button>
+
   </nav>
 
-  <div class="fullscreen-menu" id="fullscreenMenu" aria-hidden="true">
-    <button class="close-menu" id="closeMenu" type="button" aria-label="Cerrar menú">
+  <div
+    class="fullscreen-menu"
+    id="fullscreenMenu"
+    aria-hidden="true"
+  >
+
+    <button
+      class="close-menu"
+      id="closeMenu"
+      type="button"
+      aria-label="Cerrar menú"
+    >
       <i class="fas fa-times"></i>
     </button>
 
     <ul class="menu-links">
-      <li><a href="dashboard.html" class="active">Inicio</a></li>
-      <li><a href="inventory.html">Inventario</a></li>
-      <li><a href="sales.html">Ventas</a></li>
-      <li><a href="gastos.html">Gastos</a></li>
-      <li><a href="attendance.html">Asistencia</a></li>
-      <li><a href="employees.html">Empleados</a></li>
+
+      <li>
+        <a href="dashboard.html" class="active">
+          Inicio
+        </a>
+      </li>
+
+      <li>
+        <a href="inventory.html">
+          Inventario
+        </a>
+      </li>
+
+      <li>
+        <a href="sales.html">
+          Ventas
+        </a>
+      </li>
+
+      <li>
+        <a href="gastos.html">
+          Gastos
+        </a>
+      </li>
+
+      <li>
+        <a href="attendance.html">
+          Asistencia
+        </a>
+      </li>
+
+      <li>
+        <a href="employees.html">
+          Empleados
+        </a>
+      </li>
+
     </ul>
 
     <div class="menu-user">
-      <span class="userGreeting">Hola, Usuario</span>
-      <button id="logoutButtonMobile" type="button">Cerrar sesión</button>
+
+      <span class="userGreeting">
+        Hola, Usuario
+      </span>
+
+      <button
+        id="logoutButtonMobile"
+        type="button"
+      >
+        Cerrar sesión
+      </button>
+
     </div>
+
   </div>
 
   <main class="dashboard">
+
     <section class="dashboard-hero">
+
       <div>
-        <p class="eyebrow">Panel general</p>
-        <h1>Bienvenido al Sistema de Gestión</h1>
-        <p class="hero-subtitle">Ventas, inventario, gastos y alertas en un solo lugar.</p>
+
+        <p class="eyebrow">
+          Panel general
+        </p>
+
+        <h1>
+          Bienvenido al Sistema de Gestión
+        </h1>
+
+        <p class="hero-subtitle">
+          Ventas, inventario, gastos y alertas en un solo lugar.
+        </p>
+
       </div>
 
       <div class="hero-note">
-        <p class="hero-subtitle">La vista inicia en el mes actual y puedes cambiar el rango de fechas para recalcular
-          todo.</p>
+
+        <p class="hero-subtitle">
+          La vista inicia en el mes actual y puedes cambiar
+          el rango de fechas para recalcular todo.
+        </p>
+
       </div>
+
     </section>
 
     <section class="filter-panel dashboard-filter">
+
       <div class="section-header compact">
+
         <div>
-          <h2>Rango de fechas</h2>
-          <p>Este filtro aplica a ventas, gastos, movimientos de inventario, tarjetas, gráfico y exportación CSV.</p>
+
+          <h2>
+            Rango de fechas
+          </h2>
+
+          <p>
+            El filtro aplica a ventas, gastos,
+            movimientos de inventario, tarjetas,
+            gráfico y exportaciones.
+          </p>
+
         </div>
+
       </div>
 
       <div class="filter-grid">
+
         <div class="filter-field">
-          <label for="rangeFrom">Desde</label>
-          <input type="date" id="rangeFrom">
+
+          <label for="rangeFrom">
+            Desde
+          </label>
+
+          <input
+            type="date"
+            id="rangeFrom"
+          >
+
         </div>
 
         <div class="filter-field">
-          <label for="rangeTo">Hasta</label>
-          <input type="date" id="rangeTo">
+
+          <label for="rangeTo">
+            Hasta
+          </label>
+
+          <input
+            type="date"
+            id="rangeTo"
+          >
+
         </div>
 
         <div class="filter-field filter-search">
-          <label for="rangeSearch">Buscar en tablas</label>
-          <input type="text" id="rangeSearch" placeholder="Cliente, producto, concepto, documento, usuario, monto...">
+
+          <label for="rangeSearch">
+            Buscar en tablas
+          </label>
+
+          <input
+            type="text"
+            id="rangeSearch"
+            placeholder="Producto, concepto, documento, monto..."
+          >
+
         </div>
+
       </div>
 
       <div class="filter-actions">
-        <button id="btnApplyRange" type="button" class="btn-primary">Aplicar filtro</button>
-        <button id="btnResetRange" type="button" class="btn-outline">Mes actual</button>
-        <button id="btnExportSalesCSV" type="button" class="secondary-btn">Exportar ventas CSV</button>
-        <button id="btnExportExpensesCSV" type="button" class="secondary-btn">Exportar gastos CSV</button>
-        <button id="btnExportMovementsCSV" type="button" class="secondary-btn">Exportar inventario CSV</button>
+
+        <button
+          id="btnApplyRange"
+          type="button"
+          class="btn-primary"
+        >
+          Aplicar filtro
+        </button>
+
+        <button
+          id="btnResetRange"
+          type="button"
+          class="btn-outline"
+        >
+          Mes actual
+        </button>
+
+        <button
+          id="btnExportSalesCSV"
+          type="button"
+          class="secondary-btn"
+        >
+          Exportar ventas CSV
+        </button>
+
+        <button
+          id="btnExportExpensesCSV"
+          type="button"
+          class="secondary-btn"
+        >
+          Exportar gastos CSV
+        </button>
+
+        <button
+          id="btnExportMovementsExcel"
+          type="button"
+          class="secondary-btn"
+        >
+          Exportar inventario Excel
+        </button>
+
       </div>
+
     </section>
 
     <section class="stats-container">
+
       <div class="stat-card">
         <h3>Ventas del período</h3>
         <p id="statSales">$0.00</p>
@@ -140,97 +357,210 @@
         <h3>Stock bajo</h3>
         <p id="statLowStock">0</p>
       </div>
+
     </section>
 
     <section class="dashboard-grid">
+
       <article class="chart-card">
+
         <div class="section-header">
+
           <div>
-            <h2>Resumen del período</h2>
-            <p>Ventas, gastos y utilidad neta del rango seleccionado.</p>
+
+            <h2>
+              Resumen del período
+            </h2>
+
+            <p>
+              Ventas, gastos y utilidad neta
+              del rango seleccionado.
+            </p>
+
           </div>
+
         </div>
 
         <div class="chart-container">
           <canvas id="salesChart"></canvas>
         </div>
+
       </article>
 
       <aside class="side-panel">
+
         <div class="panel-card">
+
           <div class="section-header compact">
+
             <div>
-              <h3>Alertas</h3>
-              <p>Productos con stock crítico.</p>
+
+              <h3>
+                Alertas
+              </h3>
+
+              <p>
+                Productos con stock crítico.
+              </p>
+
+            </div>
+
+          </div>
+
+          <div
+            id="lowStockPanel"
+            class="low-stock-panel"
+          >
+            <div class="loading">
+              Cargando...
             </div>
           </div>
 
-          <div id="lowStockPanel" class="low-stock-panel">
-            <div class="loading">Cargando...</div>
-          </div>
         </div>
 
         <div class="panel-actions">
-          <button id="btnGoInventory" type="button">Ir a Inventario</button>
-          <button id="btnCloseDay" type="button">Cierre de Caja (Hoy)</button>
+
+          <button
+            id="btnGoInventory"
+            type="button"
+          >
+            Ir a Inventario
+          </button>
+
+          <button
+            id="btnCloseDay"
+            type="button"
+          >
+            Cierre de Caja (Hoy)
+          </button>
+
         </div>
 
-        <div id="goalInfo" class="info-card"></div>
-        <div id="profitStatus" class="info-card"></div>
+        <div
+          id="profitStatus"
+          class="info-card"
+        ></div>
+
       </aside>
+
     </section>
 
     <section class="table-section">
+
       <div class="section-header">
+
         <div>
-          <h2>Historial de ventas</h2>
-          <p>Se actualiza según el rango de fechas seleccionado.</p>
+
+          <h2>
+            Historial de ventas
+          </h2>
+
+          <p>
+            Se actualiza según el rango
+            de fechas seleccionado.
+          </p>
+
         </div>
+
       </div>
 
       <div class="table-toolbar">
-        <div class="small" id="salesRangeLabel">Mostrando el mes actual.</div>
-        <div class="small" id="salesCountLabel">0 registros</div>
+
+        <div
+          class="small"
+          id="salesRangeLabel"
+        >
+          Mostrando el mes actual.
+        </div>
+
+        <div
+          class="small"
+          id="salesCountLabel"
+        >
+          0 registros
+        </div>
+
       </div>
 
       <div class="table-container">
+
         <table id="salesTable">
+
           <thead>
+
             <tr>
-              <th>Cliente</th>
+
               <th>Productos</th>
               <th>Total</th>
               <th>Usuario</th>
               <th>Fecha</th>
               <th>Hora</th>
+
             </tr>
+
           </thead>
+
           <tbody>
+
             <tr>
-              <td colspan="6">Cargando ventas...</td>
+              <td colspan="5">
+                Cargando ventas...
+              </td>
             </tr>
+
           </tbody>
+
         </table>
+
       </div>
+
     </section>
 
     <section class="table-section">
+
       <div class="section-header">
+
         <div>
-          <h2>Historial de gastos</h2>
-          <p>Consulta gastos del mes o filtra por un rango de fechas y exporta el resultado en CSV.</p>
+
+          <h2>
+            Historial de gastos
+          </h2>
+
+          <p>
+            Consulta gastos del período
+            y exporta el resultado en CSV.
+          </p>
+
         </div>
+
       </div>
 
       <div class="table-toolbar">
-        <div class="small" id="expenseRangeLabel">Mostrando el mes actual.</div>
-        <div class="small" id="expenseCountLabel">0 registros</div>
+
+        <div
+          class="small"
+          id="expenseRangeLabel"
+        >
+          Mostrando el mes actual.
+        </div>
+
+        <div
+          class="small"
+          id="expenseCountLabel"
+        >
+          0 registros
+        </div>
+
       </div>
 
       <div class="table-container">
+
         <table id="expensesTable">
+
           <thead>
+
             <tr>
+
               <th>Concepto</th>
               <th>Categoría</th>
               <th>Monto</th>
@@ -239,67 +569,121 @@
               <th>Fecha</th>
               <th>Hora</th>
               <th>Observación</th>
+
             </tr>
+
           </thead>
+
           <tbody>
+
             <tr>
-              <td colspan="8">Cargando gastos...</td>
+              <td colspan="8">
+                Cargando gastos...
+              </td>
             </tr>
+
           </tbody>
+
         </table>
+
       </div>
+
     </section>
 
     <section class="table-section">
+
       <div class="section-header">
+
         <div>
-          <h2>Movimientos de inventario</h2>
-          <p>Entradas, salidas y saldo por producto dentro del rango seleccionado.</p>
+
+          <h2>
+            Movimientos de inventario
+          </h2>
+
+          <p>
+            Entradas, salidas y saldo por producto
+            dentro del rango seleccionado.
+          </p>
+
         </div>
+
       </div>
 
       <div class="table-toolbar">
-        <div class="small" id="movementRangeLabel">Mostrando el mes actual.</div>
-        <div class="small" id="movementCountLabel">0 registros</div>
+
+        <div
+          class="small"
+          id="movementRangeLabel"
+        >
+          Mostrando el mes actual.
+        </div>
+
+        <div
+          class="small"
+          id="movementCountLabel"
+        >
+          0 registros
+        </div>
+
       </div>
 
       <div class="table-container">
+
         <table id="movementsTable">
+
           <thead>
+
             <tr>
+
               <th>Fecha</th>
               <th>Hora</th>
               <th>Producto</th>
               <th>Código producto</th>
               <th>Número documento</th>
+              <th>Referencia libro</th>
               <th>Costo Unitario</th>
               <th>Valor Actual</th>
               <th>Entrada</th>
               <th>Salida</th>
               <th>Saldo anterior</th>
               <th>Saldo actual</th>
-              <th>Usuario</th>
               <th>Detalle</th>
+
             </tr>
+
           </thead>
+
           <tbody>
+
             <tr>
-              <td colspan="13">Cargando movimientos...</td>
+              <td colspan="13">
+                Cargando movimientos...
+              </td>
             </tr>
+
           </tbody>
+
         </table>
+
       </div>
+
     </section>
+
   </main>
 
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
+  <!-- Dependencias -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!-- Aplicación -->
   <script src="assets/js/app.js"></script>
   <script src="assets/js/chart-utils.js"></script>
   <script src="assets/js/dashboard.js"></script>
+
 </body>
 
 </html>
