@@ -3,11 +3,12 @@
 // Gestión de empleados.
 //
 // Optimización:
-// - El contexto del usuario autenticado se obtiene desde app.js.
+// - app.js resuelve el contexto del usuario.
+// - employees.js reutiliza getCurrentUserContext().
 // - No se vuelve a consultar empleados/{uid}.
 // - No se vuelve a consultar local/{id_local}.
-// - app.js reutiliza caché y promesas compartidas.
-// - Este módulo solo consulta los empleados del local actual.
+// - Solo se mantiene el listener del listado de empleados
+//   pertenecientes al local actual.
 //
 // Permisos:
 // - Solo Administrador puede crear empleados.
@@ -16,8 +17,8 @@
 //
 // Seguridad lógica:
 // - Los empleados mostrados pertenecen únicamente al local actual.
-// - Los empleados creados reciben el id_local del usuario actual.
-// - Al editar no se puede cambiar el local del empleado desde este módulo.
+// - Los empleados creados reciben el id_local actual.
+// - El local de un empleado no puede cambiarse desde este módulo.
 
 const tableBody =
     document.querySelector(
@@ -40,6 +41,7 @@ const greetingEls =
     );
 
 const EMPLOYEE_COLLECTION =
+    window.EMPLOYEE_COLLECTION_NAME ||
     "empleados";
 
 const POSITION_OPTIONS = [
@@ -53,19 +55,36 @@ const POSITION_OPTIONS = [
 
 let employees = [];
 
-let currentRole = "";
+let currentRole =
+    "";
 
-let currentLocalId = "";
+let currentLocalId =
+    "";
 
 let currentLocalInfo = {
-    id_local: "",
-    nombre: "",
-    numeroDocumento: "",
-    ubicacion: "",
-    contribuyente: "",
-    tipoDocumento: "",
-    nit: "",
-    nrc: ""
+    id_local:
+        "",
+
+    nombre:
+        "",
+
+    numeroDocumento:
+        "",
+
+    ubicacion:
+        "",
+
+    contribuyente:
+        "",
+
+    tipoDocumento:
+        "",
+
+    nit:
+        "",
+
+    nrc:
+        ""
 };
 
 let currentEmployeeContext =
@@ -102,20 +121,15 @@ function normalizeRoleLocal(
 function isAdminRole(
     role = ""
 ) {
-    const canonical =
+    if (
         typeof window
             .getCanonicalRole ===
         "function"
-            ? window.getCanonicalRole(
-                  role
-              )
-            : "";
-
-    if (
-        canonical
     ) {
         return (
-            canonical ===
+            window.getCanonicalRole(
+                role
+            ) ===
             "Administrador"
         );
     }
@@ -191,16 +205,8 @@ function buildPositionOptions(
 
 /*
  * ============================================================
- * CONTEXTO
+ * CONTEXTO DEL USUARIO
  * ============================================================
- *
- * IMPORTANTE:
- * Aquí ya no se consulta directamente:
- *
- * empleados/{uid}
- * local/{id_local}
- *
- * app.js es responsable de resolverlos.
  */
 
 async function resolveEmployeeContext(
@@ -222,6 +228,10 @@ async function resolveEmployeeContext(
         );
     }
 
+    /*
+     * Esta llamada reutiliza la caché de app.js.
+     * No ejecuta consultas nuevas si el contexto ya existe.
+     */
     const context =
         await window.getCurrentUserContext(
             user
@@ -319,6 +329,12 @@ function renderGreeting(
     );
 }
 
+/*
+ * ============================================================
+ * CONTEXTO LOCAL
+ * ============================================================
+ */
+
 function getCurrentLocalId() {
     if (
         currentEmployeeContext &&
@@ -330,16 +346,20 @@ function getCurrentLocalId() {
     }
 
     if (
-        typeof window
-            .getCurrentLocalId ===
-        "function"
+        currentLocalId
     ) {
         return String(
-            window.getCurrentLocalId() ||
-                ""
+            currentLocalId
         ).trim();
     }
 
+    /*
+     * Fallback únicamente de memoria local.
+     * NO llama a window.getCurrentLocalId().
+     *
+     * Esto evita crear otra cadena de llamadas
+     * entre módulos.
+     */
     try {
         const stored =
             JSON.parse(
@@ -352,14 +372,10 @@ function getCurrentLocalId() {
             stored?.id_local ||
                 stored?.idLocal ||
                 stored?.localId ||
-                currentLocalId ||
                 ""
         ).trim();
     } catch {
-        return String(
-            currentLocalId ||
-                ""
-        ).trim();
+        return "";
     }
 }
 
@@ -418,26 +434,6 @@ function getCurrentLocalInfo() {
         };
     }
 
-    if (
-        typeof window
-            .getCurrentLocalInfo ===
-        "function"
-    ) {
-        return (
-            window.getCurrentLocalInfo() ||
-            {
-                id_local: "",
-                nombre: "",
-                numeroDocumento: "",
-                ubicacion: "",
-                contribuyente: "",
-                tipoDocumento: "",
-                nit: "",
-                nrc: ""
-            }
-        );
-    }
-
     return {
         id_local:
             currentLocalId,
@@ -472,56 +468,6 @@ function getCurrentLocalInfo() {
     };
 }
 
-function getStoredCurrentUser() {
-    if (
-        typeof window
-            .getStoredCurrentUser ===
-        "function"
-    ) {
-        return (
-            window.getStoredCurrentUser() ||
-            null
-        );
-    }
-
-    try {
-        return JSON.parse(
-            localStorage.getItem(
-                "currentUser"
-            ) || "null"
-        );
-    } catch {
-        return null;
-    }
-}
-
-function setStoredCurrentUser(
-    next
-) {
-    if (
-        typeof window
-            .setStoredCurrentUser ===
-        "function"
-    ) {
-        window.setStoredCurrentUser(
-            next
-        );
-
-        return;
-    }
-
-    try {
-        localStorage.setItem(
-            "currentUser",
-            JSON.stringify(
-                next
-            )
-        );
-    } catch {
-        // ignore
-    }
-}
-
 function matchesCurrentLocal(
     data = {}
 ) {
@@ -547,17 +493,6 @@ function matchesCurrentLocal(
     );
 }
 
-function filterByCurrentLocal(
-    list = []
-) {
-    return list.filter(
-        item =>
-            matchesCurrentLocal(
-                item
-            )
-    );
-}
-
 /*
  * ============================================================
  * UI
@@ -570,7 +505,9 @@ function renderLocalWarning() {
             getCurrentLocalId()
         );
 
-    if (hasLocal) {
+    if (
+        hasLocal
+    ) {
         return;
     }
 
@@ -752,60 +689,35 @@ function renderFilteredEmployees() {
     let filtered =
         [...employees];
 
-    if (q) {
+    if (
+        q
+    ) {
         filtered =
             filtered.filter(
                 emp => {
-                    const name =
-                        String(
-                            emp.name ||
-                                ""
-                        ).toLowerCase();
+                    const haystack =
+                        [
+                            emp.name,
+                            emp.email,
+                            emp.position,
+                            emp.phone,
+                            emp.localNombre,
+                            emp.localNumeroDocumento,
+                            emp.localUbicacion
+                        ]
+                            .map(
+                                value =>
+                                    String(
+                                        value ||
+                                            ""
+                                    ).toLowerCase()
+                            )
+                            .join(
+                                " "
+                            );
 
-                    const position =
-                        String(
-                            emp.position ||
-                                ""
-                        ).toLowerCase();
-
-                    const phone =
-                        String(
-                            emp.phone ||
-                                ""
-                        ).toLowerCase();
-
-                    const localName =
-                        String(
-                            emp.localNombre ||
-                                ""
-                        ).toLowerCase();
-
-                    const localDoc =
-                        String(
-                            emp.localNumeroDocumento ||
-                                ""
-                        ).toLowerCase();
-
-                    const localUbicacion =
-                        String(
-                            emp.localUbicacion ||
-                                ""
-                        ).toLowerCase();
-
-                    const email =
-                        String(
-                            emp.email ||
-                                ""
-                        ).toLowerCase();
-
-                    return (
-                        name.includes(q) ||
-                        position.includes(q) ||
-                        phone.includes(q) ||
-                        localName.includes(q) ||
-                        localDoc.includes(q) ||
-                        localUbicacion.includes(q) ||
-                        email.includes(q)
+                    return haystack.includes(
+                        q
                     );
                 }
             );
@@ -820,11 +732,6 @@ function renderFilteredEmployees() {
  * ============================================================
  * LISTENER DE EMPLEADOS
  * ============================================================
- *
- * Esta es la consulta propia del módulo.
- *
- * No consulta de nuevo el empleado autenticado.
- * No consulta de nuevo el local.
  */
 
 function stopEmployeesListener() {
@@ -837,20 +744,20 @@ function stopEmployeesListener() {
         unsubscribeEmployees =
             null;
     }
+
+    employeesLoadStarted =
+        false;
 }
 
 function loadEmployees() {
-    if (
-        employeesLoadStarted
-    ) {
-        return unsubscribeEmployees;
-    }
-
     const localId =
         getCurrentLocalId();
 
-    if (!localId) {
-        employees = [];
+    if (
+        !localId
+    ) {
+        employees =
+            [];
 
         renderEmployees(
             []
@@ -861,10 +768,29 @@ function loadEmployees() {
         return null;
     }
 
+    /*
+     * Evita registrar dos listeners para el mismo módulo.
+     */
+    if (
+        employeesLoadStarted &&
+        unsubscribeEmployees
+    ) {
+        return unsubscribeEmployees;
+    }
+
     employeesLoadStarted =
         true;
 
-    stopEmployeesListener();
+    /*
+     * Si por algún motivo existiera un listener anterior,
+     * se cancela antes de crear otro.
+     */
+    if (
+        typeof unsubscribeEmployees ===
+        "function"
+    ) {
+        unsubscribeEmployees();
+    }
 
     unsubscribeEmployees =
         db
@@ -891,16 +817,14 @@ function loadEmployees() {
                                 {};
 
                             /*
-                             * Protección adicional:
-                             * mesmo que a consulta tenha sido
-                             * filtrada por id_local, não se
-                             * adiciona outro local à memória.
+                             * Protección adicional.
                              */
                             if (
                                 String(
                                     data.id_local ||
                                         data.idLocal ||
                                         data.localId ||
+                                        data.idlocal ||
                                         ""
                                 ).trim() !==
                                 localId
@@ -915,12 +839,7 @@ function loadEmployees() {
                                 ...data,
 
                                 localId:
-                                    String(
-                                        data.id_local ||
-                                            data.idLocal ||
-                                            data.localId ||
-                                            ""
-                                    ).trim(),
+                                    localId,
 
                                 localNombre:
                                     data.localNombre ||
@@ -1029,7 +948,8 @@ function mapAuthRestError(
 ) {
     const message =
         String(
-            errorMessage || ""
+            errorMessage ||
+                ""
         ).toUpperCase();
 
     switch (
@@ -1063,7 +983,9 @@ async function createAuthUserWithEmailPassword(
     const apiKey =
         getAuthApiKey();
 
-    if (!apiKey) {
+    if (
+        !apiKey
+    ) {
         throw new Error(
             "No se pudo leer la API key de Firebase."
         );
@@ -1126,7 +1048,9 @@ async function createEmployeeInAuthAndFirestore(
     const localId =
         getCurrentLocalId();
 
-    if (!localId) {
+    if (
+        !localId
+    ) {
         throw new Error(
             "No hay un local asignado al usuario actual."
         );
@@ -1136,7 +1060,7 @@ async function createEmployeeInAuthAndFirestore(
         getCurrentLocalInfo();
 
     /*
-     * Primero se crea la cuenta en Authentication.
+     * Authentication.
      */
     const authUser =
         await createAuthUserWithEmailPassword(
@@ -1147,21 +1071,24 @@ async function createEmployeeInAuthAndFirestore(
     const uid =
         authUser.localId;
 
-    if (!uid) {
+    if (
+        !uid
+    ) {
         throw new Error(
             "Firebase Authentication no devolvió el UID del nuevo usuario."
         );
     }
 
     /*
-     * Después se crea el perfil Firestore
-     * dentro del mismo local actual.
+     * Firestore.
      */
     await db
         .collection(
             EMPLOYEE_COLLECTION
         )
-        .doc(uid)
+        .doc(
+            uid
+        )
         .set({
             uid,
 
@@ -1316,6 +1243,7 @@ function buildCreateEmployeeHtml() {
             id="name"
             class="swal2-input"
             placeholder="Nombre"
+            autocomplete="off"
         >
 
         <input
@@ -1375,16 +1303,11 @@ function buildCreateEmployeeHtml() {
             "
         >
             El empleado se guardará con el mismo
-            <strong>id_local</strong> del usuario autenticado.
+            <strong>id_local</strong>
+            del usuario autenticado.
         </div>
     `;
 }
-
-/*
- * ============================================================
- * CREAR
- * ============================================================
- */
 
 async function handleCreateEmployee() {
     if (
@@ -1407,8 +1330,11 @@ async function handleCreateEmployee() {
         return;
     }
 
+    const localId =
+        getCurrentLocalId();
+
     if (
-        !getCurrentLocalId()
+        !localId
     ) {
         await Swal.fire(
             "Sin local asignado",
@@ -1545,9 +1471,6 @@ async function handleCreateEmployee() {
         return;
     }
 
-    const employee =
-        result.value;
-
     isCreatingEmployee =
         true;
 
@@ -1559,14 +1482,10 @@ async function handleCreateEmployee() {
     }
 
     try {
-        const localId =
-            getCurrentLocalId();
-
         /*
-         * Una sola consulta para detectar
-         * duplicado dentro del local.
+         * Una sola consulta para comprobar duplicado.
          */
-        const existsInFirestore =
+        const exists =
             await db
                 .collection(
                     EMPLOYEE_COLLECTION
@@ -1574,18 +1493,20 @@ async function handleCreateEmployee() {
                 .where(
                     "email",
                     "==",
-                    employee.email
+                    result.value.email
                 )
                 .where(
                     "id_local",
                     "==",
                     localId
                 )
-                .limit(1)
+                .limit(
+                    1
+                )
                 .get();
 
         if (
-            !existsInFirestore.empty
+            !exists.empty
         ) {
             await Swal.fire(
                 "Validación",
@@ -1597,7 +1518,7 @@ async function handleCreateEmployee() {
         }
 
         await createEmployeeInAuthAndFirestore(
-            employee
+            result.value
         );
 
         await Swal.fire(
@@ -1697,7 +1618,7 @@ async function deleteEmployee(
         return;
     }
 
-    const result =
+    const confirmation =
         await Swal.fire({
             title:
                 "Eliminar empleado",
@@ -1719,7 +1640,7 @@ async function deleteEmployee(
         });
 
     if (
-        !result.isConfirmed
+        !confirmation.isConfirmed
     ) {
         return;
     }
@@ -1729,18 +1650,13 @@ async function deleteEmployee(
     );
 
     try {
-        /*
-         * Importante:
-         * esto elimina solamente el perfil Firestore.
-         *
-         * La eliminación del usuario de Authentication
-         * requiere Admin SDK o backend seguro.
-         */
         await db
             .collection(
                 EMPLOYEE_COLLECTION
             )
-            .doc(id)
+            .doc(
+                id
+            )
             .delete();
 
         await Swal.fire(
@@ -2048,10 +1964,6 @@ async function editEmployee(
     );
 
     try {
-        /*
-         * Se conserva el local que ya tiene el empleado
-         * y se utilizan los datos del contexto actual.
-         */
         const localInfo =
             getCurrentLocalInfo();
 
@@ -2060,11 +1972,14 @@ async function editEmployee(
                 .collection(
                     EMPLOYEE_COLLECTION
                 )
-                .doc(id);
+                .doc(
+                    id
+                );
 
         /*
-         * Una lectura puntual confirma que el documento
-         * sigue perteneciendo al local actual antes de editar.
+         * Esta lectura sí es necesaria:
+         * confirma que el empleado no cambió
+         * de local desde que se cargó la tabla.
          */
         const latestSnap =
             await employeeRef.get();
@@ -2104,10 +2019,6 @@ async function editEmployee(
             phone:
                 result.value.phone,
 
-            /*
-             * El local NO se puede mover
-             * desde este módulo.
-             */
             id_local:
                 currentLocalId,
 
@@ -2150,10 +2061,6 @@ async function editEmployee(
                     : null
         });
 
-        /*
-         * Actualizar inmediatamente la caché visual.
-         * El onSnapshot también la volverá a sincronizar.
-         */
         const index =
             employees.findIndex(
                 emp =>
@@ -2164,7 +2071,8 @@ async function editEmployee(
             );
 
         if (
-            index >= 0
+            index >=
+            0
         ) {
             employees[
                 index
@@ -2198,6 +2106,10 @@ async function editEmployee(
 
                 localUbicacion:
                     localInfo.ubicacion ||
+                    "",
+
+                localNombreContribuyente:
+                    localInfo.contribuyente ||
                     "",
 
                 localTipoDocumento:
@@ -2268,9 +2180,6 @@ if (
  * ============================================================
  * INICIALIZACIÓN
  * ============================================================
- *
- * No se consulta directamente el usuario.
- * app.js ya mantiene el contexto.
  */
 
 auth.onAuthStateChanged(
@@ -2310,17 +2219,17 @@ auth.onAuthStateChanged(
                     context.role
                 )
             ) {
-                /*
-                 * app.js ya controla acceso a página.
-                 * Este control adicional evita operaciones
-                 * si alguien carga el JS directamente.
-                 */
                 if (
                     newEmployeeBtn
                 ) {
                     newEmployeeBtn.style.display =
                         "none";
                 }
+            } else if (
+                newEmployeeBtn
+            ) {
+                newEmployeeBtn.style.display =
+                    "";
             }
 
             if (
@@ -2333,10 +2242,6 @@ auth.onAuthStateChanged(
                 );
             }
 
-            /*
-             * Solo una consulta/listener del listado
-             * de empleados del local actual.
-             */
             loadEmployees();
         } catch (err) {
             console.error(
@@ -2374,11 +2279,8 @@ auth.onAuthStateChanged(
 
 /*
  * ============================================================
- * LOGOUT
+ * LIMPIEZA
  * ============================================================
- *
- * app.js ya registra los botones de logout.
- * Se evita crear otro listener para el mismo botón.
  */
 
 window.addEventListener(

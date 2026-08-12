@@ -1,36 +1,95 @@
 // assets/js/app.js
 
 if (typeof firebase === "undefined") {
-  console.error("Firebase no se ha cargado correctamente.");
+  console.error(
+    "Firebase no se ha cargado correctamente."
+  );
 
   if (typeof Swal !== "undefined") {
     Swal.fire({
       icon: "error",
       title: "Error",
-      text: "Firebase no se cargó. Revisa la conexión o los scripts."
+      text:
+        "Firebase no se cargó. Revisa la conexión o los scripts."
     });
   }
 } else {
-  console.log("Firebase cargado exitosamente.");
+  console.log(
+    "Firebase cargado exitosamente."
+  );
 }
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAMsdmYEeH_zOQfXj55SURnp1Nkk8mhj4M",
-  authDomain: "inventario-y-venta.firebaseapp.com",
-  projectId: "inventario-y-venta",
-  storageBucket: "inventario-y-venta.appspot.com",
-  messagingSenderId: "220141957917",
-  appId: "1:220141957917:web:1af57bde6709dffdf327f4",
-  measurementId: "G-ELPGSV8ZLP"
+  apiKey:
+    "AIzaSyAMsdmYEeH_zOQfXj55SURnp1Nkk8mhj4M",
+
+  authDomain:
+    "inventario-y-venta.firebaseapp.com",
+
+  projectId:
+    "inventario-y-venta",
+
+  storageBucket:
+    "inventario-y-venta.appspot.com",
+
+  messagingSenderId:
+    "220141957917",
+
+  appId:
+    "1:220141957917:web:1af57bde6709dffdf327f4",
+
+  measurementId:
+    "G-ELPGSV8ZLP"
 };
 
 if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
-  console.log("Firebase inicializado correctamente.");
+  firebase.initializeApp(
+    firebaseConfig
+  );
+
+  console.log(
+    "Firebase inicializado correctamente."
+  );
 }
 
-const auth = firebase.auth();
-const db = firebase.firestore();
+const auth =
+  firebase.auth();
+
+const db =
+  firebase.firestore();
+
+/*
+ * ============================================================
+ * CONSTANTES
+ * ============================================================
+ */
+
+const EMPLOYEE_COLLECTION_NAME =
+  "empleados";
+
+const LOCAL_COLLECTION_NAME =
+  "local";
+
+const LOGIN_ATTEMPTS_COLLECTION_NAME =
+  "login_attempts";
+
+/*
+ * ============================================================
+ * CACHE DE CONTEXTO
+ * ============================================================
+ *
+ * Evita que varios módulos que cargan al mismo tiempo
+ * hagan nuevamente las mismas consultas.
+ */
+
+let currentUserContextCache =
+  null;
+
+let currentUserContextPromise =
+  null;
+
+let currentUserContextUid =
+  "";
 
 /*
  * ============================================================
@@ -38,11 +97,20 @@ const db = firebase.firestore();
  * ============================================================
  */
 
-const normalizeRole = (role = "") =>
-  String(role).trim().toLowerCase();
+const normalizeRole = (
+  role = ""
+) =>
+  String(role)
+    .trim()
+    .toLowerCase();
 
-function getCanonicalRole(role = "") {
-  const r = normalizeRole(role);
+function getCanonicalRole(
+  role = ""
+) {
+  const r =
+    normalizeRole(
+      role
+    );
 
   switch (r) {
     case "admin":
@@ -70,42 +138,106 @@ function getCanonicalRole(role = "") {
 
 const ROLE_NAV = {
   Administrador: [
-    { label: "Inicio", href: "dashboard.html" },
-    { label: "Inventario", href: "inventory.html" },
-    { label: "Ventas", href: "sales.html" },
-    { label: "Gastos", href: "gastos.html" },
-    { label: "Empleados", href: "employees.html" }
+    {
+      label: "Inicio",
+      href: "dashboard.html"
+    },
+
+    {
+      label: "Inventario",
+      href: "inventory.html"
+    },
+
+    {
+      label: "Ventas",
+      href: "sales.html"
+    },
+
+    {
+      label: "Gastos",
+      href: "gastos.html"
+    },
+
+    {
+      label: "Empleados",
+      href: "employees.html"
+    }
   ],
 
   Cajero: [
-    { label: "Inicio", href: "dashboard.html" },
-    { label: "Ventas", href: "sales.html" },
-    { label: "Gastos", href: "gastos.html" }
+    {
+      label: "Inicio",
+      href: "dashboard.html"
+    },
+
+    {
+      label: "Ventas",
+      href: "sales.html"
+    },
+
+    {
+      label: "Gastos",
+      href: "gastos.html"
+    }
   ],
 
   Vendedor: [
-    { label: "Inicio", href: "dashboard.html" },
-    { label: "Inventario", href: "inventory.html" },
-    { label: "Ventas", href: "sales.html" },
-    { label: "Gastos", href: "gastos.html" }
+    {
+      label: "Inicio",
+      href: "dashboard.html"
+    },
+
+    {
+      label: "Inventario",
+      href: "inventory.html"
+    },
+
+    {
+      label: "Ventas",
+      href: "sales.html"
+    },
+
+    {
+      label: "Gastos",
+      href: "gastos.html"
+    }
   ],
 
   Bodega: [
-    { label: "Inicio", href: "dashboard.html" },
-    { label: "Inventario", href: "inventory.html" }
+    {
+      label: "Inicio",
+      href: "dashboard.html"
+    },
+
+    {
+      label: "Inventario",
+      href: "inventory.html"
+    }
   ],
 
   Desarrollador: [
-    { label: "Locales", href: "locales.html" }
+    {
+      label: "Locales",
+      href: "locales.html"
+    }
   ]
 };
 
 const ROLE_DEFAULT_PAGE = {
-  Administrador: "public/dashboard.html",
-  Cajero: "public/sales.html",
-  Vendedor: "public/sales.html",
-  Bodega: "public/inventory.html",
-  Desarrollador: "public/locales.html"
+  Administrador:
+    "public/dashboard.html",
+
+  Cajero:
+    "public/sales.html",
+
+  Vendedor:
+    "public/sales.html",
+
+  Bodega:
+    "public/inventory.html",
+
+  Desarrollador:
+    "public/locales.html"
 };
 
 const ROLE_ALLOWED_PAGES = {
@@ -140,13 +272,9 @@ const ROLE_ALLOWED_PAGES = {
   ]
 };
 
-const EMPLOYEE_COLLECTION_NAME = "empleados";
-const LOCAL_COLLECTION_NAME = "local";
-const LOGIN_ATTEMPTS_COLLECTION_NAME = "login_attempts";
-
 /*
  * ============================================================
- * CONTEXTO GLOBAL
+ * CONTEXTO LOCAL
  * ============================================================
  */
 
@@ -161,31 +289,6 @@ let currentLocalContext = {
   nrc: ""
 };
 
-let currentUserContext = null;
-
-/*
- * Cachés internas.
- *
- * employeeCache:
- *   uid -> perfil empleado
- *
- * localCache:
- *   id_local -> datos local
- *
- * pendingEmployeeLoads:
- *   evita lanzar dos consultas simultáneas
- *   para el mismo usuario.
- *
- * pendingLocalLoads:
- *   evita lanzar dos consultas simultáneas
- *   para el mismo local.
- */
-const employeeCache = new Map();
-const localCache = new Map();
-
-const pendingEmployeeLoads = new Map();
-const pendingLocalLoads = new Map();
-
 /*
  * ============================================================
  * NAVEGACIÓN
@@ -199,15 +302,24 @@ function getCurrentPageFile() {
       .pop()
       .toLowerCase();
 
-  return file || "index.html";
+  return (
+    file ||
+    "index.html"
+  );
 }
 
-function getNavByRole(role = "") {
+function getNavByRole(
+  role = ""
+) {
   const canonical =
-    getCanonicalRole(role);
+    getCanonicalRole(
+      role
+    );
 
   return (
-    ROLE_NAV[canonical] || [
+    ROLE_NAV[
+      canonical
+    ] || [
       {
         label: "Inicio",
         href: "dashboard.html"
@@ -221,22 +333,32 @@ function canAccessPage(
   pageFile = ""
 ) {
   const canonical =
-    getCanonicalRole(role);
+    getCanonicalRole(
+      role
+    );
 
   const allowed =
-    ROLE_ALLOWED_PAGES[canonical] || [];
+    ROLE_ALLOWED_PAGES[
+      canonical
+    ] || [];
 
-  return allowed.includes(pageFile);
+  return allowed.includes(
+    pageFile
+  );
 }
 
 function getDefaultPageForRole(
   role = ""
 ) {
   const canonical =
-    getCanonicalRole(role);
+    getCanonicalRole(
+      role
+    );
 
   return (
-    ROLE_DEFAULT_PAGE[canonical] ||
+    ROLE_DEFAULT_PAGE[
+      canonical
+    ] ||
     "dashboard.html"
   );
 }
@@ -246,7 +368,9 @@ function renderLinks(
   links,
   closeMenuAfterClick = false
 ) {
-  if (!container) return;
+  if (!container) {
+    return;
+  }
 
   container.innerHTML =
     links
@@ -261,43 +385,53 @@ function renderLinks(
       )
       .join("");
 
-  if (closeMenuAfterClick) {
+  if (
+    closeMenuAfterClick
+  ) {
     container
-      .querySelectorAll("a")
-      .forEach(a => {
-        a.addEventListener(
-          "click",
-          () => {
-            const fullscreenMenu =
-              document.getElementById(
-                "fullscreenMenu"
-              );
+      .querySelectorAll(
+        "a"
+      )
+      .forEach(
+        a => {
+          a.addEventListener(
+            "click",
+            () => {
+              const fullscreenMenu =
+                document.getElementById(
+                  "fullscreenMenu"
+                );
 
-            const menuToggle =
-              document.getElementById(
-                "menuToggle"
-              );
+              const menuToggle =
+                document.getElementById(
+                  "menuToggle"
+                );
 
-            if (fullscreenMenu) {
-              fullscreenMenu.classList.remove(
-                "active"
-              );
+              if (
+                fullscreenMenu
+              ) {
+                fullscreenMenu.classList.remove(
+                  "active"
+                );
 
-              fullscreenMenu.setAttribute(
-                "aria-hidden",
-                "true"
-              );
+                fullscreenMenu.setAttribute(
+                  "aria-hidden",
+                  "true"
+                );
+              }
+
+              if (
+                menuToggle
+              ) {
+                menuToggle.setAttribute(
+                  "aria-expanded",
+                  "false"
+                );
+              }
             }
-
-            if (menuToggle) {
-              menuToggle.setAttribute(
-                "aria-expanded",
-                "false"
-              );
-            }
-          }
-        );
-      });
+          );
+        }
+      );
   }
 }
 
@@ -305,7 +439,9 @@ function renderNavigationForRole(
   role = ""
 ) {
   const links =
-    getNavByRole(role);
+    getNavByRole(
+      role
+    );
 
   renderLinks(
     document.querySelector(
@@ -346,39 +482,67 @@ function setUserGreeting(
   );
 }
 
-/*
- * ============================================================
- * LOGOUT / MENÚ
- * ============================================================
- */
-
 function bindLogoutButtons() {
-  const logoutButtons = [
-    document.getElementById(
-      "logoutButton"
-    ),
-    document.getElementById(
-      "logoutButtonMobile"
-    )
-  ].filter(Boolean);
+  const logoutButtons =
+    [
+      document.getElementById(
+        "logoutButton"
+      ),
 
-  logoutButtons.forEach(btn => {
-    btn.addEventListener(
-      "click",
-      async () => {
-        try {
-          await auth.signOut();
-        } finally {
-          localStorage.removeItem(
-            "currentUser"
-          );
+      document.getElementById(
+        "logoutButtonMobile"
+      )
+    ].filter(Boolean);
 
-          window.location.href =
-            "../index.html";
-        }
+  logoutButtons.forEach(
+    btn => {
+      if (
+        btn.dataset.appLogoutBound ===
+        "1"
+      ) {
+        return;
       }
-    );
-  });
+
+      btn.dataset.appLogoutBound =
+        "1";
+
+      btn.addEventListener(
+        "click",
+        async () => {
+          try {
+            await auth.signOut();
+          } finally {
+            localStorage.removeItem(
+              "currentUser"
+            );
+
+            currentUserContextCache =
+              null;
+
+            currentUserContextPromise =
+              null;
+
+            currentUserContextUid =
+              "";
+
+            currentLocalContext = {
+              id_local: "",
+              nombre: "",
+              numeroDocumento: "",
+              ubicacion: "",
+              contribuyente: "",
+              tipoDocumento: "",
+              nit: "",
+              nrc: ""
+            };
+
+            window.location.href =
+              "../index.html";
+          }
+        }
+      );
+    }
+  );
 }
 
 function bindMobileMenu() {
@@ -399,8 +563,13 @@ function bindMobileMenu() {
 
   if (
     menuToggle &&
-    fullscreenMenu
+    fullscreenMenu &&
+    menuToggle.dataset.appMenuBound !==
+      "1"
   ) {
+    menuToggle.dataset.appMenuBound =
+      "1";
+
     menuToggle.addEventListener(
       "click",
       () => {
@@ -423,8 +592,13 @@ function bindMobileMenu() {
 
   if (
     closeMenu &&
-    fullscreenMenu
+    fullscreenMenu &&
+    closeMenu.dataset.appCloseMenuBound !==
+      "1"
   ) {
+    closeMenu.dataset.appCloseMenuBound =
+      "1";
+
     closeMenu.addEventListener(
       "click",
       () => {
@@ -432,7 +606,9 @@ function bindMobileMenu() {
           "active"
         );
 
-        if (menuToggle) {
+        if (
+          menuToggle
+        ) {
           menuToggle.setAttribute(
             "aria-expanded",
             "false"
@@ -450,10 +626,13 @@ function bindMobileMenu() {
       "keydown",
       e => {
         if (
-          e.key === "Enter" ||
-          e.key === " "
+          e.key ===
+            "Enter" ||
+          e.key ===
+            " "
         ) {
           e.preventDefault();
+
           closeMenu.click();
         }
       }
@@ -463,7 +642,7 @@ function bindMobileMenu() {
 
 /*
  * ============================================================
- * STORAGE
+ * STORAGE LOCAL
  * ============================================================
  */
 
@@ -485,7 +664,9 @@ function setStoredCurrentUser(
   try {
     localStorage.setItem(
       "currentUser",
-      JSON.stringify(next)
+      JSON.stringify(
+        next
+      )
     );
   } catch {
     // ignore
@@ -497,7 +678,8 @@ function patchStoredCurrentUser(
 ) {
   try {
     const current =
-      getStoredCurrentUser() || {};
+      getStoredCurrentUser() ||
+      {};
 
     setStoredCurrentUser({
       ...current,
@@ -508,11 +690,19 @@ function patchStoredCurrentUser(
   }
 }
 
+/*
+ * ============================================================
+ * NAVEGACIÓN POR ROL
+ * ============================================================
+ */
+
 function redirectAccordingToRole(
   role = ""
 ) {
   window.location.href =
-    getDefaultPageForRole(role);
+    getDefaultPageForRole(
+      role
+    );
 }
 
 /*
@@ -530,12 +720,18 @@ function getLocalDayKey(
   const m =
     String(
       date.getMonth() + 1
-    ).padStart(2, "0");
+    ).padStart(
+      2,
+      "0"
+    );
 
   const d =
     String(
       date.getDate()
-    ).padStart(2, "0");
+    ).padStart(
+      2,
+      "0"
+    );
 
   return `${y}-${m}-${d}`;
 }
@@ -544,7 +740,9 @@ function getTodayBounds(
   date = new Date()
 ) {
   const start =
-    new Date(date);
+    new Date(
+      date
+    );
 
   start.setHours(
     0,
@@ -554,7 +752,9 @@ function getTodayBounds(
   );
 
   const end =
-    new Date(date);
+    new Date(
+      date
+    );
 
   end.setHours(
     23,
@@ -575,7 +775,9 @@ function getTodayBounds(
       ),
 
     dayKey:
-      getLocalDayKey(date)
+      getLocalDayKey(
+        date
+      )
   };
 }
 
@@ -586,147 +788,87 @@ function getTodayBounds(
  */
 
 function getCurrentLocalId() {
-  if (
-    currentUserContext &&
-    currentUserContext.id_local
-  ) {
-    return String(
-      currentUserContext.id_local
-    ).trim();
-  }
-
   const stored =
     getStoredCurrentUser();
 
   return String(
     stored?.id_local ||
-    stored?.idLocal ||
-    stored?.localId ||
-    currentLocalContext.id_local ||
-    ""
+      stored?.idLocal ||
+      stored?.localId ||
+      currentLocalContext.id_local ||
+      ""
   ).trim();
 }
 
 function getCurrentLocalInfo() {
-  if (currentUserContext) {
-    return {
-      id_local:
-        String(
-          currentUserContext.id_local ||
-          ""
-        ).trim(),
-
-      nombre:
-        String(
-          currentUserContext.localNombre ||
-          ""
-        ).trim(),
-
-      numeroDocumento:
-        String(
-          currentUserContext.localNumeroDocumento ||
-          ""
-        ).trim(),
-
-      ubicacion:
-        String(
-          currentUserContext.localUbicacion ||
-          ""
-        ).trim(),
-
-      contribuyente:
-        String(
-          currentUserContext.localContribuyente ||
-          ""
-        ).trim(),
-
-      tipoDocumento:
-        String(
-          currentUserContext.localTipoDocumento ||
-          ""
-        ).trim(),
-
-      nit:
-        String(
-          currentUserContext.localNIT ||
-          ""
-        ).trim(),
-
-      nrc:
-        String(
-          currentUserContext.localNRC ||
-          ""
-        ).trim()
-    };
-  }
-
   const stored =
-    getStoredCurrentUser() || {};
+    getStoredCurrentUser() ||
+    {};
 
   return {
     id_local:
       String(
         stored.id_local ||
-        stored.idLocal ||
-        stored.localId ||
-        currentLocalContext.id_local ||
-        ""
+          stored.idLocal ||
+          stored.localId ||
+          currentLocalContext.id_local ||
+          ""
       ).trim(),
 
     nombre:
       String(
         stored.localNombre ||
-        stored.localName ||
-        currentLocalContext.nombre ||
-        ""
+          stored.localName ||
+          currentLocalContext.nombre ||
+          ""
       ).trim(),
 
     numeroDocumento:
       String(
         stored.localNumeroDocumento ||
-        stored.localDocumentNumber ||
-        currentLocalContext.numeroDocumento ||
-        ""
+          stored.localDocumentNumber ||
+          currentLocalContext.numeroDocumento ||
+          ""
       ).trim(),
 
     ubicacion:
       String(
         stored.localUbicacion ||
-        stored.localLocation ||
-        currentLocalContext.ubicacion ||
-        ""
+          stored.localLocation ||
+          currentLocalContext.ubicacion ||
+          ""
       ).trim(),
 
     contribuyente:
       String(
         stored.localContribuyente ||
-        stored.contribuyente ||
-        currentLocalContext.contribuyente ||
-        ""
+          stored.localNombreContribuyente ||
+          currentLocalContext.contribuyente ||
+          ""
       ).trim(),
 
     tipoDocumento:
       String(
         stored.localTipoDocumento ||
-        stored.tipoDocumento ||
-        currentLocalContext.tipoDocumento ||
-        ""
+          stored.tipoDocumento ||
+          currentLocalContext.tipoDocumento ||
+          ""
       ).trim(),
 
     nit:
       String(
         stored.localNIT ||
-        stored.nit ||
-        currentLocalContext.nit ||
-        ""
+          stored.nit ||
+          currentLocalContext.nit ||
+          ""
       ).trim(),
 
     nrc:
       String(
         stored.localNRC ||
-        stored.nrc ||
-        currentLocalContext.nrc ||
-        ""
+          stored.nrc ||
+          currentLocalContext.nrc ||
+          ""
       ).trim()
   };
 }
@@ -738,7 +880,7 @@ function matchesLocalContext(
   const target =
     String(
       localId ||
-      getCurrentLocalId()
+        getCurrentLocalId()
     ).trim();
 
   if (!target) {
@@ -748,10 +890,10 @@ function matchesLocalContext(
   const docLocalId =
     String(
       data.id_local ||
-      data.idLocal ||
-      data.localId ||
-      data.idlocal ||
-      ""
+        data.idLocal ||
+        data.localId ||
+        data.idlocal ||
+        ""
     ).trim();
 
   return (
@@ -762,7 +904,7 @@ function matchesLocalContext(
 
 /*
  * ============================================================
- * CONSULTA DE LOCAL CON CACHÉ
+ * CARGAS DIRECTAS
  * ============================================================
  */
 
@@ -770,118 +912,89 @@ async function loadLocalById(
   localId = ""
 ) {
   const target =
-    String(localId).trim();
+    String(
+      localId
+    ).trim();
 
   if (!target) {
     return null;
   }
 
-  if (localCache.has(target)) {
-    return localCache.get(target);
-  }
-
-  if (
-    pendingLocalLoads.has(target)
-  ) {
-    return pendingLocalLoads.get(
-      target
-    );
-  }
-
-  const promise =
-    (async () => {
-      try {
-        const direct =
-          await db
-            .collection(
-              LOCAL_COLLECTION_NAME
-            )
-            .doc(target)
-            .get();
-
-        if (direct.exists) {
-          const result = {
-            id:
-              direct.id,
-
-            ...(direct.data() || {})
-          };
-
-          localCache.set(
-            target,
-            result
-          );
-
-          return result;
-        }
-      } catch (error) {
-        console.warn(
-          "Error consultando local por ID:",
-          error
-        );
-      }
-
-      try {
-        const byField =
-          await db
-            .collection(
-              LOCAL_COLLECTION_NAME
-            )
-            .where(
-              "id_local",
-              "==",
-              target
-            )
-            .limit(1)
-            .get();
-
-        if (!byField.empty) {
-          const doc =
-            byField.docs[0];
-
-          const result = {
-            id:
-              doc.id,
-
-            ...(doc.data() || {})
-          };
-
-          localCache.set(
-            target,
-            result
-          );
-
-          return result;
-        }
-      } catch (error) {
-        console.warn(
-          "Error consultando local por id_local:",
-          error
-        );
-      }
-
-      return null;
-    })();
-
-  pendingLocalLoads.set(
-    target,
-    promise
-  );
-
+  /*
+   * Primero se intenta por document ID.
+   * En el diseño actual id_local coincide con doc.id.
+   */
   try {
-    return await promise;
-  } finally {
-    pendingLocalLoads.delete(
-      target
+    const direct =
+      await db
+        .collection(
+          LOCAL_COLLECTION_NAME
+        )
+        .doc(
+          target
+        )
+        .get();
+
+    if (
+      direct.exists
+    ) {
+      return {
+        id:
+          direct.id,
+
+        ...(direct.data() ||
+          {})
+      };
+    }
+  } catch (error) {
+    console.warn(
+      "No se pudo cargar el local por ID:",
+      error
     );
   }
-}
 
-/*
- * ============================================================
- * CONSULTA DE EMPLEADO CON CACHÉ
- * ============================================================
- */
+  /*
+   * Compatibilidad con datos antiguos.
+   */
+  try {
+    const byField =
+      await db
+        .collection(
+          LOCAL_COLLECTION_NAME
+        )
+        .where(
+          "id_local",
+          "==",
+          target
+        )
+        .limit(
+          1
+        )
+        .get();
+
+    if (
+      !byField.empty
+    ) {
+      const doc =
+        byField.docs[0];
+
+      return {
+        id:
+          doc.id,
+
+        ...(doc.data() ||
+          {})
+      };
+    }
+  } catch (error) {
+    console.warn(
+      "No se pudo cargar el local por campo id_local:",
+      error
+    );
+  }
+
+  return null;
+}
 
 async function loadEmployeeByUser(
   user
@@ -890,187 +1003,147 @@ async function loadEmployeeByUser(
     return null;
   }
 
-  const uid =
-    String(
-      user.uid || ""
-    ).trim();
-
-  if (!uid) {
-    return null;
-  }
-
-  if (
-    employeeCache.has(uid)
-  ) {
-    return employeeCache.get(
-      uid
-    );
-  }
-
-  if (
-    pendingEmployeeLoads.has(uid)
-  ) {
-    return pendingEmployeeLoads.get(
-      uid
-    );
-  }
-
-  const promise =
-    (async () => {
-      let employee =
-        null;
-
-      try {
-        const direct =
-          await db
-            .collection(
-              EMPLOYEE_COLLECTION_NAME
-            )
-            .doc(uid)
-            .get();
-
-        if (direct.exists) {
-          employee = {
-            id:
-              direct.id,
-
-            ...(direct.data() || {})
-          };
-        }
-      } catch (error) {
-        console.warn(
-          "Error consultando empleado por UID:",
-          error
-        );
-      }
-
-      /*
-       * Solo se utiliza correo como fallback
-       * si el documento UID no existe.
-       *
-       * En la estructura normal del sistema,
-       * el documento debe tener como ID el UID.
-       */
-      if (!employee && user.email) {
-        try {
-          const byEmail =
-            await db
-              .collection(
-                EMPLOYEE_COLLECTION_NAME
-              )
-              .where(
-                "email",
-                "==",
-                user.email
-              )
-              .limit(1)
-              .get();
-
-          if (!byEmail.empty) {
-            const doc =
-              byEmail.docs[0];
-
-            employee = {
-              id:
-                doc.id,
-
-              ...(doc.data() || {})
-            };
-          }
-        } catch (error) {
-          console.warn(
-            "Error consultando empleado por correo:",
-            error
-          );
-        }
-      }
-
-      if (employee) {
-        employeeCache.set(
-          uid,
-          employee
-        );
-      }
-
-      return employee;
-    })();
-
-  pendingEmployeeLoads.set(
-    uid,
-    promise
-  );
-
+  /*
+   * El diseño principal utiliza UID como ID
+   * del documento empleado.
+   */
   try {
-    return await promise;
-  } finally {
-    pendingEmployeeLoads.delete(
-      uid
+    const direct =
+      await db
+        .collection(
+          EMPLOYEE_COLLECTION_NAME
+        )
+        .doc(
+          user.uid
+        )
+        .get();
+
+    if (
+      direct.exists
+    ) {
+      return {
+        id:
+          direct.id,
+
+        ...(direct.data() ||
+          {})
+      };
+    }
+  } catch (error) {
+    console.warn(
+      "No se pudo cargar el empleado por UID:",
+      error
     );
   }
+
+  /*
+   * Compatibilidad con perfiles antiguos.
+   */
+  if (
+    user.email
+  ) {
+    try {
+      const byEmail =
+        await db
+          .collection(
+            EMPLOYEE_COLLECTION_NAME
+          )
+          .where(
+            "email",
+            "==",
+            user.email
+          )
+          .limit(
+            1
+          )
+          .get();
+
+      if (
+        !byEmail.empty
+      ) {
+        const doc =
+          byEmail.docs[0];
+
+        return {
+          id:
+            doc.id,
+
+          ...(doc.data() ||
+            {})
+        };
+      }
+    } catch (error) {
+      console.warn(
+        "No se pudo cargar el empleado por correo:",
+        error
+      );
+    }
+  }
+
+  return null;
 }
 
 /*
  * ============================================================
- * RESOLUTOR CENTRAL DE CONTEXTO
+ * CONTEXTO UNIFICADO DEL USUARIO
  * ============================================================
  *
- * Esta es ahora la única función que debe utilizar
- * un módulo para obtener:
+ * Esta es la función que deben reutilizar:
  *
- * - usuario
- * - empleado
- * - rol
- * - local
- * - datos fiscales
+ * employees.js
+ * sales.js
+ * dashboard.js
+ * inventory.js
+ * locales.js
  *
- * Las consultas quedan cacheadas.
+ * No deben volver a consultar empleados/{uid}
+ * y local/{id_local} si solo necesitan el contexto.
  */
 
-let currentUserContextPromise = null;
-let currentUserContextUid = "";
-
-async function getCurrentUserContext(
-  user
+async function ensureCurrentUserContext(
+  user,
+  options = {}
 ) {
   if (!user) {
     return null;
   }
 
-  const uid =
-    String(
-      user.uid || ""
-    ).trim();
-
-  if (!uid) {
-    return null;
-  }
+  const forceRefresh =
+    options.forceRefresh ===
+    true;
 
   /*
-   * Si ya existe el contexto completo para
-   * el mismo usuario, se reutiliza.
+   * Si ya está resuelto para este UID,
+   * reutilizarlo.
    */
   if (
-    currentUserContext &&
-    String(
-      currentUserContext.uid
-    ) === uid
+    !forceRefresh &&
+    currentUserContextCache &&
+    currentUserContextUid ===
+      user.uid
   ) {
-    return currentUserContext;
+    return (
+      currentUserContextCache
+    );
   }
 
   /*
-   * Si otra parte ya está resolviendo este
-   * mismo usuario, se comparte la promesa.
+   * Si una consulta idéntica ya está
+   * en curso, esperar esa misma promesa.
    */
   if (
+    !forceRefresh &&
     currentUserContextPromise &&
-    currentUserContextUid === uid
+    currentUserContextUid ===
+      user.uid
   ) {
-    return currentUserContextPromise;
+    return (
+      currentUserContextPromise
+    );
   }
 
   currentUserContextUid =
-    uid;
+    user.uid;
 
   currentUserContextPromise =
     (async () => {
@@ -1078,266 +1151,418 @@ async function getCurrentUserContext(
         getStoredCurrentUser();
 
       let employee =
-        await loadEmployeeByUser(
-          user
-        );
+        null;
 
       /*
-       * El usuario autenticado puede encontrarse
-       * temporalmente sin documento de empleado.
+       * Si el storage coincide con el usuario,
+       * se utiliza como primera fuente para reducir
+       * consultas durante la navegación.
        *
-       * En ese caso se permite utilizar el storage
-       * como información auxiliar, pero no se inventa
-       * un empleado.
+       * IMPORTANTE:
+       * para el primer acceso o cuando faltan datos,
+       * se consulta Firestore.
        */
-      const storedBelongsToUser =
-        Boolean(
-          stored &&
-          stored.uid === uid
-        );
+      if (
+        stored &&
+        stored.uid ===
+          user.uid
+      ) {
+        employee = {
+          id:
+            stored.employeeId ||
+            user.uid,
 
-      const employeeData =
-        employee || {};
+          uid:
+            stored.uid,
+
+          name:
+            stored.name ||
+            "",
+
+          email:
+            stored.email ||
+            user.email ||
+            "",
+
+          phone:
+            stored.phone ||
+            "",
+
+          position:
+            stored.role ||
+            "",
+
+          id_local:
+            stored.id_local ||
+            stored.idLocal ||
+            stored.localId ||
+            "",
+
+          localNombre:
+            stored.localNombre ||
+            "",
+
+          localNumeroDocumento:
+            stored.localNumeroDocumento ||
+            "",
+
+          localUbicacion:
+            stored.localUbicacion ||
+            "",
+
+          localContribuyente:
+            stored.localContribuyente ||
+            stored.localNombreContribuyente ||
+            "",
+
+          localTipoDocumento:
+            stored.localTipoDocumento ||
+            "",
+
+          localNIT:
+            stored.localNIT ||
+            "",
+
+          localNRC:
+            stored.localNRC ||
+            "",
+
+          active:
+            stored.active !==
+            false,
+
+          blocked:
+            stored.blocked ===
+            true
+        };
+      }
+
+      /*
+       * Cuando el storage no tiene el contexto suficiente,
+       * hacer una sola resolución en Firestore.
+       */
+      if (
+        !employee ||
+        !employee.id_local ||
+        !employee.name ||
+        !employee.position
+      ) {
+        const firestoreEmployee =
+          await loadEmployeeByUser(
+            user
+          );
+
+        if (
+          firestoreEmployee
+        ) {
+          employee =
+            firestoreEmployee;
+        }
+      }
+
+      if (
+        !employee
+      ) {
+        throw new Error(
+          `No existe el documento de perfil para el usuario ${user.uid}.`
+        );
+      }
 
       const role =
         getCanonicalRole(
-          employeeData.position ||
-          employeeData.role ||
-          (
-            storedBelongsToUser
-              ? stored.role
-              : ""
-          ) ||
-          ""
+          employee.position ||
+            employee.role ||
+            ""
         );
 
       const name =
-        employeeData.name ||
-        (
-          storedBelongsToUser
-            ? stored.name
-            : ""
-        ) ||
+        employee.name ||
         user.displayName ||
         user.email ||
         "Usuario";
 
       const email =
-        employeeData.email ||
-        (
-          storedBelongsToUser
-            ? stored.email
-            : ""
-        ) ||
+        employee.email ||
         user.email ||
         "";
 
       const phone =
-        employeeData.phone ||
-        (
-          storedBelongsToUser
-            ? stored.phone
-            : ""
-        ) ||
+        employee.phone ||
         "";
 
       const id_local =
         String(
-          employeeData.id_local ||
-          employeeData.idLocal ||
-          employeeData.localId ||
-          (
-            storedBelongsToUser
-              ? (
-                  stored.id_local ||
-                  stored.idLocal ||
-                  stored.localId
-                )
-              : ""
-          ) ||
-          ""
+          employee.id_local ||
+            employee.idLocal ||
+            employee.localId ||
+            stored?.id_local ||
+            ""
         ).trim();
 
-      let localData =
-        null;
+      let localInfo = {
+        id_local,
 
-      if (id_local) {
-        localData =
+        nombre:
+          employee.localNombre ||
+          stored?.localNombre ||
+          "",
+
+        numeroDocumento:
+          employee.localNumeroDocumento ||
+          stored?.localNumeroDocumento ||
+          "",
+
+        ubicacion:
+          employee.localUbicacion ||
+          stored?.localUbicacion ||
+          "",
+
+        contribuyente:
+          employee.localNombreContribuyente ||
+          employee.localContribuyente ||
+          stored?.localNombreContribuyente ||
+          stored?.localContribuyente ||
+          "",
+
+        tipoDocumento:
+          employee.localTipoDocumento ||
+          stored?.localTipoDocumento ||
+          "",
+
+        nit:
+          employee.localNIT ||
+          stored?.localNIT ||
+          "",
+
+        nrc:
+          employee.localNRC ||
+          stored?.localNRC ||
+          ""
+      };
+
+      /*
+       * Solo consultar el local cuando:
+       * 1. existe id_local
+       * 2. los datos principales faltan.
+       *
+       * Esto evita consultar local/{id} cada vez.
+       */
+      const needsLocalRead =
+        Boolean(
+          id_local
+        ) &&
+        (
+          !localInfo.nombre ||
+          !localInfo.numeroDocumento ||
+          !localInfo.ubicacion ||
+          !localInfo.tipoDocumento ||
+          !localInfo.nit ||
+          !localInfo.nrc
+        );
+
+      if (
+        needsLocalRead
+      ) {
+        const localDoc =
           await loadLocalById(
             id_local
           );
+
+        if (
+          localDoc
+        ) {
+          localInfo = {
+            id_local,
+
+            nombre:
+              localDoc.nombre ||
+              localDoc.name ||
+              localDoc.localName ||
+              localInfo.nombre ||
+              "",
+
+            numeroDocumento:
+              localDoc.numeroDocumento ||
+              localDoc.numero_documento ||
+              localDoc.documentNumber ||
+              localDoc.nDocumento ||
+              localInfo.numeroDocumento ||
+              "",
+
+            ubicacion:
+              localDoc.ubicacion ||
+              localDoc.location ||
+              localDoc.direccion ||
+              localDoc.address ||
+              localInfo.ubicacion ||
+              "",
+
+            contribuyente:
+              localDoc.nombreContribuyente ||
+              localDoc.nombre_contribuyente ||
+              localDoc.contribuyente ||
+              localInfo.contribuyente ||
+              "",
+
+            tipoDocumento:
+              localDoc.tipoDocumento ||
+              localDoc.tipo_documento ||
+              localDoc.documentType ||
+              localInfo.tipoDocumento ||
+              "",
+
+            nit:
+              localDoc.nit ||
+              localDoc.NIT ||
+              localInfo.nit ||
+              "",
+
+            nrc:
+              localDoc.nrc ||
+              localDoc.NRC ||
+              localInfo.nrc ||
+              ""
+          };
+        }
       }
 
-      const localNombre =
-        String(
-          localData?.nombre ||
-          localData?.name ||
-          localData?.localName ||
-          (
-            storedBelongsToUser
-              ? stored.localNombre
-              : ""
-          ) ||
-          employeeData.localNombre ||
-          ""
-        ).trim();
-
-      const localNumeroDocumento =
-        String(
-          localData?.numeroDocumento ||
-          localData?.numero_documento ||
-          localData?.documentNumber ||
-          localData?.nDocumento ||
-          (
-            storedBelongsToUser
-              ? stored.localNumeroDocumento
-              : ""
-          ) ||
-          employeeData.localNumeroDocumento ||
-          ""
-        ).trim();
-
-      const localUbicacion =
-        String(
-          localData?.ubicacion ||
-          localData?.location ||
-          localData?.direccion ||
-          localData?.address ||
-          (
-            storedBelongsToUser
-              ? stored.localUbicacion
-              : ""
-          ) ||
-          employeeData.localUbicacion ||
-          ""
-        ).trim();
-
-      const localContribuyente =
-        String(
-          localData?.contribuyente ||
-          localData?.nombreContribuyente ||
-          localData?.nombre_contribuyente ||
-          localData?.razonSocial ||
-          localData?.razon_social ||
-          (
-            storedBelongsToUser
-              ? stored.localContribuyente
-              : ""
-          ) ||
-          employeeData.localNombreContribuyente ||
-          ""
-        ).trim();
-
-      const localTipoDocumento =
-        String(
-          localData?.tipoDocumento ||
-          localData?.tipo_documento ||
-          localData?.documentType ||
-          (
-            storedBelongsToUser
-              ? stored.localTipoDocumento
-              : ""
-          ) ||
-          employeeData.localTipoDocumento ||
-          ""
-        ).trim();
-
-      const localNIT =
-        String(
-          localData?.nit ||
-          localData?.NIT ||
-          (
-            storedBelongsToUser
-              ? stored.localNIT
-              : ""
-          ) ||
-          employeeData.localNIT ||
-          ""
-        ).trim();
-
-      const localNRC =
-        String(
-          localData?.nrc ||
-          localData?.NRC ||
-          (
-            storedBelongsToUser
-              ? stored.localNRC
-              : ""
-          ) ||
-          employeeData.localNRC ||
-          ""
-        ).trim();
-
       const context = {
-        uid,
+        uid:
+          user.uid,
+
         employeeId:
-          employee?.id ||
-          (
-            storedBelongsToUser
-              ? stored.employeeId || ""
-              : ""
-          ),
+          employee.id ||
+          employee.uid ||
+          user.uid,
 
         name,
+
         email,
+
         phone,
+
         role,
 
         id_local,
 
-        localNombre,
-        localNumeroDocumento,
-        localUbicacion,
-        localContribuyente,
-        localTipoDocumento,
-        localNIT,
-        localNRC,
+        localNombre:
+          String(
+            localInfo.nombre ||
+              ""
+          ).trim(),
 
-        employee:
-          employee || null,
+        localNumeroDocumento:
+          String(
+            localInfo.numeroDocumento ||
+              ""
+          ).trim(),
 
-        local:
-          localData || null
+        localUbicacion:
+          String(
+            localInfo.ubicacion ||
+              ""
+          ).trim(),
+
+        localContribuyente:
+          String(
+            localInfo.contribuyente ||
+              ""
+          ).trim(),
+
+        localTipoDocumento:
+          String(
+            localInfo.tipoDocumento ||
+              ""
+          ).trim(),
+
+        localNIT:
+          String(
+            localInfo.nit ||
+              ""
+          ).trim(),
+
+        localNRC:
+          String(
+            localInfo.nrc ||
+              ""
+          ).trim()
       };
-
-      currentUserContext =
-        context;
 
       currentLocalContext = {
-        id_local,
+        id_local:
+          context.id_local,
+
         nombre:
-          localNombre,
+          context.localNombre,
+
         numeroDocumento:
-          localNumeroDocumento,
+          context.localNumeroDocumento,
+
         ubicacion:
-          localUbicacion,
+          context.localUbicacion,
+
         contribuyente:
-          localContribuyente,
+          context.localContribuyente,
+
         tipoDocumento:
-          localTipoDocumento,
+          context.localTipoDocumento,
+
         nit:
-          localNIT,
+          context.localNIT,
+
         nrc:
-          localNRC
+          context.localNRC
       };
 
-      setStoredCurrentUser({
-        uid,
-        employeeId:
-          context.employeeId || "",
-        name,
-        email,
-        phone,
-        role,
-        id_local,
+      currentUserContextCache =
+        context;
 
-        localNombre,
-        localNumeroDocumento,
-        localUbicacion,
-        localContribuyente,
-        localTipoDocumento,
-        localNIT,
-        localNRC
+      /*
+       * Solo guardar contexto. No se vuelve a escribir
+       * Firestore aquí.
+       */
+      setStoredCurrentUser({
+        uid:
+          context.uid,
+
+        employeeId:
+          context.employeeId,
+
+        name:
+          context.name,
+
+        email:
+          context.email,
+
+        phone:
+          context.phone,
+
+        role:
+          context.role,
+
+        id_local:
+          context.id_local,
+
+        localNombre:
+          context.localNombre,
+
+        localNumeroDocumento:
+          context.localNumeroDocumento,
+
+        localUbicacion:
+          context.localUbicacion,
+
+        localContribuyente:
+          context.localContribuyente,
+
+        localTipoDocumento:
+          context.localTipoDocumento,
+
+        localNIT:
+          context.localNIT,
+
+        localNRC:
+          context.localNRC
       });
 
       return context;
@@ -1346,19 +1571,24 @@ async function getCurrentUserContext(
   try {
     return await currentUserContextPromise;
   } finally {
+    /*
+     * La caché queda disponible.
+     * Solo se libera la referencia a la promesa
+     * para que futuras llamadas utilicen la caché.
+     */
     currentUserContextPromise =
       null;
   }
 }
 
-/*
- * Mantener compatibilidad con módulos
- * que ya utilizaban ensureCurrentUserContext.
- */
-async function ensureCurrentUserContext(
-  user
+async function getCurrentUserContext(
+  user = auth.currentUser
 ) {
-  return getCurrentUserContext(
+  if (!user) {
+    return null;
+  }
+
+  return ensureCurrentUserContext(
     user
   );
 }
@@ -1375,11 +1605,17 @@ function formatMoney(
   return new Intl.NumberFormat(
     "es-ES",
     {
-      style: "currency",
-      currency: "USD"
+      style:
+        "currency",
+
+      currency:
+        "USD"
     }
   ).format(
-    Number(value || 0)
+    Number(
+      value ||
+        0
+    )
   );
 }
 
@@ -1391,11 +1627,14 @@ async function getDailyFinancialSummary(
     start,
     end
   } =
-    getTodayBounds(date);
+    getTodayBounds(
+      date
+    );
 
   const targetLocalId =
     String(
-      localId || ""
+      localId ||
+        ""
     ).trim();
 
   const [
@@ -1404,7 +1643,9 @@ async function getDailyFinancialSummary(
   ] =
     await Promise.all([
       db
-        .collection("ventas")
+        .collection(
+          "ventas"
+        )
         .where(
           "createdAt",
           ">=",
@@ -1418,7 +1659,9 @@ async function getDailyFinancialSummary(
         .get(),
 
       db
-        .collection("gastos")
+        .collection(
+          "gastos"
+        )
         .where(
           "createdAt",
           ">=",
@@ -1432,13 +1675,17 @@ async function getDailyFinancialSummary(
         .get()
     ]);
 
-  let sales = 0;
-  let expenses = 0;
+  let sales =
+    0;
+
+  let expenses =
+    0;
 
   salesSnap.forEach(
     doc => {
       const data =
-        doc.data() || {};
+        doc.data() ||
+        {};
 
       if (
         targetLocalId &&
@@ -1452,7 +1699,8 @@ async function getDailyFinancialSummary(
 
       sales +=
         Number(
-          data.total || 0
+          data.total ||
+            0
         );
     }
   );
@@ -1460,7 +1708,8 @@ async function getDailyFinancialSummary(
   expensesSnap.forEach(
     doc => {
       const data =
-        doc.data() || {};
+        doc.data() ||
+        {};
 
       if (
         targetLocalId &&
@@ -1474,14 +1723,17 @@ async function getDailyFinancialSummary(
 
       expenses +=
         Number(
-          data.amount || 0
+          data.amount ||
+            0
         );
     }
   );
 
   return {
     sales,
+
     expenses,
+
     net:
       sales -
       expenses
@@ -1504,30 +1756,20 @@ async function recordLoginAttempt(
       )
       .add({
         email:
-          payload.email || "",
+          payload.email ||
+          "",
 
         uid:
-          payload.uid || null,
+          payload.uid ||
+          null,
 
         id_local:
-          payload.id_local || "",
+          payload.id_local ||
+          "",
 
         localNombre:
-          payload.localNombre || "",
-
-        localNombreContribuyente:
-          payload.localNombreContribuyente ||
+          payload.localNombre ||
           "",
-
-        localTipoDocumento:
-          payload.localTipoDocumento ||
-          "",
-
-        localNIT:
-          payload.localNIT || "",
-
-        localNRC:
-          payload.localNRC || "",
 
         success:
           Boolean(
@@ -1540,7 +1782,8 @@ async function recordLoginAttempt(
             : "fallido",
 
         reason:
-          payload.reason || "",
+          payload.reason ||
+          "",
 
         createdAt:
           firebase.firestore
@@ -1548,7 +1791,7 @@ async function recordLoginAttempt(
             .serverTimestamp()
       });
   } catch (error) {
-    console.warn(
+    console.error(
       "No se pudo registrar el intento de acceso:",
       error
     );
@@ -1568,7 +1811,9 @@ async function updateEmployeeAccess(
       .collection(
         EMPLOYEE_COLLECTION_NAME
       )
-      .doc(employeeId)
+      .doc(
+        employeeId
+      )
       .update({
         ...patch,
 
@@ -1577,36 +1822,9 @@ async function updateEmployeeAccess(
             .FieldValue
             .serverTimestamp()
       });
-
-    /*
-     * Actualizar caché local para que las siguientes
-     * operaciones no necesiten volver a resolver
-     * el empleado.
-     */
-    const cached =
-      employeeCache.get(
-        employeeId
-      );
-
-    if (cached) {
-      Object.assign(
-        cached,
-        patch
-      );
-    }
-
-    if (
-      currentUserContext &&
-      currentUserContext.employee
-    ) {
-      Object.assign(
-        currentUserContext.employee,
-        patch
-      );
-    }
   } catch (error) {
-    console.warn(
-      "No se pudo actualizar acceso del empleado:",
+    console.error(
+      "No se pudo actualizar el acceso del empleado:",
       error
     );
   }
@@ -1614,7 +1832,7 @@ async function updateEmployeeAccess(
 
 /*
  * ============================================================
- * DOM
+ * PASSWORD RESET / LOGIN UI
  * ============================================================
  */
 
@@ -1697,14 +1915,18 @@ document.addEventListener(
           : "false"
       );
 
-      if (btnText) {
+      if (
+        btnText
+      ) {
         btnText.textContent =
           isLoading
             ? "Validando..."
             : "Iniciar Sesión";
       }
 
-      if (btnSpinner) {
+      if (
+        btnSpinner
+      ) {
         btnSpinner.style.display =
           isLoading
             ? "inline-block"
@@ -1715,7 +1937,9 @@ document.addEventListener(
     function showError(
       msg
     ) {
-      if (errorElement) {
+      if (
+        errorElement
+      ) {
         errorElement.textContent =
           msg;
 
@@ -1728,13 +1952,23 @@ document.addEventListener(
         "undefined"
       ) {
         Swal.fire({
-          toast: true,
-          position: "top-end",
-          icon: "error",
-          title: msg,
+          toast:
+            true,
+
+          position:
+            "top-end",
+
+          icon:
+            "error",
+
+          title:
+            msg,
+
           showConfirmButton:
             false,
-          timer: 3000
+
+          timer:
+            3000
         });
       }
     }
@@ -1747,19 +1981,31 @@ document.addEventListener(
         "undefined"
       ) {
         Swal.fire({
-          toast: true,
-          position: "top-end",
-          icon: "success",
-          title: msg,
+          toast:
+            true,
+
+          position:
+            "top-end",
+
+          icon:
+            "success",
+
+          title:
+            msg,
+
           showConfirmButton:
             false,
-          timer: 2500
+
+          timer:
+            2500
         });
       }
     }
 
     function clearError() {
-      if (errorElement) {
+      if (
+        errorElement
+      ) {
         errorElement.textContent =
           "";
 
@@ -1771,8 +2017,11 @@ document.addEventListener(
     async function handlePasswordReset() {
       const currentEmail =
         document
-          .getElementById("email")
-          ?.value.trim() ||
+          .getElementById(
+            "email"
+          )
+          ?.value
+          .trim() ||
         "";
 
       const result =
@@ -1815,6 +2064,8 @@ document.addEventListener(
               ) {
                 return "Debes ingresar un correo válido.";
               }
+
+              return undefined;
             }
         });
 
@@ -1825,7 +2076,8 @@ document.addEventListener(
       }
 
       const email =
-        result.value.trim();
+        result.value
+          .trim();
 
       try {
         await auth.sendPasswordResetEmail(
@@ -1845,9 +2097,7 @@ document.addEventListener(
           confirmButtonColor:
             "#4CAF50"
         });
-      } catch (
-        error
-      ) {
+      } catch (error) {
         console.error(
           "Error enviando recuperación:",
           error
@@ -1898,7 +2148,15 @@ document.addEventListener(
       }
     }
 
-    if (loginForm) {
+    /*
+     * ========================================================
+     * LOGIN
+     * ========================================================
+     */
+
+    if (
+      loginForm
+    ) {
       loginForm.addEventListener(
         "submit",
         async e => {
@@ -1911,13 +2169,16 @@ document.addEventListener(
               .getElementById(
                 "email"
               )
-              ?.value.trim() ||
+              ?.value
+              .trim() ||
             "";
 
           const password =
-            document.getElementById(
-              "password"
-            )?.value ||
+            document
+              .getElementById(
+                "password"
+              )
+              ?.value ||
             "";
 
           if (
@@ -1946,23 +2207,39 @@ document.addEventListener(
               userCredential.user;
 
             /*
-             * Una sola resolución del contexto.
+             * Una única resolución del contexto.
              */
             const context =
-              await getCurrentUserContext(
-                user
+              await ensureCurrentUserContext(
+                user,
+                {
+                  forceRefresh:
+                    true
+                }
               );
 
             const employee =
-              context?.employee;
+              await loadEmployeeByUser(
+                user
+              );
 
-            if (!employee) {
+            /*
+             * Si el contexto existe pero el perfil
+             * no pudo resolverse, se considera error.
+             */
+            if (
+              !employee &&
+              !context
+            ) {
               await recordLoginAttempt({
                 email,
+
                 uid:
                   user.uid,
+
                 success:
                   false,
+
                 reason:
                   "perfil_no_encontrado"
               });
@@ -1978,37 +2255,37 @@ document.addEventListener(
               return;
             }
 
-            const role =
-              getCanonicalRole(
-                employee.position ||
-                employee.role ||
-                "Vendedor"
-              );
-
-            const id_local =
-              context.id_local;
-
-            const localNombre =
-              context.localNombre;
-
-            if (
-              employee.blocked ===
-                true ||
-              employee.active ===
-                false
-            ) {
-              await recordLoginAttempt({
-                email:
-                  employee.email ||
-                  user.email ||
-                  email,
+            const effectiveEmployee =
+              employee || {
+                id:
+                  context.employeeId,
 
                 uid:
-                  user.uid,
+                  context.uid,
 
-                id_local,
+                name:
+                  context.name,
 
-                localNombre,
+                email:
+                  context.email,
+
+                phone:
+                  context.phone,
+
+                position:
+                  context.role,
+
+                id_local:
+                  context.id_local,
+
+                localNombre:
+                  context.localNombre,
+
+                localNumeroDocumento:
+                  context.localNumeroDocumento,
+
+                localUbicacion:
+                  context.localUbicacion,
 
                 localNombreContribuyente:
                   context.localContribuyente,
@@ -2022,6 +2299,59 @@ document.addEventListener(
                 localNRC:
                   context.localNRC,
 
+                active:
+                  context.active !==
+                  false,
+
+                blocked:
+                  context.blocked ===
+                  true
+              };
+
+            const role =
+              getCanonicalRole(
+                effectiveEmployee.position ||
+                  effectiveEmployee.role ||
+                  "Vendedor"
+              );
+
+            const id_local =
+              String(
+                effectiveEmployee.id_local ||
+                  effectiveEmployee.idLocal ||
+                  effectiveEmployee.localId ||
+                  context.id_local ||
+                  ""
+              ).trim();
+
+            /*
+             * El local ya está en el contexto.
+             * No se consulta nuevamente aquí.
+             */
+            const localNombre =
+              context.localNombre ||
+              effectiveEmployee.localNombre ||
+              "";
+
+            if (
+              effectiveEmployee.blocked ===
+                true ||
+              effectiveEmployee.active ===
+                false
+            ) {
+              await recordLoginAttempt({
+                email:
+                  effectiveEmployee.email ||
+                  user.email ||
+                  email,
+
+                uid:
+                  user.uid,
+
+                id_local,
+
+                localNombre,
+
                 success:
                   false,
 
@@ -2030,14 +2360,17 @@ document.addEventListener(
               });
 
               await updateEmployeeAccess(
-                employee.id,
+                effectiveEmployee.id ||
+                  user.uid,
                 {
                   failedLoginAttempts:
                     (
                       Number(
-                        employee.failedLoginAttempts
-                      ) || 0
-                    ) + 1,
+                        effectiveEmployee.failedLoginAttempts
+                      ) ||
+                      0
+                    ) +
+                    1,
 
                   lastFailedAt:
                     firebase.firestore
@@ -2052,6 +2385,15 @@ document.addEventListener(
                 "currentUser"
               );
 
+              currentUserContextCache =
+                null;
+
+              currentUserContextPromise =
+                null;
+
+              currentUserContextUid =
+                "";
+
               setLoading(
                 false
               );
@@ -2063,22 +2405,22 @@ document.addEventListener(
               return;
             }
 
+            /*
+             * El estado del local ya está disponible
+             * en el contexto.
+             */
+            const localBlocked =
+              Boolean(
+                effectiveEmployee.localBlocked
+              ) ||
+              false;
+
             if (
-              context.local &&
-              (
-                context.local.bloqueado ===
-                  true ||
-                context.local.blocked ===
-                  true ||
-                context.local.activo ===
-                  false ||
-                context.local.active ===
-                  false
-              )
+              localBlocked
             ) {
               await recordLoginAttempt({
                 email:
-                  employee.email ||
+                  effectiveEmployee.email ||
                   user.email ||
                   email,
 
@@ -2088,18 +2430,6 @@ document.addEventListener(
                 id_local,
 
                 localNombre,
-
-                localNombreContribuyente:
-                  context.localContribuyente,
-
-                localTipoDocumento:
-                  context.localTipoDocumento,
-
-                localNIT:
-                  context.localNIT,
-
-                localNRC:
-                  context.localNRC,
 
                 success:
                   false,
@@ -2114,6 +2444,15 @@ document.addEventListener(
                 "currentUser"
               );
 
+              currentUserContextCache =
+                null;
+
+              currentUserContextPromise =
+                null;
+
+              currentUserContextUid =
+                "";
+
               setLoading(
                 false
               );
@@ -2125,83 +2464,110 @@ document.addEventListener(
               return;
             }
 
-            const currentUser =
-              {
-                uid:
-                  user.uid,
+            const currentUser = {
+              uid:
+                user.uid,
 
-                employeeId:
-                  employee.id ||
-                  "",
+              employeeId:
+                effectiveEmployee.id ||
+                user.uid,
 
-                name:
-                  employee.name ||
-                  "",
+              name:
+                effectiveEmployee.name ||
+                context.name ||
+                "",
 
-                email:
-                  employee.email ||
-                  user.email,
+              email:
+                effectiveEmployee.email ||
+                user.email ||
+                "",
 
-                phone:
-                  employee.phone ||
-                  "",
+              phone:
+                effectiveEmployee.phone ||
+                context.phone ||
+                "",
 
-                role,
+              role,
 
-                id_local,
+              id_local,
 
-                localNombre,
-                localNumeroDocumento:
-                  context.localNumeroDocumento,
+              localNombre:
+                context.localNombre ||
+                effectiveEmployee.localNombre ||
+                "",
 
-                localUbicacion:
-                  context.localUbicacion,
+              localNumeroDocumento:
+                context.localNumeroDocumento ||
+                effectiveEmployee.localNumeroDocumento ||
+                "",
 
-                localContribuyente:
-                  context.localContribuyente,
+              localUbicacion:
+                context.localUbicacion ||
+                effectiveEmployee.localUbicacion ||
+                "",
 
-                localTipoDocumento:
-                  context.localTipoDocumento,
+              localContribuyente:
+                context.localContribuyente ||
+                effectiveEmployee.localNombreContribuyente ||
+                effectiveEmployee.localContribuyente ||
+                "",
 
-                localNIT:
-                  context.localNIT,
+              localTipoDocumento:
+                context.localTipoDocumento ||
+                effectiveEmployee.localTipoDocumento ||
+                "",
 
-                localNRC:
-                  context.localNRC
-              };
+              localNIT:
+                context.localNIT ||
+                effectiveEmployee.localNIT ||
+                "",
 
-            currentUserContext =
-              {
-                ...context,
-
-                ...currentUser
-              };
-
-            currentLocalContext =
-              {
-                id_local,
-                nombre:
-                  context.localNombre,
-                numeroDocumento:
-                  context.localNumeroDocumento,
-                ubicacion:
-                  context.localUbicacion,
-                contribuyente:
-                  context.localContribuyente,
-                tipoDocumento:
-                  context.localTipoDocumento,
-                nit:
-                  context.localNIT,
-                nrc:
-                  context.localNRC
-              };
+              localNRC:
+                context.localNRC ||
+                effectiveEmployee.localNRC ||
+                ""
+            };
 
             setStoredCurrentUser(
               currentUser
             );
 
+            currentLocalContext = {
+              id_local,
+
+              nombre:
+                currentUser.localNombre,
+
+              numeroDocumento:
+                currentUser.localNumeroDocumento,
+
+              ubicacion:
+                currentUser.localUbicacion,
+
+              contribuyente:
+                currentUser.localContribuyente,
+
+              tipoDocumento:
+                currentUser.localTipoDocumento,
+
+              nit:
+                currentUser.localNIT,
+
+              nrc:
+                currentUser.localNRC
+            };
+
+            currentUserContextCache =
+              {
+                ...currentUser
+              };
+
+            currentUserContextUid =
+              user.uid;
+
             await updateEmployeeAccess(
-              employee.id,
+              effectiveEmployee.id ||
+                user.uid,
               {
                 lastLoginAt:
                   firebase.firestore
@@ -2231,19 +2597,8 @@ document.addEventListener(
 
               id_local,
 
-              localNombre,
-
-              localNombreContribuyente:
-                context.localContribuyente,
-
-              localTipoDocumento:
-                context.localTipoDocumento,
-
-              localNIT:
-                context.localNIT,
-
-              localNRC:
-                context.localNRC,
+              localNombre:
+                currentUser.localNombre,
 
               success:
                 true,
@@ -2278,9 +2633,7 @@ document.addEventListener(
               },
               800
             );
-          } catch (
-            error
-          ) {
+          } catch (error) {
             console.error(
               "Error auth:",
               error
@@ -2341,140 +2694,128 @@ document.addEventListener(
 
     bindMobileMenu();
     bindLogoutButtons();
-  }
-);
 
-/*
- * ============================================================
- * AUTH STATE GLOBAL
- * ============================================================
- */
+    /*
+     * ========================================================
+     * AUTH STATE
+     * ========================================================
+     */
 
-auth.onAuthStateChanged(
-  async user => {
-    const currentPage =
-      getCurrentPageFile();
+    auth.onAuthStateChanged(
+      async user => {
+        const currentPage =
+          getCurrentPageFile();
 
-    if (!user) {
-      currentUserContext =
-        null;
+        if (!user) {
+          if (
+            currentPage !==
+              "index.html" &&
+            currentPage !==
+              "login.html"
+          ) {
+            window.location.href =
+              "../index.html";
+          }
 
-      currentUserContextPromise =
-        null;
+          return;
+        }
 
-      currentUserContextUid =
-        "";
-
-      if (
-        currentPage !==
-          "index.html" &&
-        currentPage !==
-          "login.html"
-      ) {
-        window.location.href =
-          "../index.html";
-      }
-
-      return;
-    }
-
-    try {
-      const resolved =
-        await getCurrentUserContext(
-          user
-        );
-
-      if (!resolved) {
-        throw new Error(
-          "No se pudo resolver el contexto del usuario."
-        );
-      }
-
-      const displayName =
-        resolved.name ||
-        "Usuario";
-
-      const roleForNav =
-        getCanonicalRole(
-          resolved.role ||
-          ""
-        );
-
-      setUserGreeting(
-        displayName,
-        roleForNav
-      );
-
-      renderNavigationForRole(
-        roleForNav
-      );
-
-      if (
-        currentPage !==
-          "index.html" &&
-        currentPage !==
-          "login.html"
-      ) {
-        if (
-          !canAccessPage(
-            roleForNav,
-            currentPage
-          )
-        ) {
-          window.location.href =
-            getDefaultPageForRole(
-              roleForNav
+        try {
+          const resolved =
+            await getCurrentUserContext(
+              user
             );
+
+          if (
+            resolved
+          ) {
+            const displayName =
+              resolved.name ||
+              "Usuario";
+
+            const role =
+              getCanonicalRole(
+                resolved.role ||
+                  ""
+              );
+
+            setUserGreeting(
+              displayName,
+              role
+            );
+
+            renderNavigationForRole(
+              role
+            );
+
+            if (
+              currentPage !==
+                "index.html" &&
+              currentPage !==
+                "login.html"
+            ) {
+              if (
+                !canAccessPage(
+                  role,
+                  currentPage
+                )
+              ) {
+                window.location.href =
+                  getDefaultPageForRole(
+                    role
+                  );
+              }
+            }
+          }
+        } catch (err) {
+          console.error(
+            "Error resolviendo contexto del usuario:",
+            err
+          );
+
+          const storedUser =
+            getStoredCurrentUser();
+
+          const displayName =
+            storedUser?.name ||
+            "Usuario";
+
+          const role =
+            getCanonicalRole(
+              storedUser?.role ||
+                ""
+            );
+
+          setUserGreeting(
+            displayName,
+            role
+          );
+
+          renderNavigationForRole(
+            role
+          );
+
+          if (
+            currentPage !==
+              "index.html" &&
+            currentPage !==
+              "login.html"
+          ) {
+            if (
+              !canAccessPage(
+                role,
+                currentPage
+              )
+            ) {
+              window.location.href =
+                getDefaultPageForRole(
+                  role
+                );
+            }
+          }
         }
       }
-    } catch (err) {
-      console.error(
-        "Error resolviendo contexto del usuario:",
-        err
-      );
-
-      const storedUser =
-        getStoredCurrentUser();
-
-      const displayName =
-        storedUser?.name ||
-        user.displayName ||
-        "Usuario";
-
-      const roleForNav =
-        getCanonicalRole(
-          storedUser?.role ||
-          ""
-        );
-
-      setUserGreeting(
-        displayName,
-        roleForNav
-      );
-
-      renderNavigationForRole(
-        roleForNav
-      );
-
-      if (
-        currentPage !==
-          "index.html" &&
-        currentPage !==
-          "login.html"
-      ) {
-        if (
-          !canAccessPage(
-            roleForNav,
-            currentPage
-          )
-        ) {
-          window.location.href =
-            getDefaultPageForRole(
-              roleForNav
-            );
-        }
-      }
-    }
+    );
   }
 );
 
@@ -2533,14 +2874,8 @@ window.currentLocalContext =
   currentLocalContext;
 
 /*
- * NUEVA API CENTRAL
+ * Función central reutilizable por los módulos.
  */
-window.loadEmployeeByUser =
-  loadEmployeeByUser;
-
-window.loadLocalById =
-  loadLocalById;
-
 window.getCurrentUserContext =
   getCurrentUserContext;
 
@@ -2548,24 +2883,10 @@ window.ensureCurrentUserContext =
   ensureCurrentUserContext;
 
 /*
- * Función auxiliar para limpiar cachés si
- * eventualmente se cambia de cuenta sin recargar
- * la aplicación.
+ * Exponer constantes para módulos que las necesiten.
  */
-window.clearUserContextCache =
-  function clearUserContextCache() {
-    currentUserContext =
-      null;
+window.EMPLOYEE_COLLECTION_NAME =
+  EMPLOYEE_COLLECTION_NAME;
 
-    currentUserContextPromise =
-      null;
-
-    currentUserContextUid =
-      "";
-
-    employeeCache.clear();
-    localCache.clear();
-
-    pendingEmployeeLoads.clear();
-    pendingLocalLoads.clear();
-  };
+window.LOCAL_COLLECTION_NAME =
+  LOCAL_COLLECTION_NAME;

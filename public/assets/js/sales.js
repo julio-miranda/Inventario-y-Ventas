@@ -10,6 +10,7 @@
 // - El empleado y el local ya NO se consultan directamente aquí.
 // - sales.js reutiliza window.getCurrentUserContext() definido en app.js.
 // - app.js mantiene caché y deduplicación de consultas.
+// - No se redeclaran funciones globales de app.js.
 //
 // Edición de ventas:
 // - Solo Administrador puede editar.
@@ -106,29 +107,16 @@ const userGreeting =
     ".userGreeting"
   );
 
-let salesDataTable =
-  null;
+let salesDataTable = null;
 
-let PRODUCTS_CACHE =
-  {};
+let PRODUCTS_CACHE = {};
+let MONTHLY_SOLD_UNITS = {};
+let CART = [];
+let SALES_CACHE = {};
 
-let MONTHLY_SOLD_UNITS =
-  {};
-
-let CART =
-  [];
-
-let SALES_CACHE =
-  {};
-
-let isFinalizingSale =
-  false;
-
-let isSavingDraft =
-  false;
-
-let isAddingToCart =
-  false;
+let isFinalizingSale = false;
+let isSavingDraft = false;
+let isAddingToCart = false;
 
 let editingSaleIds =
   new Set();
@@ -136,11 +124,9 @@ let editingSaleIds =
 let deletingSaleIds =
   new Set();
 
-let saleSaveTimers =
-  {};
+let saleSaveTimers = {};
 
-let currentLocalId =
-  "";
+let currentLocalId = "";
 
 let currentLocalInfo = {
   id_local: "",
@@ -153,8 +139,7 @@ let currentLocalInfo = {
   nrc: ""
 };
 
-let currentSalesContext =
-  null;
+let currentSalesContext = null;
 
 /*
  * ============================================================
@@ -170,98 +155,68 @@ const currency =
 
 function isTinyScreen() {
   return (
-    window.innerWidth <=
-    425
+    window.innerWidth <= 425
   );
 }
 
-function numberOrZero(
-  v
-) {
-  const n =
-    Number(v);
+function numberOrZero(v) {
+  const n = Number(v);
 
-  return Number.isFinite(
-    n
-  )
+  return Number.isFinite(n)
     ? n
     : 0;
 }
 
-function formatDateOnly(
-  v
-) {
+function formatDateOnly(v) {
   if (!v) return "-";
 
   const d =
     v.seconds
-      ? new Date(
-          v.seconds * 1000
-        )
+      ? new Date(v.seconds * 1000)
       : new Date(v);
 
-  if (
-    isNaN(
-      d.getTime()
-    )
-  ) {
+  if (isNaN(d.getTime())) {
     return "-";
   }
 
   return d.toLocaleDateString();
 }
 
-function formatTimeOnly(
-  v
-) {
+function formatTimeOnly(v) {
   if (!v) return "-";
 
   const d =
     v.seconds
-      ? new Date(
-          v.seconds * 1000
-        )
+      ? new Date(v.seconds * 1000)
       : new Date(v);
 
-  if (
-    isNaN(
-      d.getTime()
-    )
-  ) {
+  if (isNaN(d.getTime())) {
     return "-";
   }
 
   return d.toLocaleTimeString(
     [],
     {
-      hour:
-        "2-digit",
-
-      minute:
-        "2-digit"
+      hour: "2-digit",
+      minute: "2-digit"
     }
   );
 }
 
-function getLocalDateInputValue(
-  v
-) {
+/*
+ * Firestore Timestamp / Date -> YYYY-MM-DD
+ */
+function getLocalDateInputValue(v) {
   if (!v) {
     return "";
   }
 
   const d =
     v.seconds
-      ? new Date(
-          v.seconds * 1000
-        )
+      ? new Date(v.seconds * 1000)
       : new Date(v);
 
-  if (
-    isNaN(
-      d.getTime()
-    )
-  ) {
+  if (isNaN(d.getTime())) {
     return "";
   }
 
@@ -271,63 +226,49 @@ function getLocalDateInputValue(
   const month =
     String(
       d.getMonth() + 1
-    ).padStart(
-      2,
-      "0"
-    );
+    ).padStart(2, "0");
 
   const day =
     String(
       d.getDate()
-    ).padStart(
-      2,
-      "0"
-    );
+    ).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
 
-function getLocalTimeInputValue(
-  v
-) {
+/*
+ * Firestore Timestamp / Date -> HH:mm
+ */
+function getLocalTimeInputValue(v) {
   if (!v) {
     return "";
   }
 
   const d =
     v.seconds
-      ? new Date(
-          v.seconds * 1000
-        )
+      ? new Date(v.seconds * 1000)
       : new Date(v);
 
-  if (
-    isNaN(
-      d.getTime()
-    )
-  ) {
+  if (isNaN(d.getTime())) {
     return "";
   }
 
   const hours =
     String(
       d.getHours()
-    ).padStart(
-      2,
-      "0"
-    );
+    ).padStart(2, "0");
 
   const minutes =
     String(
       d.getMinutes()
-    ).padStart(
-      2,
-      "0"
-    );
+    ).padStart(2, "0");
 
   return `${hours}:${minutes}`;
 }
 
+/*
+ * Convierte YYYY-MM-DD + HH:mm a Date local.
+ */
 function buildLocalDateTime(
   dateValue,
   timeValue
@@ -342,32 +283,19 @@ function buildLocalDateTime(
       timeValue || ""
     ).trim();
 
-  if (
-    !date ||
-    !time
-  ) {
+  if (!date || !time) {
     return null;
   }
 
   const dateParts =
-    date
-      .split("-")
-      .map(
-        Number
-      );
+    date.split("-").map(Number);
 
   const timeParts =
-    time
-      .split(":")
-      .map(
-        Number
-      );
+    time.split(":").map(Number);
 
   if (
-    dateParts.length !==
-      3 ||
-    timeParts.length <
-      2
+    dateParts.length !== 3 ||
+    timeParts.length < 2
   ) {
     return null;
   }
@@ -376,31 +304,19 @@ function buildLocalDateTime(
     year,
     month,
     day
-  ] =
-    dateParts;
+  ] = dateParts;
 
   const [
     hours,
     minutes
-  ] =
-    timeParts;
+  ] = timeParts;
 
   if (
-    !Number.isInteger(
-      year
-    ) ||
-    !Number.isInteger(
-      month
-    ) ||
-    !Number.isInteger(
-      day
-    ) ||
-    !Number.isInteger(
-      hours
-    ) ||
-    !Number.isInteger(
-      minutes
-    )
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes)
   ) {
     return null;
   }
@@ -430,16 +346,11 @@ function buildLocalDateTime(
     );
 
   if (
-    result.getFullYear() !==
-      year ||
-    result.getMonth() !==
-      month - 1 ||
-    result.getDate() !==
-      day ||
-    result.getHours() !==
-      hours ||
-    result.getMinutes() !==
-      minutes
+    result.getFullYear() !== year ||
+    result.getMonth() !== month - 1 ||
+    result.getDate() !== day ||
+    result.getHours() !== hours ||
+    result.getMinutes() !== minutes
   ) {
     return null;
   }
@@ -447,113 +358,60 @@ function buildLocalDateTime(
   return result;
 }
 
-function getDateTimeMillis(
-  v
-) {
+function getDateTimeMillis(v) {
   if (!v) {
     return null;
   }
 
   const d =
     v.seconds
-      ? new Date(
-          v.seconds * 1000
-        )
+      ? new Date(v.seconds * 1000)
       : new Date(v);
 
   const time =
     d.getTime();
 
-  return Number.isFinite(
-    time
-  )
+  return Number.isFinite(time)
     ? time
     : null;
 }
 
-function escapeHtml(
-  text
-) {
-  return String(
-    text ?? ""
-  )
-    .replaceAll(
-      "&",
-      "&amp;"
-    )
-    .replaceAll(
-      "<",
-      "&lt;"
-    )
-    .replaceAll(
-      ">",
-      "&gt;"
-    )
-    .replaceAll(
-      '"',
-      "&quot;"
-    )
-    .replaceAll(
-      "'",
-      "&#039;"
-    );
+function escapeHtml(text) {
+  return String(text ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-function escapeAttribute(
-  text
-) {
-  return escapeHtml(
-    text
-  );
+function escapeAttribute(text) {
+  return escapeHtml(text);
 }
 
 /*
  * ============================================================
  * CONTEXTO CENTRALIZADO
  * ============================================================
+ *
+ * IMPORTANTE:
+ * No se declara getStoredCurrentUser() aquí.
+ *
+ * app.js ya expone:
+ *
+ *   window.getStoredCurrentUser
+ *
+ * Redefinirla desde sales.js causaría una colisión
+ * global y recursión.
  */
 
-function getStoredUserName() {
-  const context =
-    currentSalesContext;
-
+/*
+ * Obtiene el usuario guardado sin interferir
+ * con la función global de app.js.
+ */
+function getSalesStoredCurrentUser() {
   if (
-    context &&
-    context.name
-  ) {
-    return context.name;
-  }
-
-  if (
-    typeof window
-      .getStoredCurrentUser ===
-    "function"
-  ) {
-    const stored =
-      window.getStoredCurrentUser();
-
-    if (
-      stored &&
-      stored.name
-    ) {
-      return stored.name;
-    }
-  }
-
-  if (
-    auth.currentUser &&
-    auth.currentUser.displayName
-  ) {
-    return auth.currentUser.displayName;
-  }
-
-  return null;
-}
-
-function getStoredCurrentUser() {
-  if (
-    typeof window
-      .getStoredCurrentUser ===
+    typeof window.getStoredCurrentUser ===
     "function"
   ) {
     return (
@@ -573,19 +431,51 @@ function getStoredCurrentUser() {
   }
 }
 
+function getStoredUserName() {
+  const context =
+    currentSalesContext;
+
+  if (
+    context &&
+    context.name
+  ) {
+    return context.name;
+  }
+
+  const stored =
+    getSalesStoredCurrentUser();
+
+  if (
+    stored &&
+    stored.name
+  ) {
+    return stored.name;
+  }
+
+  if (
+    auth.currentUser &&
+    auth.currentUser.displayName
+  ) {
+    return auth.currentUser.displayName;
+  }
+
+  return null;
+}
+
 function isAdministrator() {
   const context =
     currentSalesContext;
 
+  const stored =
+    getSalesStoredCurrentUser();
+
   const role =
     context?.role ||
-    getStoredCurrentUser()
-      ?.role ||
+    stored?.role ||
     "";
 
   const canonical =
-    typeof window
-      .getCanonicalRole ===
+    typeof window.getCanonicalRole ===
     "function"
       ? window.getCanonicalRole(
           role
@@ -600,21 +490,15 @@ function isAdministrator() {
   );
 }
 
-async function resolveSalesContext(
-  user
-) {
+async function resolveSalesContext(user) {
   if (!user) {
     throw new Error(
       "No hay un usuario autenticado."
     );
   }
 
-  /*
-   * Reutilizar el contexto central de app.js.
-   */
   if (
-    typeof window
-      .getCurrentUserContext !==
+    typeof window.getCurrentUserContext !==
     "function"
   ) {
     throw new Error(
@@ -707,7 +591,7 @@ async function resolveSalesContext(
 
 function syncLocalContextFromStorage() {
   const stored =
-    getStoredCurrentUser();
+    getSalesStoredCurrentUser();
 
   if (stored) {
     currentLocalId =
@@ -775,8 +659,7 @@ function syncLocalContextFromStorage() {
 
   if (
     !currentLocalId &&
-    typeof window
-      .getCurrentLocalId ===
+    typeof window.getCurrentLocalId ===
     "function"
   ) {
     currentLocalId =
@@ -792,8 +675,7 @@ function syncLocalContextFromStorage() {
       !currentLocalInfo.numeroDocumento ||
       !currentLocalInfo.ubicacion
     ) &&
-    typeof window
-      .getCurrentLocalInfo ===
+    typeof window.getCurrentLocalInfo ===
     "function"
   ) {
     const info =
@@ -885,8 +767,7 @@ function matchesCurrentLocal(
 function getMovementLocalPayload() {
   return {
     id_local:
-      currentLocalId ||
-      "",
+      currentLocalId || "",
 
     localNombre:
       currentLocalInfo.nombre ||
@@ -924,23 +805,17 @@ function getMovementLocalPayload() {
  * ============================================================
  */
 
-function normalizeUnitsPerBox(
-  prod
-) {
+function normalizeUnitsPerBox(prod) {
   const v =
     numberOrZero(
       prod &&
       prod.unitsPerBox
     );
 
-  return v > 0
-    ? v
-    : 1;
+  return v > 0 ? v : 1;
 }
 
-function isBoxProduct(
-  prod
-) {
+function isBoxProduct(prod) {
   return Boolean(
     prod &&
     (
@@ -951,9 +826,7 @@ function isBoxProduct(
   );
 }
 
-function getDefaultSaleMode(
-  prod
-) {
+function getDefaultSaleMode(prod) {
   return isBoxProduct(
     prod
   )
@@ -961,9 +834,7 @@ function getDefaultSaleMode(
     : "unit";
 }
 
-function getDefaultBoxPrice(
-  prod
-) {
+function getDefaultBoxPrice(prod) {
   const unitsPerBox =
     normalizeUnitsPerBox(
       prod
@@ -988,9 +859,7 @@ function getDefaultBoxPrice(
   );
 }
 
-function getProductStockField(
-  prod
-) {
+function getProductStockField(prod) {
   if (!prod) {
     return 0;
   }
@@ -1046,17 +915,13 @@ function getProductStockField(
   return 0;
 }
 
-function getAvailableUnits(
-  prod
-) {
+function getAvailableUnits(prod) {
   return getProductStockField(
     prod
   );
 }
 
-function getAvailableBoxes(
-  prod
-) {
+function getAvailableBoxes(prod) {
   const unitsPerBox =
     normalizeUnitsPerBox(
       prod
@@ -1083,9 +948,7 @@ function startOfCurrentMonth() {
   const d =
     new Date();
 
-  d.setDate(
-    1
-  );
+  d.setDate(1);
 
   d.setHours(
     0,
@@ -1097,9 +960,7 @@ function startOfCurrentMonth() {
   return d;
 }
 
-function getSaleProductId(
-  p
-) {
+function getSaleProductId(p) {
   if (!p) {
     return "";
   }
@@ -1123,10 +984,7 @@ function getReferenciaLibro() {
         : ""
     ).trim();
 
-  return (
-    referencia ||
-    "venta"
-  );
+  return referencia || "venta";
 }
 
 function clearReferenciaLibro() {
@@ -1193,8 +1051,7 @@ function getSaleUnitsForProduct(
 function aggregateMonthlySales(
   snapshot
 ) {
-  const unitsMap =
-    {};
+  const unitsMap = {};
 
   snapshot.forEach(
     doc => {
@@ -1504,13 +1361,6 @@ function refreshProductSelectText() {
   }
 }
 
-/*
- * Listener de productos.
- *
- * Se filtra en memoria por local porque Firestore
- * ya está entregando la colección necesaria para el
- * módulo.
- */
 function loadProductsRealtime() {
   db.collection(
     "productos"
@@ -1608,7 +1458,6 @@ function loadProductsRealtime() {
         );
 
         refreshProductSelectText();
-
         syncModeFromProduct();
       },
       err => {
@@ -1646,9 +1495,7 @@ function loadMonthlySalesRealtime() {
           );
 
         refreshProductSelectText();
-
         syncModeFromProduct();
-
         renderCart();
       },
       err => {
@@ -1661,7 +1508,6 @@ function loadMonthlySalesRealtime() {
           {};
 
         refreshProductSelectText();
-
         syncModeFromProduct();
       }
     );
@@ -2041,9 +1887,7 @@ function renderCart() {
       '<tr><td colspan="5">El carrito está vacío.</td></tr>';
 
     cartSubtotalEl.textContent =
-      currency(
-        0
-      );
+      currency(0);
 
     btnFinalize.disabled =
       true;
@@ -2703,10 +2547,9 @@ async function finalizeSale() {
     await db.runTransaction(
       async t => {
         /*
-         * Firestore exige que las lecturas precedan
-         * a las escrituras dentro de la transacción.
+         * Todas las lecturas se realizan antes
+         * de las escrituras.
          */
-
         const productSnapshots =
           [];
 
@@ -2781,24 +2624,24 @@ async function finalizeSale() {
                     data.quantity
                   )
                 )
+                ? Math.max(
+                    0,
+                    numberOrZero(
+                      data.quantity
+                    )
+                  )
+                : Number.isFinite(
+                    Number(
+                      data.stockBaseUnits
+                    )
+                  )
                   ? Math.max(
                       0,
                       numberOrZero(
-                        data.quantity
-                      )
-                    )
-                  : Number.isFinite(
-                      Number(
                         data.stockBaseUnits
                       )
                     )
-                    ? Math.max(
-                        0,
-                        numberOrZero(
-                          data.stockBaseUnits
-                        )
-                      )
-                    : 0;
+                  : 0;
 
           const unitsToDiscount =
             numberOrZero(
@@ -2983,8 +2826,7 @@ async function finalizeSale() {
       false;
 
     btnFinalize.disabled =
-      CART.length ===
-        0;
+      CART.length === 0;
 
     btnSaveDraft.disabled =
       false;
@@ -3159,8 +3001,7 @@ async function saveDraft() {
 function getOldSaleUnitsByProduct(
   sale
 ) {
-  const result =
-    {};
+  const result = {};
 
   const products =
     Array.isArray(
@@ -3301,7 +3142,7 @@ function normalizeSaleProducts(
 
 /*
  * ============================================================
- * EDICIÓN
+ * EDICIÓN DIRECTA
  * ============================================================
  */
 
@@ -3337,19 +3178,21 @@ function buildProductsReadonlyHtml(
       ${
         products
           .map(
-            p => `
-              <div>
-                ${escapeHtml(
-                  p.name
-                )}
-                x${p.quantity}
-                ${
-                  p.mode === "box"
-                    ? "(cajas)"
-                    : "(unid.)"
-                }
-              </div>
-            `
+            p =>
+              `
+                <div>
+                  ${escapeHtml(
+                    p.name
+                  )}
+                  x${p.quantity}
+                  ${
+                    p.mode ===
+                    "box"
+                      ? "(cajas)"
+                      : "(unid.)"
+                  }
+                </div>
+              `
           )
           .join("")
       }
@@ -3376,7 +3219,8 @@ function buildReferenceEditorHtml(
         saleId
       )}"
       value="${escapeAttribute(
-        reference || "venta"
+        reference ||
+          "venta"
       )}"
       maxlength="100"
       autocomplete="off"
@@ -3643,6 +3487,13 @@ function bindInlineSaleEvents() {
     );
 }
 
+/*
+ * Guarda SOLO:
+ * - referencia
+ * - createdAt
+ *
+ * No modifica inventario.
+ */
 async function saveInlineSale(
   saleId
 ) {
@@ -3920,6 +3771,12 @@ async function saveInlineSale(
     );
   }
 }
+
+/*
+ * ============================================================
+ * ELIMINACIÓN DE VENTAS
+ * ============================================================
+ */
 
 async function deleteSale(
   saleId
@@ -4329,7 +4186,7 @@ async function deleteSale(
 
 /*
  * ============================================================
- * TABLA
+ * CABECERA DE TABLA
  * ============================================================
  */
 
@@ -4392,6 +4249,12 @@ function ensureSalesTableHeader() {
       )
       .join("");
 }
+
+/*
+ * ============================================================
+ * DATATABLE
+ * ============================================================
+ */
 
 function ensureSalesDataTable() {
   if (salesDataTable) {
@@ -4612,6 +4475,12 @@ function ensureSalesDataTable() {
 
   return salesDataTable;
 }
+
+/*
+ * ============================================================
+ * FALLBACK SIN DATATABLES
+ * ============================================================
+ */
 
 function renderSalesFallback(
   dataSet
@@ -4901,6 +4770,14 @@ function listenSalesRealtime() {
  * ============================================================
  */
 
+/*
+ * IMPORTANTE:
+ *
+ * app.js ya posee un onAuthStateChanged().
+ * Este listener solamente reutiliza el contexto.
+ *
+ * No hace consultas adicionales a empleados/local.
+ */
 auth.onAuthStateChanged(
   async user => {
     if (!user) {
@@ -4908,27 +4785,16 @@ auth.onAuthStateChanged(
     }
 
     try {
-      /*
-       * IMPORTANTE:
-       *
-       * No se consulta empleados ni local aquí.
-       * Se utiliza el contexto central de app.js.
-       */
       await resolveSalesContext(
         user
       );
 
-      if (
-        !currentLocalId
-      ) {
+      if (!currentLocalId) {
         throw new Error(
           "El usuario autenticado no tiene un local asignado."
         );
       }
 
-      /*
-       * Se actualiza el saludo solamente.
-       */
       const role =
         currentSalesContext?.role ||
         "";
@@ -4949,12 +4815,21 @@ auth.onAuthStateChanged(
         err
       );
 
-      Swal.fire(
-        "Error",
-        err.message ||
-          "No se pudo cargar el contexto del usuario.",
-        "error"
-      );
+      /*
+       * Evita mostrar varias alertas si app.js ya
+       * está mostrando el error principal.
+       */
+      if (
+        typeof Swal !==
+        "undefined"
+      ) {
+        Swal.fire(
+          "Error",
+          err.message ||
+            "No se pudo cargar el contexto del usuario.",
+          "error"
+        );
+      }
     }
   }
 );
@@ -4963,9 +4838,8 @@ document.addEventListener(
   "DOMContentLoaded",
   () => {
     /*
-     * El contexto puede venir ya resuelto
-     * por app.js. Solo se sincroniza storage
-     * como fallback visual.
+     * El contexto puede haber sido cargado
+     * previamente por app.js.
      */
     syncLocalContextFromStorage();
 
@@ -5006,9 +4880,7 @@ document.addEventListener(
         "click",
         e => {
           e.preventDefault();
-          clearCart(
-            true
-          );
+          clearCart(true);
         }
       );
     }
@@ -5034,38 +4906,12 @@ document.addEventListener(
     }
 
     /*
-     * Ya no se agrega un segundo listener de logout
-     * específico de ventas si app.js lo maneja.
+     * app.js ya registra logout.
      *
-     * Solo queda como fallback.
+     * No añadimos otro listener para evitar
+     * dobles ejecuciones.
      */
-    if (
-      logoutBtn &&
-      !logoutBtn.dataset.salesLogoutBound
-    ) {
-      logoutBtn.dataset.salesLogoutBound =
-        "1";
 
-      logoutBtn.addEventListener(
-        "click",
-        async () => {
-          try {
-            await auth.signOut();
-          } finally {
-            localStorage.removeItem(
-              "currentUser"
-            );
-
-            window.location.href =
-              "index.html";
-          }
-        }
-      );
-    }
-
-    /*
-     * Cargar los listeners de datos solamente una vez.
-     */
     loadProductsRealtime();
 
     loadMonthlySalesRealtime();
