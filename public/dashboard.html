@@ -7,7 +7,10 @@
 
   <title>Dashboard - Sistema de Gestión</title>
 
-  <link rel="stylesheet" href="assets/css/styles.css">
+  <link
+    rel="stylesheet"
+    href="assets/css/styles.css"
+  >
 
   <link
     rel="stylesheet"
@@ -19,9 +22,10 @@
     rel="stylesheet"
   >
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/chart.js"
+  ></script>
 
-  <!-- SheetJS -->
   <script
     src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
   ></script>
@@ -46,7 +50,10 @@
       <div class="navbar-links">
         <ul>
           <li>
-            <a href="dashboard.html" class="active">
+            <a
+              href="dashboard.html"
+              class="active"
+            >
               Inicio
             </a>
           </li>
@@ -108,7 +115,10 @@
       aria-expanded="false"
       aria-label="Abrir menú"
     >
-      <i class="fas fa-bars"></i>
+      <i
+        class="fas fa-bars"
+        aria-hidden="true"
+      ></i>
     </button>
 
   </nav>
@@ -125,13 +135,19 @@
       type="button"
       aria-label="Cerrar menú"
     >
-      <i class="fas fa-times"></i>
+      <i
+        class="fas fa-times"
+        aria-hidden="true"
+      ></i>
     </button>
 
     <ul class="menu-links">
 
       <li>
-        <a href="dashboard.html" class="active">
+        <a
+          href="dashboard.html"
+          class="active"
+        >
           Inicio
         </a>
       </li>
@@ -208,8 +224,8 @@
       <div class="hero-note">
 
         <p class="hero-subtitle">
-          La vista inicia en el mes actual y puedes cambiar
-          el rango de fechas para recalcular todo.
+          La vista inicia en el mes actual y utiliza los datos
+          ya cargados en memoria para recalcular el dashboard.
         </p>
 
       </div>
@@ -228,8 +244,8 @@
 
           <p>
             El filtro aplica a ventas, gastos,
-            movimientos de inventario, tarjetas,
-            gráfico y exportaciones.
+            movimientos, tarjetas, gráfico y exportaciones.
+            Cambiar el rango no realiza nuevas lecturas.
           </p>
 
         </div>
@@ -456,8 +472,8 @@
           </h2>
 
           <p>
-            Se actualiza según el rango
-            de fechas seleccionado.
+            Se filtra localmente según el rango
+            seleccionado.
           </p>
 
         </div>
@@ -489,13 +505,11 @@
           <thead>
 
             <tr>
-
               <th>Productos</th>
               <th>Total</th>
               <th>Usuario</th>
               <th>Fecha</th>
               <th>Hora</th>
-
             </tr>
 
           </thead>
@@ -528,7 +542,7 @@
 
           <p>
             Consulta gastos del período
-            y exporta el resultado en CSV.
+            sin nuevas lecturas.
           </p>
 
         </div>
@@ -560,7 +574,6 @@
           <thead>
 
             <tr>
-
               <th>Concepto</th>
               <th>Categoría</th>
               <th>Monto</th>
@@ -569,7 +582,6 @@
               <th>Fecha</th>
               <th>Hora</th>
               <th>Observación</th>
-
             </tr>
 
           </thead>
@@ -634,7 +646,6 @@
           <thead>
 
             <tr>
-
               <th>Fecha</th>
               <th>Hora</th>
               <th>Producto</th>
@@ -648,7 +659,6 @@
               <th>Saldo anterior</th>
               <th>Saldo actual</th>
               <th>Detalle</th>
-
             </tr>
 
           </thead>
@@ -671,15 +681,12 @@
 
   </main>
 
-  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
-  <!-- Dependencias -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-  <!-- Aplicación -->
   <script src="assets/js/app.js"></script>
   <script src="assets/js/chart-utils.js"></script>
   <script src="assets/js/dashboard.js"></script>

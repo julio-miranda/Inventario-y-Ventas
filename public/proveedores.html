@@ -3,9 +3,12 @@
 
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    />
 
-    <title>Inventario - Sistema de Gestión</title>
+    <title>Proveedores - Sistema de Gestión</title>
 
     <link
         rel="stylesheet"
@@ -22,13 +25,9 @@
         href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css"
     >
 
-    <script
-        src="https://code.jquery.com/jquery-3.7.1.min.js"
-    ></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
-    <script
-        src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"
-    ></script>
+    <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 
     <link
         href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
@@ -60,7 +59,6 @@
                 role="navigation"
                 aria-label="Links principales"
             >
-
                 <ul>
                     <li>
                         <a href="dashboard.html">
@@ -69,11 +67,20 @@
                     </li>
 
                     <li>
-                        <a
-                            href="inventory.html"
-                            class="active"
-                        >
+                        <a href="inventory.html">
                             Inventario
+                        </a>
+                    </li>
+
+                    <li>
+                        <a href="proveedores.html">
+                            Proveedores
+                        </a>
+                    </li>
+
+                    <li>
+                        <a href="sales.html">
+                            Ventas
                         </a>
                     </li>
 
@@ -89,7 +96,6 @@
                         </a>
                     </li>
                 </ul>
-
             </div>
 
             <div
@@ -110,7 +116,6 @@
                 </button>
 
             </div>
-
         </div>
 
         <button
@@ -149,7 +154,6 @@
         </button>
 
         <ul class="menu-links">
-
             <li>
                 <a href="dashboard.html">
                     Inicio
@@ -157,11 +161,20 @@
             </li>
 
             <li>
-                <a
-                    href="inventory.html"
-                    class="active"
-                >
+                <a href="inventory.html">
                     Inventario
+                </a>
+            </li>
+
+            <li>
+                <a href="proveedores.html">
+                    Proveedores
+                </a>
+            </li>
+
+            <li>
+                <a href="sales.html">
+                    Ventas
                 </a>
             </li>
 
@@ -176,7 +189,6 @@
                     Empleados
                 </a>
             </li>
-
         </ul>
 
         <div class="menu-user">
@@ -193,46 +205,21 @@
             </button>
 
         </div>
-
     </div>
 
     <main
         class="dashboard"
         role="main"
-        aria-live="polite"
     >
 
-        <section
-            class="stats-container"
-            aria-hidden="false"
-        >
+        <section class="stats-container">
 
             <div class="stat-card">
                 <h3>
-                    Productos registrados
+                    Proveedores registrados
                 </h3>
 
-                <p id="totalProductsCard">
-                    —
-                </p>
-            </div>
-
-            <div class="stat-card">
-                <h3>
-                    Valor total inventario
-                </h3>
-
-                <p id="totalValueCard">
-                    —
-                </p>
-            </div>
-
-            <div class="stat-card">
-                <h3>
-                    Productos con stock bajo
-                </h3>
-
-                <p id="lowStockCard">
+                <p id="totalProvidersCard">
                     —
                 </p>
             </div>
@@ -242,22 +229,23 @@
         <div class="inventory-toolbar">
 
             <input
-                id="salesSearch"
+                id="providersSearch"
                 type="search"
                 class="inventory-search"
-                placeholder="Buscar producto, proveedor, stock, precio o estado..."
-                aria-label="Buscar productos"
+                placeholder="Buscar proveedor..."
+                aria-label="Buscar proveedores"
             />
 
             <div class="inventory-actions">
 
                 <button
-                    id="btnAdd"
+                    id="btnAddProvider"
                     class="btn-primary"
                     type="button"
                 >
                     <i class="fas fa-plus"></i>
-                    Añadir productos
+
+                    Nuevo proveedor
                 </button>
 
             </div>
@@ -265,18 +253,9 @@
         </div>
 
         <p class="inventory-hint">
-            Puedes agregar varios productos nuevos o existentes
-            en una sola operación. Cada producto puede tener
-            cajas, cajas bono, unidades y unidades bono.
-        </p>
-
-        <p
-            class="small"
-            style="margin:0 0 14px;"
-        >
-            El stock disponible se calcula usando el stock actual
-            guardado en el producto. Las ventas del mes se utilizan
-            para métricas, sugerencias y alertas.
+            Administra los proveedores asociados al local actual.
+            Los proveedores registrados aquí estarán disponibles
+            en los formularios de productos.
         </p>
 
         <section
@@ -285,34 +264,42 @@
         >
 
             <table
-                id="inventoryTable"
+                id="providersTable"
                 class="table"
-                aria-describedby="inventoryTableDesc"
             >
 
-                <caption
-                    id="inventoryTableDesc"
-                    style="display:none;"
-                >
-                    Tabla de productos disponibles
-                </caption>
-
                 <thead>
-
                     <tr>
-                        <th>Nombre</th>
-                        <th>Proveedor</th>
-                        <th>Stock</th>
-                        <th>Precio</th>
-                        <th>Vendido Mes (Unid.)</th>
-                        <th>Vendido Mes (Cajas)</th>
-                        <th>Costo por unidad</th>
-                        <th>Sugerido Compra (Unid.)</th>
-                        <th>Sugerido Compra (Cajas)</th>
-                        <th>Estado</th>
-                        <th>Acciones</th>
-                    </tr>
 
+                        <th>
+                            Nombre
+                        </th>
+
+                        <th>
+                            Razón Social / Denominación
+                        </th>
+
+                        <th>
+                            Nacionalidad
+                        </th>
+
+                        <th>
+                            NIT
+                        </th>
+
+                        <th>
+                            NRC
+                        </th>
+
+                        <th>
+                            Ubicación
+                        </th>
+
+                        <th>
+                            Acciones
+                        </th>
+
+                    </tr>
                 </thead>
 
                 <tbody></tbody>
@@ -321,17 +308,12 @@
 
         </section>
 
-        <section
-            id="lowStockPanel"
-            class="low-stock-panel"
-            aria-live="polite"
-            style="display:none;"
-        ></section>
-
     </main>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -339,8 +321,6 @@
     <script src="assets/js/app.js"></script>
 
     <script src="assets/js/proveedores.js"></script>
-
-    <script src="assets/js/inventory.js"></script>
 
 </body>
 

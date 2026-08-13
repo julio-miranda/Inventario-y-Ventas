@@ -1,5 +1,3 @@
-// assets/js/app.js
-
 if (typeof firebase === "undefined") {
   console.error(
     "Firebase no se ha cargado correctamente."
@@ -70,6 +68,9 @@ const EMPLOYEE_COLLECTION_NAME =
 const LOCAL_COLLECTION_NAME =
   "local";
 
+const SUPPLIER_COLLECTION_NAME =
+  "proveedores";
+
 const LOGIN_ATTEMPTS_COLLECTION_NAME =
   "login_attempts";
 
@@ -77,9 +78,6 @@ const LOGIN_ATTEMPTS_COLLECTION_NAME =
  * ============================================================
  * CACHE DE CONTEXTO
  * ============================================================
- *
- * Evita que varios módulos que cargan al mismo tiempo
- * hagan nuevamente las mismas consultas.
  */
 
 let currentUserContextCache =
@@ -142,22 +140,22 @@ const ROLE_NAV = {
       label: "Inicio",
       href: "dashboard.html"
     },
-
     {
       label: "Inventario",
       href: "inventory.html"
     },
-
+    {
+      label: "Proveedores",
+      href: "proveedores.html"
+    },
     {
       label: "Ventas",
       href: "sales.html"
     },
-
     {
       label: "Gastos",
       href: "gastos.html"
     },
-
     {
       label: "Empleados",
       href: "employees.html"
@@ -169,12 +167,10 @@ const ROLE_NAV = {
       label: "Inicio",
       href: "dashboard.html"
     },
-
     {
       label: "Ventas",
       href: "sales.html"
     },
-
     {
       label: "Gastos",
       href: "gastos.html"
@@ -186,17 +182,14 @@ const ROLE_NAV = {
       label: "Inicio",
       href: "dashboard.html"
     },
-
     {
       label: "Inventario",
       href: "inventory.html"
     },
-
     {
       label: "Ventas",
       href: "sales.html"
     },
-
     {
       label: "Gastos",
       href: "gastos.html"
@@ -208,10 +201,13 @@ const ROLE_NAV = {
       label: "Inicio",
       href: "dashboard.html"
     },
-
     {
       label: "Inventario",
       href: "inventory.html"
+    },
+    {
+      label: "Proveedores",
+      href: "proveedores.html"
     }
   ],
 
@@ -244,6 +240,7 @@ const ROLE_ALLOWED_PAGES = {
   Administrador: [
     "dashboard.html",
     "inventory.html",
+    "proveedores.html",
     "sales.html",
     "gastos.html",
     "employees.html"
@@ -264,7 +261,8 @@ const ROLE_ALLOWED_PAGES = {
 
   Bodega: [
     "dashboard.html",
-    "inventory.html"
+    "inventory.html",
+    "proveedores.html"
   ],
 
   Desarrollador: [
@@ -488,7 +486,6 @@ function bindLogoutButtons() {
       document.getElementById(
         "logoutButton"
       ),
-
       document.getElementById(
         "logoutButtonMobile"
       )
@@ -535,6 +532,9 @@ function bindLogoutButtons() {
               nit: "",
               nrc: ""
             };
+
+            window.currentLocalContext =
+              currentLocalContext;
 
             window.location.href =
               "../index.html";
@@ -642,7 +642,7 @@ function bindMobileMenu() {
 
 /*
  * ============================================================
- * STORAGE LOCAL
+ * STORAGE
  * ============================================================
  */
 
@@ -692,7 +692,7 @@ function patchStoredCurrentUser(
 
 /*
  * ============================================================
- * NAVEGACIÓN POR ROL
+ * REDIRECCIÓN
  * ============================================================
  */
 
@@ -920,10 +920,6 @@ async function loadLocalById(
     return null;
   }
 
-  /*
-   * Primero se intenta por document ID.
-   * En el diseño actual id_local coincide con doc.id.
-   */
   try {
     const direct =
       await db
@@ -946,16 +942,15 @@ async function loadLocalById(
           {})
       };
     }
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.warn(
       "No se pudo cargar el local por ID:",
       error
     );
   }
 
-  /*
-   * Compatibilidad con datos antiguos.
-   */
   try {
     const byField =
       await db
@@ -986,7 +981,9 @@ async function loadLocalById(
           {})
       };
     }
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.warn(
       "No se pudo cargar el local por campo id_local:",
       error
@@ -1003,10 +1000,6 @@ async function loadEmployeeByUser(
     return null;
   }
 
-  /*
-   * El diseño principal utiliza UID como ID
-   * del documento empleado.
-   */
   try {
     const direct =
       await db
@@ -1029,16 +1022,15 @@ async function loadEmployeeByUser(
           {})
       };
     }
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.warn(
       "No se pudo cargar el empleado por UID:",
       error
     );
   }
 
-  /*
-   * Compatibilidad con perfiles antiguos.
-   */
   if (
     user.email
   ) {
@@ -1072,7 +1064,9 @@ async function loadEmployeeByUser(
             {})
         };
       }
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.warn(
         "No se pudo cargar el empleado por correo:",
         error
@@ -1085,19 +1079,8 @@ async function loadEmployeeByUser(
 
 /*
  * ============================================================
- * CONTEXTO UNIFICADO DEL USUARIO
+ * CONTEXTO UNIFICADO
  * ============================================================
- *
- * Esta es la función que deben reutilizar:
- *
- * employees.js
- * sales.js
- * dashboard.js
- * inventory.js
- * locales.js
- *
- * No deben volver a consultar empleados/{uid}
- * y local/{id_local} si solo necesitan el contexto.
  */
 
 async function ensureCurrentUserContext(
@@ -1112,10 +1095,16 @@ async function ensureCurrentUserContext(
     options.forceRefresh ===
     true;
 
-  /*
-   * Si ya está resuelto para este UID,
-   * reutilizarlo.
-   */
+  if (
+    currentUserContextPromise &&
+    currentUserContextUid ===
+      user.uid
+  ) {
+    return (
+      currentUserContextPromise
+    );
+  }
+
   if (
     !forceRefresh &&
     currentUserContextCache &&
@@ -1124,21 +1113,6 @@ async function ensureCurrentUserContext(
   ) {
     return (
       currentUserContextCache
-    );
-  }
-
-  /*
-   * Si una consulta idéntica ya está
-   * en curso, esperar esa misma promesa.
-   */
-  if (
-    !forceRefresh &&
-    currentUserContextPromise &&
-    currentUserContextUid ===
-      user.uid
-  ) {
-    return (
-      currentUserContextPromise
     );
   }
 
@@ -1153,15 +1127,6 @@ async function ensureCurrentUserContext(
       let employee =
         null;
 
-      /*
-       * Si el storage coincide con el usuario,
-       * se utiliza como primera fuente para reducir
-       * consultas durante la navegación.
-       *
-       * IMPORTANTE:
-       * para el primer acceso o cuando faltan datos,
-       * se consulta Firestore.
-       */
       if (
         stored &&
         stored.uid ===
@@ -1189,6 +1154,11 @@ async function ensureCurrentUserContext(
             "",
 
           position:
+            stored.position ||
+            stored.role ||
+            "",
+
+          role:
             stored.role ||
             "",
 
@@ -1212,7 +1182,6 @@ async function ensureCurrentUserContext(
 
           localContribuyente:
             stored.localContribuyente ||
-            stored.localNombreContribuyente ||
             "",
 
           localTipoDocumento:
@@ -1227,20 +1196,26 @@ async function ensureCurrentUserContext(
             stored.localNRC ||
             "",
 
+          localBlocked:
+            stored.localBlocked ===
+            true,
+
           active:
             stored.active !==
             false,
 
           blocked:
             stored.blocked ===
-            true
+            true,
+
+          failedLoginAttempts:
+            Number(
+              stored.failedLoginAttempts ||
+                0
+            ) || 0
         };
       }
 
-      /*
-       * Cuando el storage no tiene el contexto suficiente,
-       * hacer una sola resolución en Firestore.
-       */
       if (
         !employee ||
         !employee.id_local ||
@@ -1320,7 +1295,6 @@ async function ensureCurrentUserContext(
         contribuyente:
           employee.localNombreContribuyente ||
           employee.localContribuyente ||
-          stored?.localNombreContribuyente ||
           stored?.localContribuyente ||
           "",
 
@@ -1337,16 +1311,17 @@ async function ensureCurrentUserContext(
         nrc:
           employee.localNRC ||
           stored?.localNRC ||
-          ""
+          "",
+
+        blocked:
+          employee.localBlocked ===
+            true ||
+          employee.localBloqueado ===
+            true ||
+          stored?.localBlocked ===
+            true
       };
 
-      /*
-       * Solo consultar el local cuando:
-       * 1. existe id_local
-       * 2. los datos principales faltan.
-       *
-       * Esto evita consultar local/{id} cada vez.
-       */
       const needsLocalRead =
         Boolean(
           id_local
@@ -1421,7 +1396,14 @@ async function ensureCurrentUserContext(
               localDoc.nrc ||
               localDoc.NRC ||
               localInfo.nrc ||
-              ""
+              "",
+
+            blocked:
+              localDoc.blocked ===
+                true ||
+              localDoc.bloqueado ===
+                true ||
+              localInfo.blocked
           };
         }
       }
@@ -1442,6 +1424,29 @@ async function ensureCurrentUserContext(
         phone,
 
         role,
+
+        position:
+          employee.position ||
+          employee.role ||
+          role,
+
+        active:
+          employee.active !==
+          false,
+
+        blocked:
+          employee.blocked ===
+          true,
+
+        localBlocked:
+          localInfo.blocked ===
+          true,
+
+        failedLoginAttempts:
+          Number(
+            employee.failedLoginAttempts ||
+              0
+          ) || 0,
 
         id_local,
 
@@ -1514,13 +1519,12 @@ async function ensureCurrentUserContext(
           context.localNRC
       };
 
+      window.currentLocalContext =
+        currentLocalContext;
+
       currentUserContextCache =
         context;
 
-      /*
-       * Solo guardar contexto. No se vuelve a escribir
-       * Firestore aquí.
-       */
       setStoredCurrentUser({
         uid:
           context.uid,
@@ -1539,6 +1543,21 @@ async function ensureCurrentUserContext(
 
         role:
           context.role,
+
+        position:
+          context.position,
+
+        active:
+          context.active,
+
+        blocked:
+          context.blocked,
+
+        localBlocked:
+          context.localBlocked,
+
+        failedLoginAttempts:
+          context.failedLoginAttempts,
 
         id_local:
           context.id_local,
@@ -1571,11 +1590,6 @@ async function ensureCurrentUserContext(
   try {
     return await currentUserContextPromise;
   } finally {
-    /*
-     * La caché queda disponible.
-     * Solo se libera la referencia a la promesa
-     * para que futuras llamadas utilicen la caché.
-     */
     currentUserContextPromise =
       null;
   }
@@ -1790,7 +1804,9 @@ async function recordLoginAttempt(
             .FieldValue
             .serverTimestamp()
       });
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       "No se pudo registrar el intento de acceso:",
       error
@@ -1822,7 +1838,9 @@ async function updateEmployeeAccess(
             .FieldValue
             .serverTimestamp()
       });
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       "No se pudo actualizar el acceso del empleado:",
       error
@@ -1832,7 +1850,7 @@ async function updateEmployeeAccess(
 
 /*
  * ============================================================
- * PASSWORD RESET / LOGIN UI
+ * LOGIN / UI
  * ============================================================
  */
 
@@ -2097,7 +2115,9 @@ document.addEventListener(
           confirmButtonColor:
             "#4CAF50"
         });
-      } catch (error) {
+      } catch (
+        error
+      ) {
         console.error(
           "Error enviando recuperación:",
           error
@@ -2117,13 +2137,6 @@ document.addEventListener(
           case "auth/user-not-found":
             mensaje =
               "No existe una cuenta registrada con ese correo.";
-            break;
-
-          case "auth/missing-android-pkg-name":
-          case "auth/missing-continue-uri":
-          case "auth/unauthorized-continue-uri":
-            mensaje =
-              "Revisa la configuración de dominios autorizados en Firebase.";
             break;
 
           default:
@@ -2147,12 +2160,6 @@ document.addEventListener(
         });
       }
     }
-
-    /*
-     * ========================================================
-     * LOGIN
-     * ========================================================
-     */
 
     if (
       loginForm
@@ -2206,9 +2213,6 @@ document.addEventListener(
             const user =
               userCredential.user;
 
-            /*
-             * Una única resolución del contexto.
-             */
             const context =
               await ensureCurrentUserContext(
                 user,
@@ -2218,32 +2222,9 @@ document.addEventListener(
                 }
               );
 
-            const employee =
-              await loadEmployeeByUser(
-                user
-              );
-
-            /*
-             * Si el contexto existe pero el perfil
-             * no pudo resolverse, se considera error.
-             */
             if (
-              !employee &&
               !context
             ) {
-              await recordLoginAttempt({
-                email,
-
-                uid:
-                  user.uid,
-
-                success:
-                  false,
-
-                reason:
-                  "perfil_no_encontrado"
-              });
-
               setLoading(
                 false
               );
@@ -2255,93 +2236,28 @@ document.addEventListener(
               return;
             }
 
-            const effectiveEmployee =
-              employee || {
-                id:
-                  context.employeeId,
-
-                uid:
-                  context.uid,
-
-                name:
-                  context.name,
-
-                email:
-                  context.email,
-
-                phone:
-                  context.phone,
-
-                position:
-                  context.role,
-
-                id_local:
-                  context.id_local,
-
-                localNombre:
-                  context.localNombre,
-
-                localNumeroDocumento:
-                  context.localNumeroDocumento,
-
-                localUbicacion:
-                  context.localUbicacion,
-
-                localNombreContribuyente:
-                  context.localContribuyente,
-
-                localTipoDocumento:
-                  context.localTipoDocumento,
-
-                localNIT:
-                  context.localNIT,
-
-                localNRC:
-                  context.localNRC,
-
-                active:
-                  context.active !==
-                  false,
-
-                blocked:
-                  context.blocked ===
-                  true
-              };
-
             const role =
               getCanonicalRole(
-                effectiveEmployee.position ||
-                  effectiveEmployee.role ||
+                context.role ||
+                  context.position ||
                   "Vendedor"
               );
 
             const id_local =
               String(
-                effectiveEmployee.id_local ||
-                  effectiveEmployee.idLocal ||
-                  effectiveEmployee.localId ||
-                  context.id_local ||
+                context.id_local ||
                   ""
               ).trim();
 
-            /*
-             * El local ya está en el contexto.
-             * No se consulta nuevamente aquí.
-             */
-            const localNombre =
-              context.localNombre ||
-              effectiveEmployee.localNombre ||
-              "";
-
             if (
-              effectiveEmployee.blocked ===
+              context.blocked ===
                 true ||
-              effectiveEmployee.active ===
+              context.active ===
                 false
             ) {
               await recordLoginAttempt({
                 email:
-                  effectiveEmployee.email ||
+                  context.email ||
                   user.email ||
                   email,
 
@@ -2350,7 +2266,8 @@ document.addEventListener(
 
                 id_local,
 
-                localNombre,
+                localNombre:
+                  context.localNombre,
 
                 success:
                   false,
@@ -2360,13 +2277,13 @@ document.addEventListener(
               });
 
               await updateEmployeeAccess(
-                effectiveEmployee.id ||
+                context.employeeId ||
                   user.uid,
                 {
                   failedLoginAttempts:
                     (
                       Number(
-                        effectiveEmployee.failedLoginAttempts
+                        context.failedLoginAttempts
                       ) ||
                       0
                     ) +
@@ -2405,22 +2322,13 @@ document.addEventListener(
               return;
             }
 
-            /*
-             * El estado del local ya está disponible
-             * en el contexto.
-             */
-            const localBlocked =
-              Boolean(
-                effectiveEmployee.localBlocked
-              ) ||
-              false;
-
             if (
-              localBlocked
+              context.localBlocked ===
+              true
             ) {
               await recordLoginAttempt({
                 email:
-                  effectiveEmployee.email ||
+                  context.email ||
                   user.email ||
                   email,
 
@@ -2429,7 +2337,8 @@ document.addEventListener(
 
                 id_local,
 
-                localNombre,
+                localNombre:
+                  context.localNombre,
 
                 success:
                   false,
@@ -2469,62 +2378,68 @@ document.addEventListener(
                 user.uid,
 
               employeeId:
-                effectiveEmployee.id ||
+                context.employeeId ||
                 user.uid,
 
               name:
-                effectiveEmployee.name ||
                 context.name ||
                 "",
 
               email:
-                effectiveEmployee.email ||
+                context.email ||
                 user.email ||
                 "",
 
               phone:
-                effectiveEmployee.phone ||
                 context.phone ||
                 "",
 
               role,
 
+              position:
+                role,
+
+              active:
+                context.active !==
+                false,
+
+              blocked:
+                false,
+
+              localBlocked:
+                false,
+
+              failedLoginAttempts:
+                0,
+
               id_local,
 
               localNombre:
                 context.localNombre ||
-                effectiveEmployee.localNombre ||
                 "",
 
               localNumeroDocumento:
                 context.localNumeroDocumento ||
-                effectiveEmployee.localNumeroDocumento ||
                 "",
 
               localUbicacion:
                 context.localUbicacion ||
-                effectiveEmployee.localUbicacion ||
                 "",
 
               localContribuyente:
                 context.localContribuyente ||
-                effectiveEmployee.localNombreContribuyente ||
-                effectiveEmployee.localContribuyente ||
                 "",
 
               localTipoDocumento:
                 context.localTipoDocumento ||
-                effectiveEmployee.localTipoDocumento ||
                 "",
 
               localNIT:
                 context.localNIT ||
-                effectiveEmployee.localNIT ||
                 "",
 
               localNRC:
                 context.localNRC ||
-                effectiveEmployee.localNRC ||
                 ""
             };
 
@@ -2557,8 +2472,12 @@ document.addEventListener(
                 currentUser.localNRC
             };
 
+            window.currentLocalContext =
+              currentLocalContext;
+
             currentUserContextCache =
               {
+                ...context,
                 ...currentUser
               };
 
@@ -2566,8 +2485,7 @@ document.addEventListener(
               user.uid;
 
             await updateEmployeeAccess(
-              effectiveEmployee.id ||
-                user.uid,
+              currentUser.employeeId,
               {
                 lastLoginAt:
                   firebase.firestore
@@ -2633,7 +2551,9 @@ document.addEventListener(
               },
               800
             );
-          } catch (error) {
+          } catch (
+            error
+          ) {
             console.error(
               "Error auth:",
               error
@@ -2695,12 +2615,6 @@ document.addEventListener(
     bindMobileMenu();
     bindLogoutButtons();
 
-    /*
-     * ========================================================
-     * AUTH STATE
-     * ========================================================
-     */
-
     auth.onAuthStateChanged(
       async user => {
         const currentPage =
@@ -2727,62 +2641,19 @@ document.addEventListener(
             );
 
           if (
-            resolved
+            !resolved
           ) {
-            const displayName =
-              resolved.name ||
-              "Usuario";
-
-            const role =
-              getCanonicalRole(
-                resolved.role ||
-                  ""
-              );
-
-            setUserGreeting(
-              displayName,
-              role
-            );
-
-            renderNavigationForRole(
-              role
-            );
-
-            if (
-              currentPage !==
-                "index.html" &&
-              currentPage !==
-                "login.html"
-            ) {
-              if (
-                !canAccessPage(
-                  role,
-                  currentPage
-                )
-              ) {
-                window.location.href =
-                  getDefaultPageForRole(
-                    role
-                  );
-              }
-            }
+            return;
           }
-        } catch (err) {
-          console.error(
-            "Error resolviendo contexto del usuario:",
-            err
-          );
-
-          const storedUser =
-            getStoredCurrentUser();
 
           const displayName =
-            storedUser?.name ||
+            resolved.name ||
             "Usuario";
 
           const role =
             getCanonicalRole(
-              storedUser?.role ||
+              resolved.role ||
+                resolved.position ||
                 ""
             );
 
@@ -2813,6 +2684,35 @@ document.addEventListener(
                 );
             }
           }
+        } catch (
+          err
+        ) {
+          console.error(
+            "Error resolviendo contexto del usuario:",
+            err
+          );
+
+          const storedUser =
+            getStoredCurrentUser();
+
+          const displayName =
+            storedUser?.name ||
+            "Usuario";
+
+          const role =
+            getCanonicalRole(
+              storedUser?.role ||
+                ""
+            );
+
+          setUserGreeting(
+            displayName,
+            role
+          );
+
+          renderNavigationForRole(
+            role
+          );
         }
       }
     );
@@ -2873,20 +2773,17 @@ window.patchStoredCurrentUser =
 window.currentLocalContext =
   currentLocalContext;
 
-/*
- * Función central reutilizable por los módulos.
- */
 window.getCurrentUserContext =
   getCurrentUserContext;
 
 window.ensureCurrentUserContext =
   ensureCurrentUserContext;
 
-/*
- * Exponer constantes para módulos que las necesiten.
- */
 window.EMPLOYEE_COLLECTION_NAME =
   EMPLOYEE_COLLECTION_NAME;
 
 window.LOCAL_COLLECTION_NAME =
   LOCAL_COLLECTION_NAME;
+
+window.SUPPLIER_COLLECTION_NAME =
+  SUPPLIER_COLLECTION_NAME;

@@ -324,7 +324,6 @@
             <div class="section-header">
 
                 <div>
-
                     <h2>
                         Carrito
                     </h2>
@@ -334,7 +333,81 @@
                         en más de una columna para ordenar por
                         varios campos.
                     </p>
+                </div>
 
+            </div>
+
+            <!-- =====================================================
+                 FECHA Y HORA DE LA VENTA
+                 ===================================================== -->
+
+            <div
+                class="sale-datetime-panel"
+                style="
+                    display:flex;
+                    gap:12px;
+                    align-items:flex-end;
+                    flex-wrap:wrap;
+                    margin:0 0 14px 0;
+                    padding:12px;
+                    border:1px solid #ddd;
+                    border-radius:8px;
+                    background:#fafafa;
+                "
+            >
+
+                <div
+                    style="
+                        min-width:180px;
+                        flex:0 0 180px;
+                    "
+                >
+                    <label
+                        for="cartSaleDate"
+                    >
+                        Fecha de la venta
+                    </label>
+
+                    <input
+                        type="date"
+                        id="cartSaleDate"
+                        autocomplete="off"
+                        style="width:100%;"
+                    />
+                </div>
+
+                <div
+                    style="
+                        min-width:150px;
+                        flex:0 0 150px;
+                    "
+                >
+                    <label
+                        for="cartSaleTime"
+                    >
+                        Hora de la venta
+                    </label>
+
+                    <input
+                        type="time"
+                        id="cartSaleTime"
+                        autocomplete="off"
+                        style="width:100%;"
+                    />
+                </div>
+
+                <div
+                    style="
+                        flex:1;
+                        min-width:240px;
+                        align-self:center;
+                    "
+                >
+                    <small>
+                        La fecha y hora se cargan automáticamente
+                        con la hora local actual y pueden modificarse
+                        antes de finalizar la venta.
+                    </small>
                 </div>
 
             </div>

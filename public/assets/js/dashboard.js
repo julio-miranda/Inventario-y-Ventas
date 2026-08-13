@@ -2,62 +2,45 @@
 //
 // DASHBOARD
 //
-// Arquitectura optimizada:
+// Arquitectura:
 //
-// 1. app.js resuelve:
-//    - usuario autenticado
-//    - empleado
-//    - rol
-//    - local
-//    - datos fiscales
+// - No usa onSnapshot() de Firestore.
+// - No usa listeners realtime sobre colecciones.
+// - El contexto de usuario/local proviene exclusivamente de app.js.
+// - La información del dashboard se carga una sola vez por página.
+// - Se realizan cuatro lecturas iniciales:
+//      1. ventas
+//      2. gastos
+//      3. stock_movimientos
+//      4. productos
+// - Las consultas se filtran por id_local.
+// - No se utiliza orderBy().
+// - El rango, la búsqueda y las exportaciones trabajan sobre
+//   los datos que ya están en memoria.
+// - No se vuelve a consultar Firestore al cambiar el rango.
+// - El cierre de caja reutiliza rawSalesDocs.
+// - Crear o modificar datos desde otros módulos no actualiza
+//   automáticamente esta página porque no hay listeners realtime.
+//   Para obtener datos nuevos se debe recargar el dashboard.
 //
-// 2. dashboard.js reutiliza:
-//    window.getCurrentUserContext()
+// MOVIMIENTOS EXCEL:
 //
-// 3. dashboard.js NO consulta:
-//    - empleados
-//    - local
+// - Se agrega correlativo No.
+// - Se agrega Proveedor.
+// - Se elimina Hora del Excel.
+// - Se elimina Detalle del Excel.
+// - Los encabezados del Excel se simplifican.
+// - Los movimientos exportados se ordenan por fecha ascendente.
+// - No se realiza una lectura adicional de "proveedores".
+// - El proveedor se obtiene del propio documento de movimiento
+//   y de estructuras anidadas compatibles.
 //
-// 4. Los datos del dashboard se consultan una sola vez
-//    por carga de la página:
-//
-//      ventas
-//      gastos
-//      stock_movimientos
-//      productos
-//
-// 5. Cambiar rango:
-//    NO vuelve a consultar Firestore.
-//
-// 6. Buscar:
-//    NO vuelve a consultar Firestore.
-//
-// 7. Exportar:
-//    utiliza las cachés existentes.
-//
-// 8. Cierre de caja:
-//    utiliza rawSalesDocs, sin volver a consultar ventas.
-//
-// MOVIMIENTOS:
-//
-// - Costo unitario.
-// - Valor inventario = costo unitario × saldo actual.
-// - Referencia de libro.
-// - Sin columna Usuario.
-//
-// EXCEL:
-//
-// - SheetJS.
-// - Datos fiscales.
-// - Período independiente.
-// - Sin Usuario.
-// - Área de impresión.
-// - Orientación horizontal.
-//
+// ============================================================
 
 document.addEventListener(
   "DOMContentLoaded",
   () => {
+    "use strict";
 
     const DEBUG_DASHBOARD =
       true;
@@ -225,28 +208,45 @@ document.addEventListener(
 
     /*
      * ==========================================================
-     * CACHÉ RAW
+     * CACHE RAW
      * ==========================================================
      */
 
-    let rawSalesDocs = [];
-    let rawExpensesDocs = [];
-    let rawMovementsDocs = [];
-    let rawProductsDocs = [];
+    let rawSalesDocs =
+      [];
+
+    let rawExpensesDocs =
+      [];
+
+    let rawMovementsDocs =
+      [];
+
+    let rawProductsDocs =
+      [];
 
     /*
      * ==========================================================
-     * CACHÉ PROCESADA
+     * CACHE PROCESADA
      * ==========================================================
      */
 
-    let cachedSales = [];
-    let cachedExpenses = [];
-    let cachedMovements = [];
+    let cachedSales =
+      [];
 
-    let visibleSales = [];
-    let visibleExpenses = [];
-    let visibleMovements = [];
+    let cachedExpenses =
+      [];
+
+    let cachedMovements =
+      [];
+
+    let visibleSales =
+      [];
+
+    let visibleExpenses =
+      [];
+
+    let visibleMovements =
+      [];
 
     let productsMap =
       new Map();
@@ -263,39 +263,59 @@ document.addEventListener(
     let dashboardLoadingPromise =
       null;
 
+    let initialized =
+      false;
+
     let selectedRange = {
-      from: null,
-      to: null
+      from:
+        null,
+
+      to:
+        null
     };
 
     let currentUserInfo = {
-      uid: "",
-      email: "",
-      name: "Usuario",
-      role: "Empleado"
+      uid:
+        "",
+
+      email:
+        "",
+
+      name:
+        "Usuario",
+
+      role:
+        "Empleado"
     };
 
     let currentLocalId =
       "";
 
     let currentLocalInfo = {
-      id: "",
-      nombre: "",
-      numeroDocumento: "",
-      ubicacion: "",
-      contribuyente: "",
-      tipoDocumento: "",
-      nit: "",
-      nrc: ""
-    };
+      id:
+        "",
 
-    /*
-     * Evita inicializaciones duplicadas
-     * si el script llegara a ejecutarse
-     * más de una vez.
-     */
-    let initialized =
-      false;
+      nombre:
+        "",
+
+      numeroDocumento:
+        "",
+
+      ubicacion:
+        "",
+
+      contribuyente:
+        "",
+
+      tipoDocumento:
+        "",
+
+      nit:
+        "",
+
+      nrc:
+        ""
+    };
 
     injectDashboardStyles();
 
@@ -371,7 +391,7 @@ document.addEventListener(
       return (
         !!value &&
         typeof value ===
-          "object" &&
+        "object" &&
         !Array.isArray(
           value
         )
@@ -386,16 +406,33 @@ document.addEventListener(
       ).replace(
         /[&<>"'`=\/]/g,
         char =>
-          ({
-            "&": "&amp;",
-            "<": "&lt;",
-            ">": "&gt;",
-            '"': "&quot;",
-            "'": "&#39;",
-            "/": "&#x2F;",
-            "`": "&#96;",
-            "=": "&#61;"
-          }[char])
+        ({
+          "&":
+            "&amp;",
+
+          "<":
+            "&lt;",
+
+          ">":
+            "&gt;",
+
+          '"':
+            "&quot;",
+
+          "'":
+            "&#39;",
+
+          "/":
+            "&#x2F;",
+
+          "`":
+            "&#96;",
+
+          "=":
+            "&#61;"
+        }[
+          char
+        ])
       );
     }
 
@@ -404,9 +441,9 @@ document.addEventListener(
     ) {
       if (
         typeof appChartUtils !==
-          "undefined" &&
+        "undefined" &&
         typeof appChartUtils.formatCurrency ===
-          "function"
+        "function"
       ) {
         return appChartUtils.formatCurrency(
           value
@@ -416,8 +453,11 @@ document.addEventListener(
       return new Intl.NumberFormat(
         "es-ES",
         {
-          style: "currency",
-          currency: "USD"
+          style:
+            "currency",
+
+          currency:
+            "USD"
         }
       ).format(
         Number(
@@ -455,13 +495,10 @@ document.addEventListener(
       }
 
       if (
-        typeof value.seconds ===
-        "number"
+        typeof value.toMillis ===
+        "function"
       ) {
-        return (
-          value.seconds *
-          1000
-        );
+        return value.toMillis();
       }
 
       if (
@@ -476,6 +513,23 @@ document.addEventListener(
         )
           ? 0
           : date.getTime();
+      }
+
+      if (
+        typeof value.seconds ===
+        "number"
+      ) {
+        return (
+          value.seconds *
+          1000
+        );
+      }
+
+      if (
+        value instanceof
+        Date
+      ) {
+        return value.getTime();
       }
 
       const date =
@@ -641,18 +695,14 @@ document.addEventListener(
 
     /*
      * ==========================================================
-     * CONTEXTO DESDE APP.JS
+     * CONTEXTO
      * ==========================================================
-     *
-     * No se consulta empleados ni local.
      */
 
     async function resolveDashboardContext(
       user
     ) {
-      if (
-        !user
-      ) {
+      if (!user) {
         throw new Error(
           "No existe un usuario autenticado."
         );
@@ -764,13 +814,17 @@ document.addEventListener(
       greetingEls.forEach(
         element => {
           element.textContent =
-            `Hola, ${currentUserInfo.name} (${currentUserInfo.role})`;
+            `Hola, ${currentUserInfo.name ||
+            "Usuario"
+            } (${currentUserInfo.role ||
+            ""
+            })`;
         }
       );
 
       if (
         typeof window.renderNavigationForRole ===
-          "function"
+        "function"
       ) {
         window.renderNavigationForRole(
           currentUserInfo.role
@@ -791,19 +845,6 @@ document.addEventListener(
         return;
       }
 
-      if (
-        !currentLocalId
-      ) {
-        heroNote.innerHTML = `
-          <p class="hero-subtitle">
-            No se pudo identificar el local
-            del usuario autenticado.
-          </p>
-        `;
-
-        return;
-      }
-
       heroNote.innerHTML = `
         <p
           class="hero-subtitle"
@@ -811,56 +852,56 @@ document.addEventListener(
         >
           <strong>Local:</strong>
           ${escapeHtml(
-            currentLocalInfo.nombre ||
-              "—"
-          )}
+        currentLocalInfo.nombre ||
+        "—"
+      )}
           <br>
 
           <strong>Número de documento:</strong>
           ${escapeHtml(
-            currentLocalInfo.numeroDocumento ||
-              "—"
-          )}
+        currentLocalInfo.numeroDocumento ||
+        "—"
+      )}
           <br>
 
           <strong>Contribuyente:</strong>
           ${escapeHtml(
-            currentLocalInfo.contribuyente ||
-              "—"
-          )}
+        currentLocalInfo.contribuyente ||
+        "—"
+      )}
           <br>
 
           <strong>Tipo de documento:</strong>
           ${escapeHtml(
-            currentLocalInfo.tipoDocumento ||
-              "—"
-          )}
+        currentLocalInfo.tipoDocumento ||
+        "—"
+      )}
           <br>
 
           <strong>NIT:</strong>
           ${escapeHtml(
-            currentLocalInfo.nit ||
-              "—"
-          )}
+        currentLocalInfo.nit ||
+        "—"
+      )}
           <br>
 
           <strong>NRC:</strong>
           ${escapeHtml(
-            currentLocalInfo.nrc ||
-              "—"
-          )}
+        currentLocalInfo.nrc ||
+        "—"
+      )}
           <br>
 
           <strong>Ubicación:</strong>
           ${escapeHtml(
-            currentLocalInfo.ubicacion ||
-              "—"
-          )}
+        currentLocalInfo.ubicacion ||
+        "—"
+      )}
         </p>
 
         <p class="hero-subtitle">
-          La vista se filtra automáticamente
-          por este local.
+          Los datos se cargan una vez y los filtros
+          posteriores funcionan en memoria.
         </p>
       `;
     }
@@ -880,6 +921,32 @@ document.addEventListener(
      * PRODUCTOS
      * ==========================================================
      */
+
+    function matchesCurrentLocal(
+      data = {}
+    ) {
+      if (
+        !currentLocalId
+      ) {
+        return false;
+      }
+
+      const documentLocalId =
+        String(
+          data.id_local ||
+          data.idLocal ||
+          data.localId ||
+          data.idlocal ||
+          ""
+        ).trim();
+
+      return (
+        documentLocalId ===
+        String(
+          currentLocalId
+        ).trim()
+      );
+    }
 
     function rebuildProductsMap() {
       productsMap =
@@ -917,44 +984,66 @@ document.addEventListener(
     function getStockUnits(
       product
     ) {
-      const quantity =
-        numberOrZero(
-          product?.quantity
+      if (
+        !product
+      ) {
+        return 0;
+      }
+
+      const current =
+        Number(
+          product.stockCurrentUnits
         );
 
       if (
-        quantity > 0
+        Number.isFinite(
+          current
+        )
       ) {
-        return quantity;
+        return Math.max(
+          0,
+          current
+        );
       }
 
-      const boxes =
-        numberOrZero(
-          product?.boxes
+      const quantity =
+        Number(
+          product.quantity
         );
 
-      return (
-        boxes *
-        getUnitsPerBox(
-          product
+      if (
+        Number.isFinite(
+          quantity
         )
-      );
+      ) {
+        return Math.max(
+          0,
+          quantity
+        );
+      }
+
+      const base =
+        Number(
+          product.stockBaseUnits
+        );
+
+      if (
+        Number.isFinite(
+          base
+        )
+      ) {
+        return Math.max(
+          0,
+          base
+        );
+      }
+
+      return 0;
     }
 
     function getStockBoxes(
       product
     ) {
-      const boxes =
-        numberOrZero(
-          product?.boxes
-        );
-
-      if (
-        boxes > 0
-      ) {
-        return boxes;
-      }
-
       return (
         getStockUnits(
           product
@@ -985,33 +1074,7 @@ document.addEventListener(
 
       for (
         const candidate of
-          directUnitCosts
-      ) {
-        const value =
-          Number(
-            candidate
-          );
-
-        if (
-          Number.isFinite(
-            value
-          ) &&
-          value > 0
-        ) {
-          return value;
-        }
-      }
-
-      const directCosts = [
-        product.cost,
-        product.costo,
-        product.unitCostValue,
-        product.costValue
-      ];
-
-      for (
-        const candidate of
-          directCosts
+        directUnitCosts
       ) {
         const value =
           Number(
@@ -1037,7 +1100,7 @@ document.addEventListener(
 
       for (
         const candidate of
-          boxCosts
+        boxCosts
       ) {
         const value =
           Number(
@@ -1184,8 +1247,17 @@ document.addEventListener(
             data
           ).forEach(
             product => {
+              const productId =
+                String(
+                  product.productId ||
+                  product.productID ||
+                  product.product_id ||
+                  product.id ||
+                  ""
+                ).trim();
+
               if (
-                !product?.productId
+                !productId
               ) {
                 return;
               }
@@ -1200,28 +1272,43 @@ document.addEventListener(
                   product
                 );
 
+              const mode =
+                String(
+                  product.mode ||
+                  product.saleMode ||
+                  product.saleType ||
+                  ""
+                ).toLowerCase();
+
               const boxes =
-                unitsPerBox > 1
-                  ? units /
-                    unitsPerBox
-                  : 0;
+                mode === "box"
+                  ? numberOrZero(
+                    product.quantity ||
+                    product.boxes
+                  )
+                  : (
+                    unitsPerBox > 1
+                      ? units /
+                      unitsPerBox
+                      : 0
+                  );
 
               unitsMap[
-                product.productId
+                productId
               ] =
                 (
                   unitsMap[
-                    product.productId
+                  productId
                   ] || 0
                 ) +
                 units;
 
               boxesMap[
-                product.productId
+                productId
               ] =
                 (
                   boxesMap[
-                    product.productId
+                  productId
                   ] || 0
                 ) +
                 boxes;
@@ -1240,7 +1327,7 @@ document.addEventListener(
           productId =>
             numberOrZero(
               unitsMap[
-                productId
+              productId
               ]
             ) > 0
         ).length;
@@ -1268,12 +1355,18 @@ document.addEventListener(
 
       return products
         .map(
-          product =>
-            `${product.name || "Producto"} x${numberOrZero(
-              product.quantity ||
-              product.unitsTotal ||
-              0
-            )}`
+          product => {
+            const quantity =
+              numberOrZero(
+                product.quantity ||
+                product.unitsTotal
+              );
+
+            return `${product.name ||
+              product.productName ||
+              "Producto"
+              } x${quantity}`;
+          }
         )
         .join(
           " | "
@@ -1322,14 +1415,12 @@ document.addEventListener(
         "product",
         "producto",
         "item",
-        "detalleProducto",
-        "movimiento",
-        "sale",
-        "venta"
+        "detalleProducto"
       ];
 
       for (
-        const key of keys
+        const key of
+        keys
       ) {
         if (
           isPlainObject(
@@ -1389,7 +1480,7 @@ document.addEventListener(
         ) {
           for (
             const item of
-              value
+            value
           ) {
             const found =
               walk(
@@ -1415,7 +1506,7 @@ document.addEventListener(
         ) {
           for (
             const key of
-              keys
+            keys
           ) {
             if (
               Object.prototype.hasOwnProperty.call(
@@ -1425,14 +1516,14 @@ document.addEventListener(
             ) {
               const candidate =
                 value[
-                  key
+                key
                 ];
 
               if (
                 candidate !==
-                  null &&
+                null &&
                 candidate !==
-                  undefined &&
+                undefined &&
                 String(
                   candidate
                 ).trim()
@@ -1446,14 +1537,14 @@ document.addEventListener(
 
           for (
             const key of
-              Object.keys(
-                value
-              )
+            Object.keys(
+              value
+            )
           ) {
             const found =
               walk(
                 value[
-                  key
+                key
                 ],
                 depth - 1
               );
@@ -1478,7 +1569,7 @@ document.addEventListener(
 
       return (
         result !==
-        undefined
+          undefined
           ? result
           : defaultValue
       );
@@ -1543,6 +1634,78 @@ document.addEventListener(
         "—";
     }
 
+    /*
+     * ==========================================================
+     * PROVEEDOR DEL MOVIMIENTO
+     * ==========================================================
+     *
+     * El proveedor es opcional.
+     *
+     * Se intenta localizar el nombre directamente dentro
+     * del movimiento para no generar una lectura adicional
+     * de la colección "proveedores".
+     *
+     * Se contemplan nombres comunes:
+     *
+     * proveedorNombre
+     * nombreProveedor
+     * supplierName
+     * proveedor.nombre
+     * proveedor.name
+     * supplier.nombre
+     * supplier.name
+     * nombre
+     *
+     * También se permite recuperar el nombre dentro de
+     * estructuras anidadas del movimiento.
+     */
+
+    function getMovementSupplierName(
+      movement
+    ) {
+      const supplier =
+        movement?.proveedor ||
+        movement?.supplier ||
+        movement?.provider ||
+        {};
+
+      const supplierName =
+        deepPickString(
+          {
+            direct:
+              movement,
+
+            proveedor:
+              supplier,
+
+            supplier,
+
+            provider:
+              movement?.provider ||
+              {}
+          },
+          [
+            "proveedorNombre",
+            "nombreProveedor",
+            "supplierName",
+            "providerName",
+            "nombre",
+            "name",
+            "razonSocial",
+            "razon_social",
+            "businessName",
+            "business_name"
+          ],
+          ""
+        );
+
+      return String(
+        supplierName ||
+          ""
+      ).trim() ||
+        "—";
+    }
+
     function getMovementDocumentNumber(
       movement
     ) {
@@ -1568,7 +1731,6 @@ document.addEventListener(
           movement.referenciaLibro ||
           movement.bookReference ||
           movement.libroReferencia ||
-          movement.referenciaLibroInventario ||
           ""
         )
       ).trim() ||
@@ -1646,47 +1808,9 @@ document.addEventListener(
       );
     }
 
-    function getMovementTypeLabel(
-      movement
-    ) {
-      const type =
-        String(
-          movement &&
-          (
-            movement.tipoMovimiento ||
-            movement.type ||
-            ""
-          )
-        ).toLowerCase();
-
-      if (
-        type ===
-        "entrada"
-      ) {
-        return "Entrada";
-      }
-
-      if (
-        type ===
-        "salida"
-      ) {
-        return "Salida";
-      }
-
-      if (
-        type ===
-        "ajuste"
-      ) {
-        return "Ajuste";
-      }
-
-      return "Movimiento";
-    }
-
     function getMovementUnitCost(
       movement,
-      product,
-      saleProduct = null
+      product
     ) {
       const candidates = [
         movement?.costoUnitario,
@@ -1694,12 +1818,6 @@ document.addEventListener(
         movement?.costPerUnit,
         movement?.costoPorUnidad,
         movement?.lastCostPerUnit,
-
-        saleProduct?.costoUnitario,
-        saleProduct?.unitCost,
-        saleProduct?.costPerUnit,
-        saleProduct?.costoPorUnidad,
-        saleProduct?.lastCostPerUnit,
 
         product?.costoUnitario,
         product?.unitCost,
@@ -1710,7 +1828,7 @@ document.addEventListener(
 
       for (
         const candidate of
-          candidates
+        candidates
       ) {
         const value =
           Number(
@@ -1730,380 +1848,6 @@ document.addEventListener(
       return getProductUnitCost(
         product
       );
-    }
-
-    function calculateTransactionInventoryValue(
-      unitCost,
-      balanceAfter
-    ) {
-      return (
-        numberOrZero(
-          unitCost
-        ) *
-        numberOrZero(
-          balanceAfter
-        )
-      );
-    }
-
-    /*
-     * ==========================================================
-     * RELACIONES VENTA-MOVIMIENTO
-     * ==========================================================
-     */
-
-    function buildSalesIndex(
-      salesDocs
-    ) {
-      const byReference =
-        new Map();
-
-      const flatProducts =
-        [];
-
-      salesDocs.forEach(
-        ({
-          id,
-          data
-        }) => {
-          const sale = {
-            id,
-            ...data,
-
-            createdAtMs:
-              getTimestampMs(
-                data.createdAt
-              )
-          };
-
-          const aliases = [
-            id,
-            sale.docNumber,
-            sale.documentNumber,
-            sale.numeroDocumento,
-            sale.numeroDocumentoVenta,
-            sale.saleId,
-            sale.reference,
-            sale.referenceId,
-            sale.transactionId
-          ].filter(
-            Boolean
-          );
-
-          aliases.forEach(
-            alias => {
-              byReference.set(
-                normalizeLookupValue(
-                  alias
-                ),
-                sale
-              );
-            }
-          );
-
-          getSaleProducts(
-            sale
-          ).forEach(
-            product => {
-              flatProducts.push({
-                sale,
-                product
-              });
-            }
-          );
-        }
-      );
-
-      return {
-        byReference,
-        flatProducts
-      };
-    }
-
-    function isSameDayMs(
-      a,
-      b
-    ) {
-      if (
-        !Number.isFinite(
-          a
-        ) ||
-        !Number.isFinite(
-          b
-        )
-      ) {
-        return false;
-      }
-
-      const da =
-        new Date(
-          a
-        );
-
-      const db =
-        new Date(
-          b
-        );
-
-      return (
-        da.getFullYear() ===
-          db.getFullYear() &&
-        da.getMonth() ===
-          db.getMonth() &&
-        da.getDate() ===
-          db.getDate()
-      );
-    }
-
-    function pickSaleProductForMovement(
-      sale,
-      movement
-    ) {
-      const products =
-        getSaleProducts(
-          sale
-        );
-
-      if (
-        !products.length
-      ) {
-        return null;
-      }
-
-      const movementCode =
-        normalizeLookupValue(
-          movement.productCode ||
-          movement.codigoProducto ||
-          movement.productId ||
-          movement.sku ||
-          ""
-        );
-
-      const movementName =
-        normalizeLookupValue(
-          movement.productName ||
-          movement.name ||
-          movement.nombre ||
-          ""
-        );
-
-      return (
-        products.find(
-          product => {
-            const productId =
-              normalizeLookupValue(
-                product.productId ||
-                product.codigoProducto ||
-                product.sku ||
-                product.code ||
-                ""
-              );
-
-            const productName =
-              normalizeLookupValue(
-                product.name ||
-                product.productName ||
-                product.nombre ||
-                ""
-              );
-
-            return (
-              (
-                movementCode &&
-                productId &&
-                movementCode ===
-                  productId
-              ) ||
-              (
-                movementName &&
-                productName &&
-                movementName ===
-                  productName
-              )
-            );
-          }
-        ) ||
-        products[0] ||
-        null
-      );
-    }
-
-    function findRelatedSaleForMovement(
-      movement,
-      salesIndex
-    ) {
-      const possibleReferences = [
-        movement.docNumber,
-        movement.documentNumber,
-        movement.numeroDocumento,
-        movement.saleId,
-        movement.ventaId,
-        movement.referenceBook,
-        movement.libro,
-        movement.referenciaLibro,
-        movement.reference,
-        movement.referenceId
-      ].filter(
-        Boolean
-      );
-
-      for (
-        const reference of
-          possibleReferences
-      ) {
-        const sale =
-          salesIndex.byReference.get(
-            normalizeLookupValue(
-              reference
-            )
-          );
-
-        if (
-          sale
-        ) {
-          return {
-            sale,
-
-            product:
-              pickSaleProductForMovement(
-                sale,
-                movement
-              )
-          };
-        }
-      }
-
-      const code =
-        normalizeLookupValue(
-          movement.productCode ||
-          movement.codigoProducto ||
-          movement.productId ||
-          movement.sku ||
-          ""
-        );
-
-      const name =
-        normalizeLookupValue(
-          movement.productName ||
-          movement.name ||
-          movement.nombre ||
-          ""
-        );
-
-      const movementTimestamp =
-        getTimestampMs(
-          movement.createdAt
-        );
-
-      let match =
-        salesIndex.flatProducts.find(
-          item => {
-            const productId =
-              normalizeLookupValue(
-                item.product?.productId ||
-                item.product?.codigoProducto ||
-                item.product?.sku ||
-                item.product?.code ||
-                ""
-              );
-
-            const productName =
-              normalizeLookupValue(
-                item.product?.name ||
-                item.product?.productName ||
-                item.product?.nombre ||
-                ""
-              );
-
-            return (
-              (
-                code &&
-                productId &&
-                code ===
-                  productId
-              ) ||
-              (
-                name &&
-                productName &&
-                name ===
-                  productName
-              )
-            );
-          }
-        );
-
-      if (
-        !match &&
-        movementTimestamp
-      ) {
-        const sameDay =
-          salesIndex.flatProducts.filter(
-            item =>
-              isSameDayMs(
-                item.sale.createdAtMs,
-                movementTimestamp
-              )
-          );
-
-        match =
-          sameDay.find(
-            item => {
-              const productId =
-                normalizeLookupValue(
-                  item.product?.productId ||
-                  item.product?.codigoProducto ||
-                  item.product?.sku ||
-                  item.product?.code ||
-                  ""
-                );
-
-              const productName =
-                normalizeLookupValue(
-                  item.product?.name ||
-                  item.product?.productName ||
-                  item.product?.nombre ||
-                  ""
-                );
-
-              return (
-                (
-                  code &&
-                  productId &&
-                  code ===
-                    productId
-                ) ||
-                (
-                  name &&
-                  productName &&
-                  name ===
-                    productName
-                )
-              );
-            }
-          ) ||
-          sameDay[0] ||
-          null;
-      }
-
-      if (
-        match
-      ) {
-        return {
-          sale:
-            match.sale,
-
-          product:
-            match.product
-        };
-      }
-
-      return {
-        sale:
-          null,
-
-        product:
-          null
-      };
     }
 
     /*
@@ -2140,9 +1884,9 @@ document.addEventListener(
 
       return (
         date >=
-          selectedRange.from &&
+        selectedRange.from &&
         date <=
-          selectedRange.to
+        selectedRange.to
       );
     }
 
@@ -2157,7 +1901,9 @@ document.addEventListener(
           ),
 
         to:
-          today
+          endOfToday(
+            today
+          )
       };
 
       if (
@@ -2185,15 +1931,15 @@ document.addEventListener(
       const fromText =
         selectedRange.from
           ? selectedRange.from.toLocaleDateString(
-              "es-ES"
-            )
+            "es-ES"
+          )
           : "inicio";
 
       const toText =
         selectedRange.to
           ? selectedRange.to.toLocaleDateString(
-              "es-ES"
-            )
+            "es-ES"
+          )
           : "hoy";
 
       const localText =
@@ -2228,12 +1974,8 @@ document.addEventListener(
 
     /*
      * ==========================================================
-     * CONSULTA DE DATOS DE NEGOCIO
+     * LECTURAS FIRESTORE
      * ==========================================================
-     *
-     * Una consulta por colección.
-     *
-     * No consulta empleados/local.
      */
 
     async function loadCollectionByLocal(
@@ -2256,13 +1998,23 @@ document.addEventListener(
 
       snapshot.forEach(
         doc => {
+          const data =
+            doc.data() ||
+            {};
+
+          if (
+            !matchesCurrentLocal(
+              data
+            )
+          ) {
+            return;
+          }
+
           documents.push({
             id:
               doc.id,
 
-            data:
-              doc.data() ||
-              {}
+            data
           });
         }
       );
@@ -2342,7 +2094,7 @@ document.addEventListener(
                 true;
 
               debugLog(
-                "Datos cargados:",
+                "Carga puntual completada:",
                 {
                   ventas:
                     rawSalesDocs.length,
@@ -2359,6 +2111,19 @@ document.addEventListener(
               );
             }
           )
+          .catch(
+            error => {
+              dashboardDataLoaded =
+                false;
+
+              debugError(
+                "Error cargando datos del dashboard:",
+                error
+              );
+
+              throw error;
+            }
+          )
           .finally(
             () => {
               dashboardLoadingPromise =
@@ -2371,7 +2136,7 @@ document.addEventListener(
 
     /*
      * ==========================================================
-     * CACHE DE VENTAS
+     * SALES CACHE
      * ==========================================================
      */
 
@@ -2411,6 +2176,8 @@ document.addEventListener(
 
                 userName:
                   data.userName ||
+                  data.usuario ||
+                  data.createdByName ||
                   "—",
 
                 dateStr:
@@ -2432,9 +2199,9 @@ document.addEventListener(
                   [
                     productText,
                     data.total ||
-                      "",
+                    "",
                     data.userName ||
-                      ""
+                    ""
                   ].join(
                     " "
                   )
@@ -2450,6 +2217,12 @@ document.addEventListener(
               a.createdAtMs
           );
     }
+
+    /*
+     * ==========================================================
+     * EXPENSES CACHE
+     * ==========================================================
+     */
 
     function rebuildExpensesCache() {
       cachedExpenses =
@@ -2471,10 +2244,12 @@ document.addEventListener(
 
               concept:
                 data.concept ||
+                data.concepto ||
                 "",
 
               category:
                 data.category ||
+                data.categoria ||
                 "",
 
               amount:
@@ -2484,14 +2259,18 @@ document.addEventListener(
 
               paymentMethod:
                 data.paymentMethod ||
+                data.metodoPago ||
                 "",
 
               userName:
                 data.userName ||
+                data.usuario ||
+                data.createdByName ||
                 "—",
 
               notes:
                 data.notes ||
+                data.observacion ||
                 "",
 
               dateStr:
@@ -2512,17 +2291,17 @@ document.addEventListener(
               rawText:
                 [
                   data.concept ||
-                    "",
+                  "",
                   data.category ||
-                    "",
+                  "",
                   data.paymentMethod ||
-                    "",
+                  "",
                   data.userName ||
-                    "",
+                  "",
                   data.notes ||
-                    "",
+                  "",
                   data.amount ||
-                    ""
+                  ""
                 ].join(
                   " "
                 )
@@ -2538,12 +2317,13 @@ document.addEventListener(
           );
     }
 
-    function rebuildMovementsCache() {
-      const salesIndex =
-        buildSalesIndex(
-          rawSalesDocs
-        );
+    /*
+     * ==========================================================
+     * MOVEMENTS CACHE
+     * ==========================================================
+     */
 
+    function rebuildMovementsCache() {
       cachedMovements =
         rawMovementsDocs
           .filter(
@@ -2559,48 +2339,11 @@ document.addEventListener(
               id,
               data
             }) => {
-              const movementInfo = {
-                docNumber:
-                  getMovementDocumentNumber(
-                    data
-                  ),
-
-                productCode:
-                  getMovementProductCode(
-                    data
-                  ),
-
-                productName:
-                  getMovementProductName(
-                    data
-                  ),
-
-                createdAt:
-                  data.createdAt,
-
-                libro:
-                  getMovementBookReference(
-                    data
-                  )
-              };
-
-              const related =
-                findRelatedSaleForMovement(
-                  movementInfo,
-                  salesIndex
-                );
-
-              const fallbackProduct =
-                getMovementPrimaryProduct(
-                  data
-                );
-
               const productId =
                 String(
-                  fallbackProduct?.productId ||
-                  fallbackProduct?.codigoProducto ||
                   data.productId ||
-                  data.codigoProducto ||
+                  data.productID ||
+                  data.product_id ||
                   ""
                 ).trim();
 
@@ -2608,71 +2351,81 @@ document.addEventListener(
                 productsMap.get(
                   productId
                 ) ||
-                fallbackProduct ||
                 {};
 
-              const unitCost =
-                getMovementUnitCost(
-                  data,
-                  product,
-                  related.product
-                );
-
-              const balanceAfter =
-                getMovementBalanceAfter(
-                  data
-                );
-
-              const inventoryValue =
-                calculateTransactionInventoryValue(
-                  unitCost,
-                  balanceAfter
+              const productName =
+                String(
+                  data.productName ||
+                  data.name ||
+                  data.nombre ||
+                  product.name ||
+                  "—"
                 );
 
               const productCode =
-                getMovementProductCode(
-                  data
+                String(
+                  data.codigoProducto ||
+                  data.productCode ||
+                  data.code ||
+                  data.sku ||
+                  product.codigoProducto ||
+                  product.productCode ||
+                  product.code ||
+                  product.sku ||
+                  "—"
                 );
 
-              const productName =
-                getMovementProductName(
+              const supplierName =
+                getMovementSupplierName(
                   data
                 );
 
               const docNumber =
-                getMovementDocumentNumber(
-                  data
+                String(
+                  data.numeroDocumento ||
+                  data.documentNumber ||
+                  data.docNumber ||
+                  "—"
                 );
 
               const bookReference =
-                getMovementBookReference(
-                  data
+                String(
+                  data.referenciaLibro ||
+                  data.referenceBook ||
+                  data.bookReference ||
+                  data.libro ||
+                  "—"
                 );
 
               const entry =
-                getMovementEntry(
-                  data
+                numberOrZero(
+                  data.entrada
                 );
 
               const exit =
-                getMovementExit(
-                  data
+                numberOrZero(
+                  data.salida
                 );
 
               const balanceBefore =
-                getMovementBalanceBefore(
-                  data
+                numberOrZero(
+                  data.saldoAnterior
                 );
 
-              const detail =
-                getMovementDetail(
-                  data
+              const balanceAfter =
+                numberOrZero(
+                  data.saldoActual
                 );
 
-              const typeLabel =
-                getMovementTypeLabel(
-                  data
+              const unitCost =
+                getMovementUnitCost(
+                  data,
+                  product
                 );
+
+              const inventoryValue =
+                unitCost *
+                balanceAfter;
 
               return {
                 id,
@@ -2680,6 +2433,8 @@ document.addEventListener(
                 productCode,
 
                 productName,
+
+                supplierName,
 
                 unitCost,
 
@@ -2697,13 +2452,19 @@ document.addEventListener(
 
                 exit,
 
-                userName:
-                  data.userName ||
-                  "—",
+                detail:
+                  String(
+                    data.detalle ||
+                    data.detail ||
+                    data.notes ||
+                    ""
+                  ),
 
-                detail,
-
-                typeLabel,
+                typeLabel:
+                  String(
+                    data.tipoMovimiento ||
+                    ""
+                  ),
 
                 createdAtMs:
                   getTimestampMs(
@@ -2724,6 +2485,7 @@ document.addEventListener(
                   [
                     productCode,
                     productName,
+                    supplierName,
                     unitCost,
                     inventoryValue,
                     balanceBefore,
@@ -2732,23 +2494,57 @@ document.addEventListener(
                     docNumber,
                     entry,
                     exit,
-                    detail,
-                    typeLabel
+                    data.detalle ||
+                    "",
+                    data.tipoMovimiento ||
+                    ""
                   ].join(
                     " "
                   )
               };
             }
           )
+
+          /*
+           * IMPORTANTE:
+           * Los movimientos se ordenan de forma ascendente
+           * por fecha, desde el registro más antiguo
+           * hasta el más reciente.
+           */
           .sort(
             (
               a,
               b
-            ) =>
-              a.createdAtMs -
-              b.createdAtMs
+            ) => {
+              const dateComparison =
+                a.createdAtMs -
+                b.createdAtMs;
+
+              if (
+                dateComparison !==
+                0
+              ) {
+                return dateComparison;
+              }
+
+              return String(
+                a.id ||
+                ""
+              ).localeCompare(
+                String(
+                  b.id ||
+                  ""
+                )
+              );
+            }
           );
     }
+
+    /*
+     * ==========================================================
+     * RECONSTRUIR CACHE
+     * ==========================================================
+     */
 
     function rebuildCachesForRange() {
       rebuildProductsMap();
@@ -2777,7 +2573,7 @@ document.addEventListener(
 
     /*
      * ==========================================================
-     * RENDER
+     * TABLA VENTAS
      * ==========================================================
      */
 
@@ -2797,7 +2593,13 @@ document.addEventListener(
         !rows.length
       ) {
         salesTableBody.innerHTML =
-          "<tr><td colspan='5'>No hay ventas en el rango seleccionado.</td></tr>";
+          `
+            <tr>
+              <td colspan="5">
+                No hay ventas en el rango seleccionado.
+              </td>
+            </tr>
+          `;
 
         return;
       }
@@ -2812,32 +2614,32 @@ document.addEventListener(
           tr.innerHTML = `
             <td>
               ${escapeHtml(
-                row.products
-              )}
+            row.products
+          )}
             </td>
 
             <td>
               ${formatMoney(
-                row.total
-              )}
+            row.total
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                row.userName
-              )}
+            row.userName
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                row.dateStr
-              )}
+            row.dateStr
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                row.timeStr
-              )}
+            row.timeStr
+          )}
             </td>
           `;
 
@@ -2847,6 +2649,12 @@ document.addEventListener(
         }
       );
     }
+
+    /*
+     * ==========================================================
+     * TABLA GASTOS
+     * ==========================================================
+     */
 
     function renderExpensesTable(
       rows
@@ -2864,7 +2672,13 @@ document.addEventListener(
         !rows.length
       ) {
         expensesTableBody.innerHTML =
-          "<tr><td colspan='8'>No hay gastos en el rango seleccionado.</td></tr>";
+          `
+            <tr>
+              <td colspan="8">
+                No hay gastos en el rango seleccionado.
+              </td>
+            </tr>
+          `;
 
         return;
       }
@@ -2879,56 +2693,56 @@ document.addEventListener(
           tr.innerHTML = `
             <td>
               ${escapeHtml(
-                item.concept ||
-                  "—"
-              )}
+            item.concept ||
+            "—"
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                item.category ||
-                  "—"
-              )}
+            item.category ||
+            "—"
+          )}
             </td>
 
             <td>
               ${formatMoney(
-                item.amount ||
-                  0
-              )}
+            item.amount ||
+            0
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                item.paymentMethod ||
-                  "—"
-              )}
+            item.paymentMethod ||
+            "—"
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                item.userName ||
-                  "—"
-              )}
+            item.userName ||
+            "—"
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                item.dateStr
-              )}
+            item.dateStr
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                item.timeStr
-              )}
+            item.timeStr
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                item.notes ||
-                  "—"
-              )}
+            item.notes ||
+            "—"
+          )}
             </td>
           `;
 
@@ -2938,6 +2752,12 @@ document.addEventListener(
         }
       );
     }
+
+    /*
+     * ==========================================================
+     * TABLA MOVIMIENTOS
+     * ==========================================================
+     */
 
     function renderMovementsTable(
       rows
@@ -2955,7 +2775,13 @@ document.addEventListener(
         !rows.length
       ) {
         movementsTableBody.innerHTML =
-          "<tr><td colspan='13'>No hay movimientos en el rango seleccionado.</td></tr>";
+          `
+            <tr>
+              <td colspan="13">
+                No hay movimientos en el rango seleccionado.
+              </td>
+            </tr>
+          `;
 
         return;
       }
@@ -2970,87 +2796,87 @@ document.addEventListener(
           tr.innerHTML = `
             <td>
               ${escapeHtml(
-                item.dateStr
-              )}
+            item.dateStr
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                item.timeStr
-              )}
+            item.timeStr
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                item.productName ||
-                  "—"
-              )}
+            item.productName ||
+            "—"
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                item.productCode ||
-                  "—"
-              )}
+            item.productCode ||
+            "—"
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                item.docNumber ||
-                  "—"
-              )}
+            item.docNumber ||
+            "—"
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                item.bookReference ||
-                  "—"
-              )}
+            item.bookReference ||
+            "—"
+          )}
             </td>
 
             <td>
               ${formatMoney(
-                item.unitCost ||
-                  0
-              )}
+            item.unitCost ||
+            0
+          )}
             </td>
 
             <td>
               ${formatMoney(
-                item.inventoryValue ||
-                  0
-              )}
+            item.inventoryValue ||
+            0
+          )}
             </td>
 
             <td>
               ${numberOrZero(
-                item.entry
-              )}
+            item.entry
+          )}
             </td>
 
             <td>
               ${numberOrZero(
-                item.exit
-              )}
+            item.exit
+          )}
             </td>
 
             <td>
               ${numberOrZero(
-                item.balanceBefore
-              )}
+            item.balanceBefore
+          )}
             </td>
 
             <td>
               ${numberOrZero(
-                item.balanceAfter
-              )}
+            item.balanceAfter
+          )}
             </td>
 
             <td>
               ${escapeHtml(
-                item.detail ||
-                  "—"
-              )}
+            item.detail ||
+            "—"
+          )}
             </td>
           `;
 
@@ -3094,7 +2920,7 @@ document.addEventListener(
       const query =
         String(
           rangeSearch?.value ||
-            ""
+          ""
         )
           .trim()
           .toLowerCase();
@@ -3140,7 +2966,7 @@ document.addEventListener(
         visibleMovements =
           cachedMovements.filter(
             item =>
-              `${item.productCode} ${item.productName} ${item.unitCost} ${item.inventoryValue} ${item.bookReference} ${item.docNumber} ${item.entry} ${item.exit} ${item.balanceBefore} ${item.balanceAfter} ${item.dateStr} ${item.timeStr} ${item.detail} ${item.typeLabel}`
+              `${item.productCode} ${item.productName} ${item.supplierName} ${item.unitCost} ${item.inventoryValue} ${item.bookReference} ${item.docNumber} ${item.entry} ${item.exit} ${item.balanceBefore} ${item.balanceAfter} ${item.dateStr} ${item.timeStr} ${item.detail} ${item.typeLabel}`
                 .toLowerCase()
                 .includes(
                   query
@@ -3165,12 +2991,11 @@ document.addEventListener(
 
     /*
      * ==========================================================
-     * ESTADÍSTICAS
+     * UTILIDAD
      * ==========================================================
      */
 
     function renderProfitStatus(
-      products,
       totalSales,
       totalExpenses,
       salesAgg
@@ -3228,7 +3053,8 @@ document.addEventListener(
         )}`;
 
       if (
-        netProfit < 0
+        netProfit <
+        0
       ) {
         tone =
           "danger";
@@ -3239,7 +3065,8 @@ document.addEventListener(
           )}`;
       } else if (
         netProfit <
-        grossProfit * 0.4
+        grossProfit *
+        0.4
       ) {
         tone =
           "warning";
@@ -3260,8 +3087,8 @@ document.addEventListener(
 
         <div class="status-panel__value">
           ${escapeHtml(
-            message
-          )}
+        message
+      )}
         </div>
 
         <div
@@ -3271,8 +3098,8 @@ document.addEventListener(
           Costo estimado:
           <strong>
             ${formatMoney(
-              estimatedCostOfSales
-            )}
+        estimatedCostOfSales
+      )}
           </strong>
 
           ·
@@ -3280,8 +3107,8 @@ document.addEventListener(
           Bruto estimado:
           <strong>
             ${formatMoney(
-              grossProfit
-            )}
+        grossProfit
+      )}
           </strong>
 
           ·
@@ -3289,12 +3116,18 @@ document.addEventListener(
           Neto:
           <strong>
             ${formatMoney(
-              netProfit
-            )}
+        netProfit
+      )}
           </strong>
         </div>
       `;
     }
+
+    /*
+     * ==========================================================
+     * ALERTAS STOCK
+     * ==========================================================
+     */
 
     function renderLowStockAlerts(
       products,
@@ -3324,7 +3157,7 @@ document.addEventListener(
           const soldUnits =
             numberOrZero(
               salesAgg.unitsMap[
-                product.id
+              product.id
               ]
             );
 
@@ -3346,7 +3179,7 @@ document.addEventListener(
               daysLeft =
                 Math.floor(
                   stockUnits /
-                    dailyRate
+                  dailyRate
                 );
             }
           }
@@ -3398,7 +3231,11 @@ document.addEventListener(
         !lowStock.length
       ) {
         lowStockPanel.innerHTML =
-          "<div class='no-alerts'>No hay productos en stock crítico.</div>";
+          `
+            <div class="no-alerts">
+              No hay productos en stock crítico.
+            </div>
+          `;
 
         return;
       }
@@ -3423,8 +3260,8 @@ document.addEventListener(
 
                 <strong>
                   ${escapeHtml(
-                    item.name
-                  )}
+              item.name
+            )}
                 </strong>
 
                 <div class="low-stock-item__muted">
@@ -3452,8 +3289,8 @@ document.addEventListener(
 
                   <strong>
                     ${item.stockBoxes.toFixed(
-                      2
-                    )}
+              2
+            )}
                   </strong>
                 </div>
 
@@ -3473,8 +3310,11 @@ document.addEventListener(
                   </span>
 
                   <strong>
-                    ${item.daysLeft}
-                    días
+                    ${item.daysLeft ===
+                "-"
+                ? "-"
+                : `${item.daysLeft} días`
+              }
                   </strong>
                 </div>
 
@@ -3488,6 +3328,12 @@ document.addEventListener(
         );
     }
 
+    /*
+     * ==========================================================
+     * CHART + STATS
+     * ==========================================================
+     */
+
     function updateChartAndStats(
       {
         totalSales,
@@ -3500,9 +3346,9 @@ document.addEventListener(
     ) {
       if (
         typeof appChartUtils !==
-          "undefined" &&
+        "undefined" &&
         typeof appChartUtils.drawSalesChart ===
-          "function"
+        "function"
       ) {
         appChartUtils.drawSalesChart(
           "salesChart",
@@ -3536,7 +3382,7 @@ document.addEventListener(
         statNetEl.textContent =
           formatMoney(
             totalSales -
-              totalExpenses
+            totalExpenses
           );
       }
 
@@ -3559,7 +3405,6 @@ document.addEventListener(
       }
 
       renderProfitStatus(
-        products,
         totalSales,
         totalExpenses,
         salesAgg
@@ -3573,7 +3418,7 @@ document.addEventListener(
 
     /*
      * ==========================================================
-     * CARGA DEL DASHBOARD
+     * DASHBOARD
      * ==========================================================
      */
 
@@ -3589,15 +3434,15 @@ document.addEventListener(
       const from =
         rangeFrom?.value
           ? startOfDay(
-              rangeFrom.value
-            )
+            rangeFrom.value
+          )
           : startOfMonth();
 
       const to =
         rangeTo?.value
           ? endOfDay(
-              rangeTo.value
-            )
+            rangeTo.value
+          )
           : endOfToday();
 
       if (
@@ -3625,12 +3470,6 @@ document.addEventListener(
 
       updateRangeLabels();
 
-      /*
-       * IMPORTANTE:
-       *
-       * loadDashboardDataOnce() solo consulta si
-       * dashboardDataLoaded === false.
-       */
       await loadDashboardDataOnce();
 
       rebuildCachesForRange();
@@ -3829,13 +3668,13 @@ document.addEventListener(
         source.map(
           item => [
             currentLocalInfo.nombre ||
-              "",
+            "",
 
             currentLocalInfo.numeroDocumento ||
-              "",
+            "",
 
             currentLocalInfo.ubicacion ||
-              "",
+            "",
 
             item.products,
 
@@ -3907,39 +3746,39 @@ document.addEventListener(
         source.map(
           item => [
             currentLocalInfo.nombre ||
-              "",
+            "",
 
             currentLocalInfo.numeroDocumento ||
-              "",
+            "",
 
             currentLocalInfo.ubicacion ||
-              "",
+            "",
 
             item.concept ||
-              "",
+            "",
 
             item.category ||
-              "",
+            "",
 
             formatMoney(
               item.amount ||
-                0
+              0
             ),
 
             item.paymentMethod ||
-              "",
+            "",
 
             item.userName ||
-              "",
+            "",
 
             item.dateStr ||
-              "",
+            "",
 
             item.timeStr ||
-              "",
+            "",
 
             item.notes ||
-              ""
+            ""
           ]
         );
 
@@ -3973,15 +3812,15 @@ document.addEventListener(
       const from =
         selectedRange.from
           ? selectedRange.from.toLocaleDateString(
-              "es-ES"
-            )
+            "es-ES"
+          )
           : "—";
 
       const to =
         selectedRange.to
           ? selectedRange.to.toLocaleDateString(
-              "es-ES"
-            )
+            "es-ES"
+          )
           : "—";
 
       return `${from} al ${to}`;
@@ -3990,9 +3829,43 @@ document.addEventListener(
     function exportMovementsExcel() {
       try {
         const source =
-          visibleMovements.length
-            ? visibleMovements
-            : cachedMovements;
+          (
+            visibleMovements.length
+              ? visibleMovements
+              : cachedMovements
+          )
+            .slice()
+            .sort(
+              (
+                a,
+                b
+              ) => {
+                const dateComparison =
+                  numberOrZero(
+                    a.createdAtMs
+                  ) -
+                  numberOrZero(
+                    b.createdAtMs
+                  );
+
+                if (
+                  dateComparison !==
+                  0
+                ) {
+                  return dateComparison;
+                }
+
+                return String(
+                  a.id ||
+                  ""
+                ).localeCompare(
+                  String(
+                    b.id ||
+                    ""
+                  )
+                );
+              }
+            );
 
         if (
           !source.length
@@ -4050,42 +3923,85 @@ document.addEventListener(
         const period =
           formatPeriodForExcel();
 
+        /*
+         * ======================================================
+         * ENCABEZADOS SIMPLIFICADOS
+         * ======================================================
+         *
+         * A No.
+         * B Fecha
+         * C Producto
+         * D Código
+         * E Documento
+         * F Libro
+         * G Proveedor
+         * H Costo
+         * I Valor
+         * J Entrada
+         * K Salida
+         * L Saldo ant.
+         * M Saldo actual
+         *
+         * Se eliminan:
+         * - Hora
+         * - Detalle
+         *
+         * Se agrega:
+         * - No.
+         * - Proveedor
+         */
+
         const headers = [
+          "No.",
           "Fecha",
-          "Hora",
           "Producto",
-          "Código producto",
-          "Número documento",
-          "Referencia libro",
-          "Costo unitario",
-          "Valor inventario",
+          "Código",
+          "Documento",
+          "Libro",
+          "Proveedor",
+          "Costo",
+          "Valor",
           "Entrada",
           "Salida",
-          "Saldo anterior",
-          "Saldo actual",
-          "Detalle"
+          "Saldo ant.",
+          "Saldo actual"
         ];
+
+        /*
+         * ======================================================
+         * FILAS
+         * ======================================================
+         *
+         * El correlativo es independiente del ID de Firestore.
+         * Siempre inicia en 1 y aumenta secuencialmente.
+         */
 
         const rows =
           source.map(
-            item => [
-              item.dateStr ||
-                "",
+            (
+              item,
+              index
+            ) => [
+              index +
+              1,
 
-              item.timeStr ||
-                "",
+              item.dateStr ||
+              "",
 
               item.productName ||
-                "",
+              "",
 
               item.productCode ||
-                "",
+              "",
 
               item.docNumber ||
-                "",
+              "",
 
               item.bookReference ||
-                "",
+              "",
+
+              item.supplierName ||
+              "—",
 
               numberOrZero(
                 item.unitCost
@@ -4109,10 +4025,7 @@ document.addEventListener(
 
               numberOrZero(
                 item.balanceAfter
-              ),
-
-              item.detail ||
-                ""
+              )
             ]
           );
 
@@ -4170,34 +4083,28 @@ document.addEventListener(
             sheetData
           );
 
+        /*
+         * ======================================================
+         * ANCHO DE COLUMNAS
+         * ======================================================
+         */
+
         worksheet["!cols"] = [
           {
             wch:
-              10
+              7
           },
           {
             wch:
-              9
+              11
           },
           {
             wch:
-              22
+              24
           },
           {
             wch:
-              15
-          },
-          {
-            wch:
-              18
-          },
-          {
-            wch:
-              18
-          },
-          {
-            wch:
-              15
+              14
           },
           {
             wch:
@@ -4205,23 +4112,35 @@ document.addEventListener(
           },
           {
             wch:
-              10
-          },
-          {
-            wch:
-              10
-          },
-          {
-            wch:
-              14
-          },
-          {
-            wch:
-              14
+              17
           },
           {
             wch:
               24
+          },
+          {
+            wch:
+              13
+          },
+          {
+            wch:
+              15
+          },
+          {
+            wch:
+              10
+          },
+          {
+            wch:
+              10
+          },
+          {
+            wch:
+              13
+          },
+          {
+            wch:
+              13
           }
         ];
 
@@ -4259,6 +4178,15 @@ document.addEventListener(
               24
           }
         ];
+
+        /*
+         * ======================================================
+         * COMBINACIONES
+         * ======================================================
+         *
+         * Se mantienen las combinaciones del encabezado,
+         * ajustadas a las mismas 13 columnas A:M.
+         */
 
         worksheet["!merges"] = [
           {
@@ -4406,6 +4334,17 @@ document.addEventListener(
           }
         ];
 
+        /*
+         * ======================================================
+         * FORMATO MONETARIO
+         * ======================================================
+         *
+         * H = Costo
+         * I = Valor
+         *
+         * Los datos empiezan en la fila 9.
+         */
+
         const firstDataRow =
           9;
 
@@ -4423,64 +4362,41 @@ document.addEventListener(
         ) {
           if (
             worksheet[
-              `G${row}`
+            `H${row}`
             ]
           ) {
             worksheet[
-              `G${row}`
+              `H${row}`
             ].z =
               "$#,##0.00";
           }
 
           if (
             worksheet[
-              `H${row}`
+            `I${row}`
             ]
           ) {
             worksheet[
-              `H${row}`
+              `I${row}`
             ].z =
               "$#,##0.00";
           }
         }
+
+        /*
+         * ======================================================
+         * ÁREA DE IMPRESIÓN
+         * ======================================================
+         */
 
         worksheet[
           "!printArea"
         ] =
           `A1:M${lastDataRow}`;
 
-        const workbook =
-          XLSX.utils.book_new();
-
-        workbook.Props = {
-          Title:
-            "Reporte de movimientos de inventario",
-
-          Subject:
-            "Movimientos de inventario",
-
-          Author:
-            currentUserInfo.name ||
-            "Sistema de Gestión",
-
-          Company:
-            localName,
-
-          CreatedDate:
-            new Date()
-        };
-
-        XLSX.utils.book_append_sheet(
-          workbook,
-          worksheet,
-          "Movimientos"
-        );
-
-        /*
-         * Configuración adicional compatible
-         * con lectores que reconozcan estas propiedades.
-         */
-        worksheet["!pageSetup"] = {
+        worksheet[
+          "!pageSetup"
+        ] = {
           paperSize:
             1,
 
@@ -4515,6 +4431,39 @@ document.addEventListener(
           footer:
             0.15
         };
+
+        /*
+         * ======================================================
+         * LIBRO
+         * ======================================================
+         */
+
+        const workbook =
+          XLSX.utils.book_new();
+
+        workbook.Props = {
+          Title:
+            "Reporte de movimientos de inventario",
+
+          Subject:
+            "Movimientos de inventario",
+
+          Author:
+            currentUserInfo.name ||
+            "Sistema de Gestión",
+
+          Company:
+            localName,
+
+          CreatedDate:
+            new Date()
+        };
+
+        XLSX.utils.book_append_sheet(
+          workbook,
+          worksheet,
+          "Movimientos"
+        );
 
         const {
           from,
@@ -4560,7 +4509,7 @@ document.addEventListener(
         Swal.fire(
           "Error",
           error.message ||
-            "No se pudo generar el archivo Excel.",
+          "No se pudo generar el archivo Excel.",
           "error"
         );
       }
@@ -4570,8 +4519,6 @@ document.addEventListener(
      * ==========================================================
      * CIERRE DE CAJA
      * ==========================================================
-     *
-     * No consulta ventas nuevamente.
      */
 
     async function closeDay() {
@@ -4655,9 +4602,9 @@ document.addEventListener(
 
             if (
               created <
-                start ||
+              start ||
               created >
-                end
+              end
             ) {
               return;
             }
@@ -4726,7 +4673,7 @@ document.addEventListener(
               ""
           });
 
-        Swal.fire({
+        await Swal.fire({
           icon:
             "success",
 
@@ -4738,7 +4685,6 @@ document.addEventListener(
               total
             )}`
         });
-
       } catch (
         error
       ) {
@@ -4750,7 +4696,7 @@ document.addEventListener(
         Swal.fire(
           "Error",
           error.message ||
-            "No se pudo registrar el cierre.",
+          "No se pudo registrar el cierre.",
           "error"
         );
       }
@@ -4789,9 +4735,9 @@ document.addEventListener(
           from &&
           to &&
           from >
-            to
+          to
         ) {
-          Swal.fire(
+          await Swal.fire(
             "Rango inválido",
             "La fecha inicial no puede ser mayor que la fecha final.",
             "warning"
@@ -4814,7 +4760,7 @@ document.addEventListener(
         await Swal.fire(
           "Error",
           error.message ||
-            "No se pudo aplicar el rango.",
+          "No se pudo aplicar el rango.",
           "error"
         );
       }
@@ -4843,7 +4789,7 @@ document.addEventListener(
         await Swal.fire(
           "Error",
           error.message ||
-            "No se pudo restaurar el rango.",
+          "No se pudo restaurar el rango.",
           "error"
         );
       }
@@ -4868,31 +4814,13 @@ document.addEventListener(
         true;
 
       try {
-        /*
-         * Aquí se reutiliza directamente app.js.
-         *
-         * NO se consulta:
-         * - empleados
-         * - local
-         */
         await resolveDashboardContext(
           user
         );
 
-        /*
-         * Datos iniciales.
-         */
         setDefaultRangeToMonth();
 
-        /*
-         * Carga única:
-         * ventas
-         * gastos
-         * movimientos
-         * productos
-         */
         await loadDashboardForRange();
-
       } catch (
         error
       ) {
@@ -5289,7 +5217,6 @@ document.addEventListener(
         }
 
         @media (max-width: 992px) {
-
           .dashboard-grid {
             grid-template-columns: 1fr;
           }
@@ -5297,11 +5224,9 @@ document.addEventListener(
           .filter-grid {
             grid-template-columns: 1fr;
           }
-
         }
 
         @media (max-width: 768px) {
-
           .low-stock-item--rich {
             flex-direction: column;
           }
@@ -5312,7 +5237,6 @@ document.addEventListener(
             text-align: left;
             grid-template-columns: 1fr 1fr;
           }
-
         }
       `;
 
@@ -5320,6 +5244,5 @@ document.addEventListener(
         style
       );
     }
-
   }
 );

@@ -1,59 +1,69 @@
 // assets/js/inventory.js
 //
-// Inventario con DataTable.
+// INVENTARIO
 //
-// Reglas:
-// - stock visible = stock actual guardado en el producto.
-// - Las ventas del mes se usan solo para métricas,
+// Características:
+//
+// - Stock visible = stock actual guardado en el producto.
+// - Las ventas del mes se utilizan para métricas,
 //   sugerencias y alertas.
-// - Vendedor: acceso de solo lectura.
-// - Administrador/Bodega: pueden editar y agregar stock.
-// - Administrador: puede eliminar.
+// - Administrador/Bodega pueden editar y agregar.
+// - Administrador puede eliminar.
+// - Proveedor opcional.
+// - Producto existente o nuevo.
+// - Carga múltiple de productos en una sola operación.
+// - Cada línea puede tener:
+//      cajas
+//      cajas bono
+//      unidades
+//      unidades bono
+//      proveedor
+//      costo
+//      precio
+//      referencia
+//      documento
 //
-// Referencias de libro:
-// - Las referencias se obtienen de stock_movimientos.
-// - Al seleccionar una referencia se carga su número de documento.
-// - También se puede introducir una referencia nueva.
+// - Producto existente:
+//      se suma al stock actual.
 //
-// Filtro por local:
-// - El contexto de usuario/local se obtiene exclusivamente desde app.js.
-// - No se consultan empleados ni local desde este módulo.
-// - app.js mantiene caché y deduplicación de consultas.
-// - Productos y ventas se filtran por el local actual.
+// - Producto nuevo:
+//      se crea con el stock inicial.
 //
-// OPTIMIZACIÓN:
-// - No se consulta empleados.
-// - No se consulta local.
-// - No se registra otro listener de logout.
-// - El contexto de usuario/local se resuelve mediante app.js.
-// - Las referencias de movimientos se cachean por producto.
-// - Las consultas simultáneas de movimientos para el mismo producto
-//   se deduplican.
-// - Los listeners realtime de productos y ventas son los únicos
-//   listeners permanentes de este módulo.
+// - Las cajas bono y unidades bono agregan stock,
+//   pero no agregan costo por sí mismas.
 //
-// IMPORTANTE:
-// - Todo el módulo está encapsulado en una IIFE.
-// - Esto evita que funciones como getStoredCurrentUser(),
-//   getCurrentPageFile(), escapeHtml(), numberOrZero(), etc.
-//   sobrescriban funciones globales de app.js.
-
-/* ============================================================
-   AISLAMIENTO DEL MÓDULO
-============================================================ */
+// - Producto y proveedor se seleccionan mediante
+//   comboboxes basados en <input list="...">.
+//
+// - No se utilizan <select> para productos ni proveedores.
+//
+// - No usa onSnapshot().
+// - No vuelve a leer productos después de guardar.
+// - Mantiene los datos actualizados en memoria.
+//
 
 (function () {
   "use strict";
 
-  if (typeof firebase === "undefined") {
+  if (
+    typeof firebase ===
+    "undefined"
+  ) {
     console.error(
       "Firebase no se ha cargado correctamente."
     );
 
-    if (typeof Swal !== "undefined") {
+    if (
+      typeof Swal !==
+      "undefined"
+    ) {
       Swal.fire({
-        icon: "error",
-        title: "Error",
+        icon:
+          "error",
+
+        title:
+          "Error",
+
         text:
           "Firebase no se cargó. Revisa la conexión o los scripts."
       });
@@ -64,60 +74,105 @@
 
   /*
    * ============================================================
+   * CONSTANTES
+   * ============================================================
+   */
+
+  const PRODUCTS_COLLECTION =
+    "productos";
+
+  const SALES_COLLECTION =
+    "ventas";
+
+  const MOVEMENTS_COLLECTION =
+    "stock_movimientos";
+
+  const PROVIDERS_COLLECTION =
+    "proveedores";
+
+  const LOW_STOCK_THRESHOLD =
+    5;
+
+  const SAFETY_STOCK_DEFAULT =
+    10;
+
+  /*
+   * ============================================================
    * ESTADO
    * ============================================================
    */
 
-  let currentRole = "";
-  let canEditInventory = false;
+  let currentRole =
+    "";
 
-  const LOW_STOCK_THRESHOLD = 5;
-  const SAFETY_STOCK_DEFAULT = 10;
+  let canEditInventory =
+    false;
 
-  let currentLocalId = "";
+  let currentLocalId =
+    "";
 
   let currentLocalInfo = {
-    id_local: "",
-    nombre: "",
-    numeroDocumento: "",
-    ubicacion: "",
-    contribuyente: "",
-    tipoDocumento: "",
-    nit: "",
-    nrc: ""
+    id_local:
+      "",
+
+    nombre:
+      "",
+
+    numeroDocumento:
+      "",
+
+    ubicacion:
+      "",
+
+    contribuyente:
+      "",
+
+    tipoDocumento:
+      "",
+
+    nit:
+      "",
+
+    nrc:
+      ""
   };
 
-  let currentUserInventoryContext = null;
+  let currentUserInventoryContext =
+    null;
 
-  let currentProductsList = [];
-  let currentMonthlySalesMap = {};
-  let currentMonthlyBoxesMap = {};
+  let currentProductsList =
+    [];
 
-  let productsUnsub = null;
-  let salesUnsub = null;
-  let inventoryDT = null;
+  let currentProvidersList =
+    [];
+
+  let currentMonthlySalesMap =
+    {};
+
+  let currentMonthlyBoxesMap =
+    {};
+
+  let inventoryDT =
+    null;
+
+  let inventoryLoadPromise =
+    null;
+
+  let inventoryInitialized =
+    false;
 
   /*
-   * Caché de movimientos por producto.
-   *
-   * La clave es el productId.
+   * Caché de movimientos.
    */
   const productStockMovementsCache =
     new Map();
 
-  /*
-   * Consultas pendientes de movimientos.
-   *
-   * Si dos acciones solicitan al mismo tiempo
-   * los movimientos del mismo producto,
-   * ambas reutilizan la misma Promise.
-   */
   const productStockMovementsPending =
     new Map();
 
   /*
    * ============================================================
-   * ELEMENTOS DOM
+   * DOM
    * ============================================================
    */
 
@@ -167,24 +222,47 @@
    * ============================================================
    */
 
-  function currency(n) {
-    return `$${Number(
-      n || 0
-    ).toFixed(2)}`;
-  }
+  function numberOrZero(
+    value
+  ) {
+    const number =
+      Number(
+        value
+      );
 
-  function numberOrZero(v) {
-    const n =
-      Number(v);
-
-    return Number.isFinite(n)
-      ? n
+    return Number.isFinite(
+      number
+    )
+      ? number
       : 0;
   }
 
-  function escapeHtml(str) {
+  function integerOrZero(
+    value
+  ) {
+    return Math.max(
+      0,
+      Math.floor(
+        numberOrZero(
+          value
+        )
+      )
+    );
+  }
+
+  function currency(
+    value
+  ) {
+    return `$${numberOrZero(
+      value
+    ).toFixed(2)}`;
+  }
+
+  function escapeHtml(
+    value
+  ) {
     return String(
-      str ?? ""
+      value ?? ""
     )
       .replace(
         /&/g,
@@ -208,38 +286,30 @@
       );
   }
 
-  /*
-   * ============================================================
-   * USUARIO ALMACENADO
-   * ============================================================
-   *
-   * Estas funciones ya NO pueden sobrescribir las de app.js
-   * porque todo este archivo está dentro de una IIFE.
-   *
-   * Además, se conserva la posibilidad de reutilizar
-   * las funciones globales de app.js sin recursión.
-   */
+  function normalizeText(
+    value
+  ) {
+    return String(
+      value || ""
+    )
+      .trim()
+      .toLowerCase()
+      .normalize(
+        "NFD"
+      )
+      .replace(
+        /[\u0300-\u036f]/g,
+        ""
+      );
+  }
 
   function getStoredCurrentUser() {
-    const globalGetter =
-      window.getStoredCurrentUser;
-
-    /*
-     * IMPORTANTE:
-     * Como estamos dentro de una IIFE, la función local
-     * NO ocupa window.getStoredCurrentUser.
-     *
-     * Por tanto esta referencia apunta realmente
-     * a la función proporcionada por app.js.
-     */
     if (
-      typeof globalGetter ===
-      "function" &&
-      globalGetter !==
-        getStoredCurrentUser
+      typeof window.getStoredCurrentUser ===
+      "function"
     ) {
       return (
-        globalGetter() ||
+        window.getStoredCurrentUser() ||
         null
       );
     }
@@ -258,21 +328,11 @@
   function patchStoredCurrentUser(
     patch = {}
   ) {
-    const globalPatcher =
-      window.patchStoredCurrentUser;
-
-    /*
-     * Igual que arriba:
-     * al estar encapsulado, la función global
-     * pertenece a app.js.
-     */
     if (
-      typeof globalPatcher ===
-        "function" &&
-      globalPatcher !==
-        patchStoredCurrentUser
+      typeof window.patchStoredCurrentUser ===
+      "function"
     ) {
-      globalPatcher(
+      window.patchStoredCurrentUser(
         patch
       );
 
@@ -298,17 +358,8 @@
 
   /*
    * ============================================================
-   * CONTEXTO CENTRAL
+   * CONTEXTO
    * ============================================================
-   *
-   * inventory.js NO consulta:
-   *
-   *   empleados
-   *   local
-   *
-   * directamente.
-   *
-   * app.js resuelve ese contexto.
    */
 
   async function resolveInventoryContext(
@@ -316,7 +367,7 @@
   ) {
     if (!user) {
       throw new Error(
-        "No hay un usuario autenticado."
+        "No existe un usuario autenticado."
       );
     }
 
@@ -346,7 +397,7 @@
     currentLocalId =
       String(
         context.id_local ||
-        ""
+          ""
       ).trim();
 
     currentLocalInfo = {
@@ -356,50 +407,50 @@
       nombre:
         String(
           context.localNombre ||
-          ""
+            ""
         ).trim(),
 
       numeroDocumento:
         String(
           context.localNumeroDocumento ||
-          ""
+            ""
         ).trim(),
 
       ubicacion:
         String(
           context.localUbicacion ||
-          ""
+            ""
         ).trim(),
 
       contribuyente:
         String(
           context.localContribuyente ||
-          ""
+            ""
         ).trim(),
 
       tipoDocumento:
         String(
           context.localTipoDocumento ||
-          ""
+            ""
         ).trim(),
 
       nit:
         String(
           context.localNIT ||
-          ""
+            ""
         ).trim(),
 
       nrc:
         String(
           context.localNRC ||
-          ""
+            ""
         ).trim()
     };
 
     currentRole =
       String(
         context.role ||
-        ""
+          ""
       )
         .trim()
         .toLowerCase();
@@ -413,13 +464,18 @@
         "bodega";
 
     userGreeting.forEach(
-      el => {
-        el.textContent =
-          `Hola, ${context.name || "Usuario"} (${context.role || ""})`;
+      element => {
+        element.textContent =
+          `Hola, ${
+            context.name ||
+            "Usuario"
+          } (${context.role || ""})`;
       }
     );
 
-    if (btnAdd) {
+    if (
+      btnAdd
+    ) {
       btnAdd.style.display =
         canEditInventory &&
         currentLocalId
@@ -432,32 +488,25 @@
         currentLocalId,
 
       localNombre:
-        currentLocalInfo.nombre ||
-        "",
+        currentLocalInfo.nombre,
 
       localNumeroDocumento:
-        currentLocalInfo.numeroDocumento ||
-        "",
+        currentLocalInfo.numeroDocumento,
 
       localUbicacion:
-        currentLocalInfo.ubicacion ||
-        "",
+        currentLocalInfo.ubicacion,
 
       localContribuyente:
-        currentLocalInfo.contribuyente ||
-        "",
+        currentLocalInfo.contribuyente,
 
       localTipoDocumento:
-        currentLocalInfo.tipoDocumento ||
-        "",
+        currentLocalInfo.tipoDocumento,
 
       localNIT:
-        currentLocalInfo.nit ||
-        "",
+        currentLocalInfo.nit,
 
       localNRC:
-        currentLocalInfo.nrc ||
-        ""
+        currentLocalInfo.nrc
     });
 
     return context;
@@ -465,21 +514,318 @@
 
   /*
    * ============================================================
-   * STOCK
+   * PROVEEDORES
+   * ============================================================
+   */
+
+  function normalizeProviderObject(
+    provider,
+    fallbackId = ""
+  ) {
+    if (
+      !provider
+    ) {
+      return null;
+    }
+
+    const id =
+      String(
+        provider.id ||
+          provider.id_proveedor ||
+          provider.proveedorId ||
+          fallbackId ||
+          ""
+      ).trim();
+
+    const nombre =
+      String(
+        provider.nombre ||
+          provider.name ||
+          provider.razonSocial ||
+          provider.razon_social ||
+          provider.nombreProveedor ||
+          ""
+      ).trim();
+
+    if (
+      !id &&
+      !nombre
+    ) {
+      return null;
+    }
+
+    return {
+      id,
+      nombre,
+      ...provider
+    };
+  }
+
+  async function loadInventoryProviders() {
+    currentProvidersList =
+      [];
+
+    /*
+     * Primera opción:
+     * utilizar la API existente de proveedores.
+     */
+    if (
+      window.proveedoresAPI &&
+      typeof window.proveedoresAPI
+        .getProvidersForInventory ===
+      "function"
+    ) {
+      try {
+        const providers =
+          await window.proveedoresAPI
+            .getProvidersForInventory();
+
+        currentProvidersList =
+          Array.isArray(
+            providers
+          )
+            ? providers
+                .map(
+                  provider =>
+                    normalizeProviderObject(
+                      provider
+                    )
+                )
+                .filter(
+                  Boolean
+                )
+            : [];
+
+        if (
+          currentProvidersList.length
+        ) {
+          return currentProvidersList;
+        }
+      } catch (
+        error
+      ) {
+        console.warn(
+          "No se pudo cargar proveedores mediante proveedoresAPI:",
+          error
+        );
+      }
+    }
+
+    /*
+     * Fallback:
+     * consulta directa de proveedores del local.
+     *
+     * Esta lectura se realiza una sola vez al cargar inventario.
+     */
+    try {
+      if (
+        !currentLocalId
+      ) {
+        return [];
+      }
+
+      const snapshot =
+        await db
+          .collection(
+            PROVIDERS_COLLECTION
+          )
+          .where(
+            "id_local",
+            "==",
+            currentLocalId
+          )
+          .get();
+
+      const providers =
+        [];
+
+      snapshot.forEach(
+        doc => {
+          const provider =
+            normalizeProviderObject(
+              {
+                id:
+                  doc.id,
+
+                ...(doc.data() ||
+                  {})
+              }
+            );
+
+          if (
+            provider
+          ) {
+            providers.push(
+              provider
+            );
+          }
+        }
+      );
+
+      providers.sort(
+        (
+          a,
+          b
+        ) =>
+          normalizeText(
+            a.nombre
+          ).localeCompare(
+            normalizeText(
+              b.nombre
+            ),
+            "es"
+          )
+      );
+
+      currentProvidersList =
+        providers;
+
+      return providers;
+    } catch (
+      error
+    ) {
+      console.warn(
+        "No se pudieron cargar proveedores:",
+        error
+      );
+
+      currentProvidersList =
+        [];
+
+      return [];
+    }
+  }
+
+  function getProviderById(
+    providerId
+  ) {
+    const target =
+      String(
+        providerId ||
+          ""
+      ).trim();
+
+    if (
+      !target
+    ) {
+      return null;
+    }
+
+    return (
+      currentProvidersList.find(
+        provider =>
+          String(
+            provider.id
+          ).trim() ===
+          target
+      ) ||
+      null
+    );
+  }
+
+  function findProviderByText(
+    value
+  ) {
+    const text =
+      normalizeText(
+        value
+      );
+
+    if (
+      !text
+    ) {
+      return null;
+    }
+
+    return (
+      currentProvidersList.find(
+        provider =>
+          normalizeText(
+            provider.nombre
+          ) ===
+          text
+      ) ||
+      currentProvidersList.find(
+        provider =>
+          normalizeText(
+            provider.nombre
+          ).includes(
+            text
+          )
+      ) ||
+      null
+    );
+  }
+
+  function getProductProviderId(
+    product
+  ) {
+    return String(
+      product?.proveedorId ||
+        ""
+    ).trim();
+  }
+
+  function getProductProviderName(
+    product
+  ) {
+    return String(
+      product?.proveedorNombre ||
+        ""
+    ).trim();
+  }
+
+  function getProviderComboboxHtml(
+    inputId,
+    listId,
+    value = ""
+  ) {
+    return `
+      <input
+        id="${inputId}"
+        type="text"
+        class="inv-combobox"
+        list="${listId}"
+        value="${escapeHtml(
+          value
+        )}"
+        placeholder="Escribe para buscar..."
+        autocomplete="off"
+      >
+
+      <datalist id="${listId}">
+        ${currentProvidersList
+          .map(
+            provider => `
+              <option
+                value="${escapeHtml(
+                  provider.nombre
+                )}"
+              ></option>
+            `
+          )
+          .join("")}
+      </datalist>
+    `;
+  }
+
+  /*
+   * ============================================================
+   * PRODUCTOS / STOCK
    * ============================================================
    */
 
   function getUnitsPerBox(
     product
   ) {
-    const v =
+    const value =
       numberOrZero(
-        product &&
-        product.unitsPerBox
+        product?.unitsPerBox
       );
 
-    return v > 0
-      ? v
+    return value >
+      0
+      ? value
       : 1;
   }
 
@@ -487,53 +833,52 @@
     product
   ) {
     return String(
-      product &&
-      (
-        product.codigoProducto ||
-        product.productCode ||
-        product.code ||
-        product.sku ||
+      product?.codigoProducto ||
+        product?.productCode ||
+        product?.code ||
+        product?.sku ||
         ""
-      )
     ).trim();
   }
 
   function getCurrentStockUnits(
     product
   ) {
-    if (!product) {
+    if (
+      !product
+    ) {
       return 0;
     }
 
-    const current =
+    const stockCurrent =
       Number(
         product.stockCurrentUnits
       );
 
     if (
       Number.isFinite(
-        current
+        stockCurrent
       )
     ) {
       return Math.max(
         0,
-        current
+        stockCurrent
       );
     }
 
-    const qty =
+    const quantity =
       Number(
         product.quantity
       );
 
     if (
       Number.isFinite(
-        qty
+        quantity
       )
     ) {
       return Math.max(
         0,
-        qty
+        quantity
       );
     }
 
@@ -556,68 +901,6 @@
     return 0;
   }
 
-  function getStockBaseUnits(
-    product
-  ) {
-    const base =
-      numberOrZero(
-        product &&
-        product.stockBaseUnits
-      );
-
-    if (
-      base > 0
-    ) {
-      return base;
-    }
-
-    return getCurrentStockUnits(
-      product
-    );
-  }
-
-  function getSoldUnitsForProduct(
-    product
-  ) {
-    if (
-      !product ||
-      !product.id
-    ) {
-      return 0;
-    }
-
-    return numberOrZero(
-      currentMonthlySalesMap[
-        product.id
-      ]
-    );
-  }
-
-  function getSoldBoxesForProduct(
-    product
-  ) {
-    if (
-      !product ||
-      !product.id
-    ) {
-      return 0;
-    }
-
-    return numberOrZero(
-      currentMonthlyBoxesMap[
-        product.id
-      ]
-    );
-  }
-
-  function getStockUnits(
-    product
-  ) {
-    return getCurrentStockUnits(
-      product
-    );
-  }
-
   function getStockBoxes(
     product
   ) {
@@ -626,36 +909,32 @@
         product
       );
 
-    const stockUnits =
-      getStockUnits(
-        product
-      );
-
     return Math.floor(
-      stockUnits /
-      unitsPerBox
+      getCurrentStockUnits(
+        product
+      ) /
+        unitsPerBox
     );
   }
 
   function getCostPerUnit(
     product
   ) {
-    const stored =
+    const direct =
       numberOrZero(
-        product &&
-        product.lastCostPerUnit
+        product?.lastCostPerUnit
       );
 
     if (
-      stored > 0
+      direct >
+      0
     ) {
-      return stored;
+      return direct;
     }
 
     const costPerBox =
       numberOrZero(
-        product &&
-        product.lastCostPerBox
+        product?.lastCostPerBox
       );
 
     const unitsPerBox =
@@ -664,8 +943,10 @@
       );
 
     if (
-      costPerBox > 0 &&
-      unitsPerBox > 0
+      costPerBox >
+        0 &&
+      unitsPerBox >
+        0
     ) {
       return (
         costPerBox /
@@ -687,17 +968,19 @@
   ) {
     return String(
       data.id_local ||
-      data.idLocal ||
-      data.localId ||
-      data.idlocal ||
-      ""
+        data.idLocal ||
+        data.localId ||
+        data.idlocal ||
+        ""
     ).trim();
   }
 
   function matchesCurrentLocal(
     data = {}
   ) {
-    if (!currentLocalId) {
+    if (
+      !currentLocalId
+    ) {
       return false;
     }
 
@@ -713,33 +996,30 @@
 
   /*
    * ============================================================
-   * VENTAS DEL MES
+   * VENTAS
    * ============================================================
    */
 
   function getSaleProductId(
-    p
+    product
   ) {
-    if (!p) {
-      return "";
-    }
-
-    const value =
-      p.productId ||
-      p.productID ||
-      p.product_id ||
-      p.id;
-
-    return value
-      ? String(value)
-      : "";
+    return String(
+      product?.productId ||
+        product?.productID ||
+        product?.product_id ||
+        product?.id ||
+        ""
+    ).trim();
   }
 
   function aggregateMonthlySales(
     snapshot
   ) {
-    const unitsMap = {};
-    const boxesMap = {};
+    const unitsMap =
+      {};
+
+    const boxesMap =
+      {};
 
     snapshot.forEach(
       doc => {
@@ -763,13 +1043,15 @@
             : [];
 
         products.forEach(
-          p => {
+          product => {
             const productId =
               getSaleProductId(
-                p
+                product
               );
 
-            if (!productId) {
+            if (
+              !productId
+            ) {
               return;
             }
 
@@ -777,92 +1059,91 @@
               Math.max(
                 1,
                 numberOrZero(
-                  p.unitsPerBox
+                  product.unitsPerBox
                 )
               );
 
             const mode =
-              String(
-                p.mode ||
-                p.saleMode ||
-                p.saleType ||
-                ""
-              ).toLowerCase();
+              normalizeText(
+                product.mode ||
+                  product.saleMode ||
+                  product.saleType ||
+                  ""
+              );
 
-            const qty =
+            const quantity =
               numberOrZero(
-                p.quantity
+                product.quantity
               );
 
             const totalUnits =
               numberOrZero(
-                p.unitsTotal ||
-                p.totalUnits
+                product.unitsTotal ||
+                  product.totalUnits
               );
 
-            let soldUnits = 0;
-            let soldBoxes = 0;
+            let soldUnits =
+              0;
+
+            let soldBoxes =
+              0;
 
             if (
-              mode === "box"
+              mode ===
+              "box"
             ) {
               soldBoxes =
-                qty > 0
+                quantity >
+                  0
                   ? Math.floor(
-                      qty
+                      quantity
                     )
-                  : (
-                      totalUnits >
+                  : totalUnits >
                       0
-                        ? Math.floor(
-                            totalUnits /
-                            unitsPerBox
-                          )
-                        : 0
-                    );
+                    ? Math.floor(
+                        totalUnits /
+                          unitsPerBox
+                      )
+                    : 0;
 
               soldUnits =
                 totalUnits >
-                0
+                  0
                   ? totalUnits
                   : soldBoxes *
                     unitsPerBox;
-
             } else if (
-              mode === "unit"
+              mode ===
+              "unit"
             ) {
               soldUnits =
                 totalUnits >
-                0
+                  0
                   ? totalUnits
-                  : qty;
-
+                  : quantity;
             } else if (
               totalUnits >
               0
             ) {
               soldUnits =
                 totalUnits;
-
             } else if (
               numberOrZero(
-                p.boxes
-              ) > 0
+                product.boxes
+              ) >
+              0
             ) {
               soldBoxes =
-                Math.floor(
-                  numberOrZero(
-                    p.boxes
-                  )
+                integerOrZero(
+                  product.boxes
                 );
 
               soldUnits =
                 soldBoxes *
                 unitsPerBox;
-
             } else {
               soldUnits =
-                qty;
+                quantity;
             }
 
             unitsMap[
@@ -899,6 +1180,143 @@
 
   /*
    * ============================================================
+   * PRODUCTO
+   * ============================================================
+   */
+
+  function findProductById(
+    id
+  ) {
+    const target =
+      String(
+        id ||
+          ""
+      ).trim();
+
+    return (
+      currentProductsList.find(
+        product =>
+          String(
+            product.id
+          ).trim() ===
+          target
+      ) ||
+      null
+    );
+  }
+
+  function findProductByText(
+    value
+  ) {
+    const text =
+      normalizeText(
+        value
+      );
+
+    if (
+      !text
+    ) {
+      return null;
+    }
+
+    const exact =
+      currentProductsList.find(
+        product =>
+          normalizeText(
+            product.name
+          ) ===
+            text ||
+          normalizeText(
+            getProductCode(
+              product
+            )
+          ) ===
+            text
+      );
+
+    if (
+      exact
+    ) {
+      return exact;
+    }
+
+    return (
+      currentProductsList.find(
+        product =>
+          normalizeText(
+            product.name
+          ).includes(
+            text
+          ) ||
+          normalizeText(
+            getProductCode(
+              product
+            )
+          ).includes(
+            text
+          )
+      ) ||
+      null
+    );
+  }
+
+  function getProductComboOptionsHtml() {
+    return currentProductsList
+      .map(
+        product => {
+          const name =
+            String(
+              product.name ||
+                ""
+            ).trim();
+
+          const code =
+            getProductCode(
+              product
+            );
+
+          const provider =
+            getProductProviderName(
+              product
+            );
+
+          const display =
+            [
+              name,
+
+              code
+                ? code
+                : "",
+
+              provider
+                ? provider
+                : ""
+            ]
+              .filter(
+                Boolean
+              )
+              .join(
+                " — "
+              );
+
+          return `
+            <option
+              value="${escapeHtml(
+                name
+              )}"
+            >
+              ${escapeHtml(
+                display
+              )}
+            </option>
+          `;
+        }
+      )
+      .join("");
+  }
+
+  /*
+   * ============================================================
    * PROYECCIONES
    * ============================================================
    */
@@ -907,7 +1325,7 @@
     product
   ) {
     const stockUnits =
-      getStockUnits(
+      getCurrentStockUnits(
         product
       );
 
@@ -921,21 +1339,25 @@
         product
       );
 
-    const costPerUnit =
-      getCostPerUnit(
-        product
-      );
-
     const soldUnits =
-      getSoldUnitsForProduct(
-        product
+      numberOrZero(
+        currentMonthlySalesMap[
+          product.id
+        ]
       );
 
     const soldBoxes =
       Math.floor(
-        getSoldBoxesForProduct(
-          product
+        numberOrZero(
+          currentMonthlyBoxesMap[
+            product.id
+          ]
         )
+      );
+
+    const costPerUnit =
+      getCostPerUnit(
+        product
       );
 
     let suggestedUnits =
@@ -943,18 +1365,18 @@
       SAFETY_STOCK_DEFAULT -
       stockUnits;
 
-    if (
-      suggestedUnits <
-      0
-    ) {
-      suggestedUnits = 0;
-    }
+    suggestedUnits =
+      Math.max(
+        0,
+        suggestedUnits
+      );
 
     const suggestedBoxes =
-      unitsPerBox > 1
+      unitsPerBox >
+        1
         ? Math.ceil(
             suggestedUnits /
-            unitsPerBox
+              unitsPerBox
           )
         : suggestedUnits;
 
@@ -962,7 +1384,8 @@
       "OK";
 
     if (
-      suggestedUnits > 0
+      suggestedUnits >
+      0
     ) {
       status =
         "Reponer";
@@ -976,18 +1399,22 @@
 
     return {
       stockUnits,
+
       stockBoxes,
-      soldMonthUnits:
-        soldUnits,
-      soldMonthBoxes:
-        soldBoxes,
+
+      unitsPerBox,
+
+      soldUnits,
+
+      soldBoxes,
+
       costPerUnit,
-      suggestedPurchaseUnits:
-        suggestedUnits,
-      suggestedPurchaseBoxes:
-        suggestedBoxes,
-      status,
-      unitsPerBox
+
+      suggestedUnits,
+
+      suggestedBoxes,
+
+      status
     };
   }
 
@@ -1003,48 +1430,18 @@
       id:
         product.id,
 
-      code:
-        getProductCode(
-          product
-        ),
-
       name:
         product.name ||
-        "-",
+        "—",
+
+      providerName:
+        getProductProviderName(
+          product
+        ),
 
       price:
         numberOrZero(
           product.price
-        ),
-
-      quantity:
-        getCurrentStockUnits(
-          product
-        ),
-
-      stockBaseUnits:
-        getStockBaseUnits(
-          product
-        ),
-
-      boxes:
-        numberOrZero(
-          product.boxes
-        ),
-
-      unitsPerBox:
-        getUnitsPerBox(
-          product
-        ),
-
-      lastCostPerBox:
-        numberOrZero(
-          product.lastCostPerBox
-        ),
-
-      lastCostPerUnit:
-        numberOrZero(
-          product.lastCostPerUnit
         ),
 
       stockUnits:
@@ -1053,20 +1450,23 @@
       stockBoxes:
         projection.stockBoxes,
 
+      unitsPerBox:
+        projection.unitsPerBox,
+
       soldMonthUnits:
-        projection.soldMonthUnits,
+        projection.soldUnits,
 
       soldMonthBoxes:
-        projection.soldMonthBoxes,
+        projection.soldBoxes,
 
       costPerUnit:
         projection.costPerUnit,
 
       suggestedPurchaseUnits:
-        projection.suggestedPurchaseUnits,
+        projection.suggestedUnits,
 
       suggestedPurchaseBoxes:
-        projection.suggestedPurchaseBoxes,
+        projection.suggestedBoxes,
 
       status:
         projection.status
@@ -1075,7 +1475,7 @@
 
   /*
    * ============================================================
-   * PRESENTACIÓN
+   * TABLA
    * ============================================================
    */
 
@@ -1205,12 +1605,6 @@
     `;
   }
 
-  /*
-   * ============================================================
-   * DATATABLE
-   * ============================================================
-   */
-
   function ensureInventoryDataTable() {
     if (
       inventoryDT
@@ -1233,7 +1627,8 @@
     inventoryDT =
       $("#inventoryTable")
         .DataTable({
-          data: [],
+          data:
+            [],
 
           columns: [
             {
@@ -1252,6 +1647,27 @@
                     "display"
                     ? escapeHtml(
                         data
+                      )
+                    : data
+            },
+
+            {
+              data:
+                "providerName",
+
+              title:
+                "Proveedor",
+
+              render:
+                (
+                  data,
+                  type
+                ) =>
+                  type ===
+                    "display"
+                    ? escapeHtml(
+                        data ||
+                          "Sin proveedor"
                       )
                     : data
             },
@@ -1331,10 +1747,8 @@
                 ) =>
                   type ===
                     "display"
-                    ? Math.floor(
-                        numberOrZero(
-                          data
-                        )
+                    ? integerOrZero(
+                        data
                       )
                     : data
             },
@@ -1370,30 +1784,13 @@
                 (
                   data,
                   type
-                ) => {
-                  if (
-                    type !==
+                ) =>
+                  type ===
                     "display"
-                  ) {
-                    return data;
-                  }
-
-                  return data > 0
-                    ? `
-                        <strong style="
-                          color:#ef4444;
-                        ">
-                          ${data}
-                        </strong>
-                      `
-                    : `
-                        <strong style="
-                          color:#16a34a;
-                        ">
-                          0
-                        </strong>
-                      `;
-                }
+                    ? numberOrZero(
+                        data
+                      )
+                    : data
             },
 
             {
@@ -1410,10 +1807,8 @@
                 ) =>
                   type ===
                     "display"
-                    ? Math.floor(
-                        numberOrZero(
-                          data
-                        )
+                    ? integerOrZero(
+                        data
                       )
                     : data
             },
@@ -1477,13 +1872,12 @@
               50
             ],
 
-          order:
+          order: [
             [
-              [
-                0,
-                "asc"
-              ]
-            ],
+              0,
+              "asc"
+            ]
+          ],
 
           autoWidth:
             false,
@@ -1526,10 +1920,6 @@
           }
         });
 
-    /*
-     * Un solo delegado de eventos.
-     */
-
     $("#inventoryTable tbody").on(
       "click",
       "button[data-action='edit']",
@@ -1570,7 +1960,8 @@
           String(
             $(this).data(
               "name"
-            ) || ""
+            ) ||
+              ""
           )
         );
       }
@@ -1581,9 +1972,108 @@
 
   /*
    * ============================================================
-   * FALLBACK SIN DATATABLE
+   * RESUMEN
    * ============================================================
    */
+
+  function refreshInventoryView() {
+    const rows =
+      currentProductsList.map(
+        buildRowData
+      );
+
+    const totalValue =
+      rows.reduce(
+        (
+          sum,
+          row
+        ) =>
+          sum +
+          (
+            numberOrZero(
+              row.stockUnits
+            ) *
+            numberOrZero(
+              row.price
+            )
+          ),
+        0
+      );
+
+    const lowStock =
+      rows.filter(
+        row =>
+          row.stockUnits <=
+            LOW_STOCK_THRESHOLD ||
+          row.suggestedPurchaseUnits >
+            0
+      );
+
+    if (
+      totalProductsCard
+    ) {
+      totalProductsCard.textContent =
+        String(
+          rows.length
+        );
+    }
+
+    if (
+      totalValueCard
+    ) {
+      totalValueCard.textContent =
+        currency(
+          totalValue
+        );
+    }
+
+    if (
+      lowStockCard
+    ) {
+      lowStockCard.textContent =
+        String(
+          lowStock.length
+        );
+    }
+
+    renderLowStockPanel(
+      lowStock
+    );
+
+    const dt =
+      ensureInventoryDataTable();
+
+    if (
+      dt
+    ) {
+      const searchValue =
+        searchInput
+          ? searchInput.value.trim()
+          : "";
+
+      dt.clear();
+
+      dt.rows.add(
+        rows
+      );
+
+      dt.draw(
+        false
+      );
+
+      dt.search(
+        searchValue
+      ).draw(
+        false
+      );
+
+      return;
+    }
+
+    renderInventoryFallback(
+      rows
+    );
+  }
 
   function renderInventoryFallback(
     rows
@@ -1603,7 +2093,7 @@
       inventoryTbody.innerHTML =
         `
           <tr>
-            <td colspan="10">
+            <td colspan="11">
               No hay productos registrados.
             </td>
           </tr>
@@ -1627,6 +2117,13 @@
           </td>
 
           <td>
+            ${escapeHtml(
+              row.providerName ||
+                "Sin proveedor"
+            )}
+          </td>
+
+          <td>
             ${renderStockDisplay(
               row
             )}
@@ -1639,17 +2136,11 @@
           </td>
 
           <td>
-            ${numberOrZero(
-              row.soldMonthUnits
-            )}
+            ${row.soldMonthUnits}
           </td>
 
           <td>
-            ${Math.floor(
-              numberOrZero(
-                row.soldMonthBoxes
-              )
-            )}
+            ${row.soldMonthBoxes}
           </td>
 
           <td>
@@ -1659,32 +2150,11 @@
           </td>
 
           <td>
-            ${
-              row.suggestedPurchaseUnits >
-              0
-                ? `
-                    <strong style="
-                      color:#ef4444;
-                    ">
-                      ${row.suggestedPurchaseUnits}
-                    </strong>
-                  `
-                : `
-                    <strong style="
-                      color:#16a34a;
-                    ">
-                      0
-                    </strong>
-                  `
-            }
+            ${row.suggestedPurchaseUnits}
           </td>
 
           <td>
-            ${Math.floor(
-              numberOrZero(
-                row.suggestedPurchaseBoxes
-              )
-            )}
+            ${row.suggestedPurchaseBoxes}
           </td>
 
           <td>
@@ -1705,102 +2175,6 @@
         );
       }
     );
-  }
-
-  /*
-   * ============================================================
-   * REFRESCAR VISTA
-   * ============================================================
-   */
-
-  function refreshInventoryView() {
-    const rows =
-      currentProductsList.map(
-        buildRowData
-      );
-
-    const totalValue =
-      rows.reduce(
-        (
-          sum,
-          p
-        ) =>
-          sum +
-          (
-            numberOrZero(
-              p.stockUnits
-            ) *
-            numberOrZero(
-              p.price
-            )
-          ),
-        0
-      );
-
-    const lowStockList =
-      rows.filter(
-        p =>
-          p.stockUnits <=
-            LOW_STOCK_THRESHOLD ||
-          p.suggestedPurchaseUnits >
-            0
-      );
-
-    if (
-      totalProductsCard
-    ) {
-      totalProductsCard.textContent =
-        rows.length;
-    }
-
-    if (
-      totalValueCard
-    ) {
-      totalValueCard.textContent =
-        currency(
-          totalValue
-        );
-    }
-
-    if (
-      lowStockCard
-    ) {
-      lowStockCard.textContent =
-        lowStockList.length;
-    }
-
-    renderLowStockPanel(
-      lowStockList
-    );
-
-    const dt =
-      ensureInventoryDataTable();
-
-    if (dt) {
-      dt.clear();
-
-      dt.rows.add(
-        rows
-      );
-
-      dt.draw(
-        false
-      );
-
-      if (
-        searchInput
-      ) {
-        dt.search(
-          searchInput.value.trim()
-        ).draw(
-          false
-        );
-      }
-    } else {
-      renderInventoryFallback(
-        rows
-      );
-    }
   }
 
   function renderLowStockPanel(
@@ -1831,50 +2205,56 @@
       "";
 
     list.forEach(
-      p => {
-        const div =
+      product => {
+        const item =
           document.createElement(
             "div"
           );
 
-        div.className =
+        item.className =
           "low-stock-item";
 
-        const left =
-          document.createElement(
-            "div"
-          );
+        item.innerHTML = `
+          <div>
+            <strong>
+              ${escapeHtml(
+                product.name
+              )}
+            </strong>
 
-        left.innerHTML = `
-          <strong>
-            ${escapeHtml(
-              p.name
-            )}
-          </strong>
+            <div class="small">
+              Proveedor:
+              ${escapeHtml(
+                product.providerName ||
+                  "Sin proveedor"
+              )}
+            </div>
+          </div>
+
+          <div>
+            Stock:
+            <strong>
+              ${product.stockUnits}
+            </strong>
+
+            |
+
+            Vendido:
+            <strong>
+              ${product.soldMonthUnits}
+            </strong>
+
+            |
+
+            Sugerido:
+            <strong>
+              ${product.suggestedPurchaseUnits}
+            </strong>
+          </div>
         `;
 
-        const right =
-          document.createElement(
-            "div"
-          );
-
-        right.textContent =
-          `Stock: ${p.stockUnits} unid. | ` +
-          `Cajas: ${p.stockBoxes} | ` +
-          `Vendido mes: ${p.soldMonthUnits} unid. | ` +
-          `Sugerido compra: ${p.suggestedPurchaseUnits} unid. ` +
-          `(${p.suggestedPurchaseBoxes} cajas)`;
-
-        div.appendChild(
-          left
-        );
-
-        div.appendChild(
-          right
-        );
-
         lowStockPanel.appendChild(
-          div
+          item
         );
       }
     );
@@ -1882,394 +2262,317 @@
 
   /*
    * ============================================================
-   * LISTENERS REALTIME
+   * CARGA DEL INVENTARIO
    * ============================================================
    */
 
-  function stopRealtimeListeners() {
+  async function loadInventoryData() {
     if (
-      typeof productsUnsub ===
-      "function"
+      inventoryLoadPromise
     ) {
-      productsUnsub();
-
-      productsUnsub =
-        null;
+      return inventoryLoadPromise;
     }
 
-    if (
-      typeof salesUnsub ===
-      "function"
-    ) {
-      salesUnsub();
+    inventoryLoadPromise =
+      (async () => {
+        if (
+          !currentLocalId
+        ) {
+          currentProductsList =
+            [];
 
-      salesUnsub =
-        null;
-    }
-  }
+          currentMonthlySalesMap =
+            {};
 
-  function startRealtimeListeners() {
-    /*
-     * Protección contra inicialización duplicada.
-     */
-    stopRealtimeListeners();
+          currentMonthlyBoxesMap =
+            {};
 
-    if (
-      !currentLocalId
-    ) {
-      currentProductsList =
-        [];
+          refreshInventoryView();
 
-      currentMonthlySalesMap =
-        {};
+          return;
+        }
 
-      currentMonthlyBoxesMap =
-        {};
+        const now =
+          new Date();
 
-      refreshInventoryView();
+        const monthStart =
+          new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            1,
+            0,
+            0,
+            0,
+            0
+          );
 
-      return;
-    }
+        const nextMonthStart =
+          new Date(
+            now.getFullYear(),
+            now.getMonth() +
+              1,
+            1,
+            0,
+            0,
+            0,
+            0
+          );
 
-    const monthStart =
-      new Date();
+        const [
+          productsSnap,
+          salesSnap
+        ] =
+          await Promise.all([
+            db
+              .collection(
+                PRODUCTS_COLLECTION
+              )
+              .where(
+                "id_local",
+                "==",
+                currentLocalId
+              )
+              .get(),
 
-    monthStart.setDate(
-      1
-    );
+            db
+              .collection(
+                SALES_COLLECTION
+              )
+              .where(
+                "createdAt",
+                ">=",
+                monthStart
+              )
+              .where(
+                "createdAt",
+                "<",
+                nextMonthStart
+              )
+              .get()
+          ]);
 
-    monthStart.setHours(
-      0,
-      0,
-      0,
-      0
-    );
+        const sales =
+          aggregateMonthlySales(
+            salesSnap
+          );
 
-    /*
-     * ==========================================================
-     * VENTAS DEL MES
-     * ==========================================================
-     */
+        currentMonthlySalesMap =
+          sales.unitsMap;
 
-    salesUnsub =
-      db
-        .collection(
-          "ventas"
-        )
-        .where(
-          "createdAt",
-          ">=",
-          monthStart
-        )
-        .onSnapshot(
-          snapshot => {
-            const {
-              unitsMap,
-              boxesMap
-            } =
-              aggregateMonthlySales(
-                snapshot
+        currentMonthlyBoxesMap =
+          sales.boxesMap;
+
+        const products =
+          [];
+
+        productsSnap.forEach(
+          doc => {
+            const data =
+              doc.data() ||
+              {};
+
+            if (
+              !matchesCurrentLocal(
+                data
+              )
+            ) {
+              return;
+            }
+
+            const providerId =
+              String(
+                data.proveedorId ||
+                  ""
+              ).trim();
+
+            let providerName =
+              String(
+                data.proveedorNombre ||
+                  ""
+              ).trim();
+
+            if (
+              providerId &&
+              !providerName
+            ) {
+              const provider =
+                getProviderById(
+                  providerId
+                );
+
+              if (
+                provider
+              ) {
+                providerName =
+                  String(
+                    provider.nombre ||
+                      ""
+                  ).trim();
+              }
+            }
+
+            const stockUnits =
+              getCurrentStockUnits(
+                data
               );
 
-            currentMonthlySalesMap =
-              unitsMap;
+            products.push({
+              id:
+                doc.id,
 
-            currentMonthlyBoxesMap =
-              boxesMap;
+              ...data,
 
-            refreshInventoryView();
-          },
+              proveedorId:
+                providerId ||
+                null,
 
-          err => {
-            console.error(
-              "Error cargando ventas del mes:",
-              err
-            );
+              proveedorNombre:
+                providerName,
 
-            currentMonthlySalesMap =
-              {};
+              id_local:
+                currentLocalId,
 
-            currentMonthlyBoxesMap =
-              {};
+              localNombre:
+                data.localNombre ||
+                currentLocalInfo.nombre ||
+                "",
 
-            refreshInventoryView();
+              localNumeroDocumento:
+                data.localNumeroDocumento ||
+                currentLocalInfo.numeroDocumento ||
+                "",
+
+              localUbicacion:
+                data.localUbicacion ||
+                currentLocalInfo.ubicacion ||
+                "",
+
+              localContribuyente:
+                data.localContribuyente ||
+                currentLocalInfo.contribuyente ||
+                "",
+
+              localTipoDocumento:
+                data.localTipoDocumento ||
+                currentLocalInfo.tipoDocumento ||
+                "",
+
+              localNIT:
+                data.localNIT ||
+                currentLocalInfo.nit ||
+                "",
+
+              localNRC:
+                data.localNRC ||
+                currentLocalInfo.nrc ||
+                "",
+
+              quantity:
+                stockUnits,
+
+              stockCurrentUnits:
+                stockUnits,
+
+              unitsPerBox:
+                Math.max(
+                  1,
+                  numberOrZero(
+                    data.unitsPerBox
+                  ) ||
+                    1
+                )
+            });
           }
         );
 
-    /*
-     * ==========================================================
-     * PRODUCTOS
-     * ==========================================================
-     */
-
-    productsUnsub =
-      db
-        .collection(
-          "productos"
-        )
-        .orderBy(
-          "name"
-        )
-        .onSnapshot(
-          snapshot => {
-            const products =
-              [];
-
-            snapshot.forEach(
-              doc => {
-                const p =
-                  doc.data() ||
-                  {};
-
-                if (
-                  !matchesCurrentLocal(
-                    p
-                  )
-                ) {
-                  return;
-                }
-
-                const currentStockUnits =
-                  Number.isFinite(
-                    Number(
-                      p.stockCurrentUnits
-                    )
-                  )
-                    ? Math.max(
-                        0,
-                        numberOrZero(
-                          p.stockCurrentUnits
-                        )
-                      )
-                    : Number.isFinite(
-                        Number(
-                          p.quantity
-                        )
-                      )
-                      ? Math.max(
-                          0,
-                          numberOrZero(
-                            p.quantity
-                          )
-                        )
-                      : Number.isFinite(
-                          Number(
-                            p.stockBaseUnits
-                          )
-                        )
-                        ? Math.max(
-                            0,
-                            numberOrZero(
-                              p.stockBaseUnits
-                            )
-                          )
-                        : 0;
-
-                products.push({
-                  id:
-                    doc.id,
-
-                  ...p,
-
-                  id_local:
-                    p.id_local ||
-                    currentLocalId,
-
-                  localNombre:
-                    p.localNombre ||
-                    currentLocalInfo.nombre ||
-                    "",
-
-                  localNumeroDocumento:
-                    p.localNumeroDocumento ||
-                    currentLocalInfo.numeroDocumento ||
-                    "",
-
-                  localUbicacion:
-                    p.localUbicacion ||
-                    currentLocalInfo.ubicacion ||
-                    "",
-
-                  codigoProducto:
-                    getProductCode(
-                      p
-                    ),
-
-                  quantity:
-                    currentStockUnits,
-
-                  stockCurrentUnits:
-                    currentStockUnits,
-
-                  stockBaseUnits:
-                    numberOrZero(
-                      p.stockBaseUnits
-                    ),
-
-                  boxes:
-                    numberOrZero(
-                      p.boxes
-                    ),
-
-                  unitsPerBox:
-                    numberOrZero(
-                      p.unitsPerBox
-                    ) > 0
-                      ? numberOrZero(
-                          p.unitsPerBox
-                        )
-                      : 1
-                });
-              }
-            );
-
-            currentProductsList =
-              products;
-
-            refreshInventoryView();
-          },
-
-          err => {
-            console.error(
-              "Error cargando inventario:",
-              err
-            );
-
-            currentProductsList =
-              [];
-
-            refreshInventoryView();
-          }
+        products.sort(
+          (
+            a,
+            b
+          ) =>
+            normalizeText(
+              a.name
+            ).localeCompare(
+              normalizeText(
+                b.name
+              ),
+              "es"
+            )
         );
-  }
 
-  /*
-   * ============================================================
-   * BÚSQUEDA DE PRODUCTOS
-   * ============================================================
-   */
+        currentProductsList =
+          products;
 
-  function findProductByName(
-    name
-  ) {
-    if (!name) {
-      return null;
+        refreshInventoryView();
+      })();
+
+    try {
+      return await inventoryLoadPromise;
+    } finally {
+      inventoryLoadPromise =
+        null;
     }
-
-    const lower =
-      String(
-        name
-      )
-        .trim()
-        .toLowerCase();
-
-    return (
-      currentProductsList.find(
-        p => {
-          const n =
-            String(
-              p.name ||
-              ""
-            )
-              .trim()
-              .toLowerCase();
-
-          const c =
-            String(
-              getProductCode(
-                p
-              ) ||
-              ""
-            )
-              .trim()
-              .toLowerCase();
-
-          const id =
-            String(
-              p.id ||
-              ""
-            )
-              .trim()
-              .toLowerCase();
-
-          return (
-            n === lower ||
-            c === lower ||
-            id === lower
-          );
-        }
-      ) ||
-      null
-    );
-  }
-
-  function findProductById(
-    id
-  ) {
-    return (
-      currentProductsList.find(
-        p =>
-          String(
-            p.id
-          ) ===
-          String(
-            id
-          )
-      ) ||
-      null
-    );
   }
 
   /*
    * ============================================================
-   * REFERENCIAS DE LIBRO
+   * MOVIMIENTOS
    * ============================================================
    */
 
-  async function loadProductStockMovements(
-    productId,
-    forceRefresh = false
+  function invalidateProductStockMovementsCache(
+    productId
   ) {
-    const targetId =
+    const target =
       String(
         productId ||
-        ""
+          ""
       ).trim();
 
     if (
-      !targetId
+      target
+    ) {
+      productStockMovementsCache.delete(
+        target
+      );
+    }
+  }
+
+  async function loadProductStockMovements(
+    productId
+  ) {
+    const target =
+      String(
+        productId ||
+          ""
+      ).trim();
+
+    if (
+      !target
     ) {
       return [];
     }
 
-    /*
-     * Caché.
-     */
     if (
-      !forceRefresh &&
       productStockMovementsCache.has(
-        targetId
+        target
       )
     ) {
       return (
         productStockMovementsCache.get(
-          targetId
+          target
         ) || []
       );
     }
 
-    /*
-     * Consulta ya pendiente.
-     */
     if (
-      !forceRefresh &&
       productStockMovementsPending.has(
-        targetId
+        target
       )
     ) {
       return (
         productStockMovementsPending.get(
-          targetId
+          target
         )
       );
     }
@@ -2277,17 +2580,30 @@
     const promise =
       (async () => {
         try {
-          const snapshot =
-            await db
+          let query =
+            db
               .collection(
-                "stock_movimientos"
+                MOVEMENTS_COLLECTION
               )
               .where(
                 "productId",
                 "==",
-                targetId
-              )
-              .get();
+                target
+              );
+
+          if (
+            currentLocalId
+          ) {
+            query =
+              query.where(
+                "id_local",
+                "==",
+                currentLocalId
+              );
+          }
+
+          const snapshot =
+            await query.get();
 
           const movements =
             [];
@@ -2298,115 +2614,37 @@
                 doc.data() ||
                 {};
 
-              const movementLocal =
-                getLocalFieldValue(
-                  data
-                );
-
-              if (
-                movementLocal &&
-                currentLocalId &&
-                movementLocal !==
-                  String(
-                    currentLocalId
-                  ).trim()
-              ) {
-                return;
-              }
-
-              const referencia =
-                String(
-                  data.referenciaLibro ||
-                  data.referenceBook ||
-                  data.bookReference ||
-                  ""
-                ).trim();
-
-              const numeroDocumento =
-                String(
-                  data.numeroDocumento ||
-                  data.documentNumber ||
-                  data.numero_documento ||
-                  ""
-                ).trim();
-
-              if (
-                !referencia &&
-                !numeroDocumento
-              ) {
-                return;
-              }
-
-              let createdAtMs =
-                0;
-
-              if (
-                data.createdAt &&
-                typeof data.createdAt.toMillis ===
-                  "function"
-              ) {
-                createdAtMs =
-                  data.createdAt.toMillis();
-
-              } else if (
-                data.createdAt instanceof
-                Date
-              ) {
-                createdAtMs =
-                  data.createdAt.getTime();
-
-              } else if (
-                data.createdAt &&
-                typeof data.createdAt.seconds ===
-                  "number"
-              ) {
-                createdAtMs =
-                  data.createdAt.seconds *
-                  1000;
-              }
-
               movements.push({
                 id:
                   doc.id,
 
                 referenciaLibro:
-                  referencia,
+                  String(
+                    data.referenciaLibro ||
+                      data.referenceBook ||
+                      data.bookReference ||
+                      ""
+                  ).trim(),
 
-                numeroDocumento,
+                numeroDocumento:
+                  String(
+                    data.numeroDocumento ||
+                      data.documentNumber ||
+                      ""
+                  ).trim(),
 
                 tipoMovimiento:
                   String(
                     data.tipoMovimiento ||
-                    ""
+                      ""
                   ).trim(),
 
-                detalle:
-                  String(
-                    data.detalle ||
-                    ""
-                  ).trim(),
-
-                entrada:
-                  numberOrZero(
-                    data.entrada
-                  ),
-
-                salida:
-                  numberOrZero(
-                    data.salida
-                  ),
-
-                saldoAnterior:
-                  numberOrZero(
-                    data.saldoAnterior
-                  ),
-
-                saldoActual:
-                  numberOrZero(
-                    data.saldoActual
-                  ),
-
-                createdAtMs
+                createdAtMs:
+                  data.createdAt &&
+                  typeof data.createdAt.toMillis ===
+                    "function"
+                    ? data.createdAt.toMillis()
+                    : 0
               });
             }
           );
@@ -2425,17 +2663,17 @@
           );
 
           productStockMovementsCache.set(
-            targetId,
+            target,
             movements
           );
 
           return movements;
         } catch (
-          err
+          error
         ) {
           console.error(
-            "Error cargando referencias de libro:",
-            err
+            "Error leyendo movimientos:",
+            error
           );
 
           return [];
@@ -2443,7 +2681,7 @@
       })();
 
     productStockMovementsPending.set(
-      targetId,
+      target,
       promise
     );
 
@@ -2451,57 +2689,34 @@
       return await promise;
     } finally {
       productStockMovementsPending.delete(
-        targetId
-      );
-    }
-  }
-
-  function invalidateProductStockMovementsCache(
-    productId
-  ) {
-    const targetId =
-      String(
-        productId ||
-        ""
-      ).trim();
-
-    if (
-      targetId
-    ) {
-      productStockMovementsCache.delete(
-        targetId
+        target
       );
     }
   }
 
   function getUniqueBookReferences(
-    movements = []
+    movements
   ) {
     const seen =
       new Set();
 
-    const unique =
+    const result =
       [];
 
     movements.forEach(
       movement => {
         const key =
           [
-            String(
-              movement.referenciaLibro ||
-              ""
-            )
-              .trim()
-              .toLowerCase(),
+            movement.referenciaLibro ||
+              "",
 
-            String(
-              movement.numeroDocumento ||
+            movement.numeroDocumento ||
               ""
-            )
-              .trim()
-              .toLowerCase()
           ]
-            .join("|");
+            .join(
+              "|"
+            )
+            .toLowerCase();
 
         if (
           seen.has(
@@ -2515,929 +2730,1502 @@
           key
         );
 
-        unique.push(
+        result.push(
           movement
         );
       }
     );
 
-    return unique;
-  }
-
-  function buildBookReferenceOptions(
-    movements = [],
-    selectedReference = "",
-    selectedDocument = ""
-  ) {
-    const unique =
-      getUniqueBookReferences(
-        movements
-      );
-
-    const options = [
-      `
-        <option value="">
-          Escribir nueva referencia
-        </option>
-      `
-    ];
-
-    unique.forEach(
-      (
-        movement,
-        index
-      ) => {
-        const reference =
-          movement.referenciaLibro ||
-          "";
-
-        const document =
-          movement.numeroDocumento ||
-          "";
-
-        const labelParts =
-          [];
-
-        if (
-          reference
-        ) {
-          labelParts.push(
-            reference
-          );
-        }
-
-        if (
-          document
-        ) {
-          labelParts.push(
-            `Documento: ${document}`
-          );
-        }
-
-        if (
-          movement.tipoMovimiento
-        ) {
-          labelParts.push(
-            `Movimiento: ${movement.tipoMovimiento}`
-          );
-        }
-
-        const value =
-          String(
-            index
-          );
-
-        const isSelected =
-          reference ===
-            selectedReference &&
-          document ===
-            selectedDocument;
-
-        options.push(`
-          <option
-            value="${escapeHtml(
-              value
-            )}"
-            ${
-              isSelected
-                ? "selected"
-                : ""
-            }
-          >
-            ${escapeHtml(
-              labelParts.join(
-                " — "
-              )
-            )}
-          </option>
-        `);
-      }
-    );
-
-    return options.join(
-      ""
-    );
+    return result;
   }
 
   /*
    * ============================================================
-   * FORMULARIO AGREGAR / REPONER
+   * REGISTRAR MOVIMIENTO
    * ============================================================
    */
 
-  function buildExistingProductOptions(
-    selectedValue = ""
-  ) {
-    const options = [
-      `
-        <option value="">
-          Selecciona un producto
-        </option>
-      `
-    ];
-
-    currentProductsList.forEach(
-      p => {
-        const code =
-          getProductCode(
-            p
-          );
-
-        options.push(
-          `
-            <option
-              value="${escapeHtml(
-                p.name
-              )}"
-            >
-              ${escapeHtml(
-                p.name
-              )}
-              ${
-                code
-                  ? ` — ${escapeHtml(
-                      code
-                    )}`
-                  : ""
-              }
-            </option>
-          `
-        );
-
-        if (
-          code
-        ) {
-          options.push(
-            `
-              <option
-                value="${escapeHtml(
-                  code
-                )}"
-              >
-                ${escapeHtml(
-                  code
-                )}
-                ${
-                  p.name
-                    ? ` — ${escapeHtml(
-                        p.name
-                      )}`
-                    : ""
-                }
-              </option>
-            `
-          );
-        }
-      }
-    );
-
-    return options.join(
-      ""
-    );
-  }
-
-  function buildStockFormHtml(
-    initial = {}
-  ) {
-    const hasProducts =
-      currentProductsList.length >
-      0;
-
-    const defaultMode =
-      initial.mode ||
-      (
-        hasProducts
-          ? "existing"
-          : "new"
-      );
-
-    const selectedProduct =
-      initial.productName
-        ? findProductByName(
-            initial.productName
-          )
-        : null;
-
-    const selectedUnitsPerBox =
-      selectedProduct
-        ? getUnitsPerBox(
-            selectedProduct
-          )
-        : 1;
-
-    const selectedCode =
-      selectedProduct
-        ? getProductCode(
-            selectedProduct
-          )
-        : "";
-
-    const productOptions =
-      buildExistingProductOptions();
-
-    return `
-      <div class="inv-modal">
-        <div class="inv-modal-grid">
-
-          <div class="inv-field full">
-            <label for="p-mode">
-              Tipo de registro
-            </label>
-
-            <select id="p-mode">
-              <option
-                value="new"
-                ${
-                  defaultMode ===
-                  "new"
-                    ? "selected"
-                    : ""
-                }
-              >
-                Nuevo producto
-              </option>
-
-              <option
-                value="existing"
-                ${
-                  defaultMode ===
-                  "existing"
-                    ? "selected"
-                    : ""
-                }
-              >
-                Agregar a producto existente
-              </option>
-            </select>
-          </div>
-
-          <div
-            class="inv-field full"
-            id="existingGroup"
-          >
-            <label for="p-existing">
-              Producto existente
-            </label>
-
-            <input
-              id="p-existing"
-              type="text"
-              list="productList"
-              placeholder="Escribe para buscar un producto o su código..."
-              value="${escapeHtml(
-                initial.productName ||
-                initial.codigoProducto ||
-                ""
-              )}"
-              autocomplete="off"
-            >
-
-            <datalist id="productList">
-              ${productOptions}
-            </datalist>
-          </div>
-
-          <div
-            class="inv-field full"
-            id="nameGroup"
-          >
-            <label for="p-name">
-              Nombre del producto
-            </label>
-
-            <input
-              id="p-name"
-              type="text"
-              placeholder="Ej. Aceite 1L"
-              value="${escapeHtml(
-                initial.name ||
-                ""
-              )}"
-            >
-          </div>
-
-          <div class="inv-field full">
-            <label for="p-code">
-              Código del producto
-            </label>
-
-            <input
-              id="p-code"
-              type="text"
-              placeholder="Ej. ACE-001"
-              value="${escapeHtml(
-                initial.codigoProducto ||
-                selectedCode ||
-                ""
-              )}"
-            >
-          </div>
-
-          <div class="inv-field full">
-            <label for="p-ref">
-              Referencia a libro
-            </label>
-
-            <input
-              id="p-ref"
-              type="text"
-              placeholder="Ej. Compra, Ajuste, Inventario inicial"
-              value="${escapeHtml(
-                initial.referenciaLibro ||
-                ""
-              )}"
-            >
-          </div>
-
-          <div class="inv-field full">
-            <label for="p-doc">
-              Número de documento
-            </label>
-
-            <input
-              id="p-doc"
-              type="text"
-              placeholder="FAC-00125 / AJ-00001 / INV-00001"
-              value="${escapeHtml(
-                initial.numeroDocumento ||
-                ""
-              )}"
-            >
-          </div>
-
-          <div
-            class="inv-helper"
-            id="p-hint"
-          >
-            Cuando seleccionas un producto existente,
-            el sistema suma las cajas y unidades sueltas
-            al stock actual.
-          </div>
-
-          <div class="inv-field">
-            <label for="p-boxes">
-              Cajas a agregar
-            </label>
-
-            <input
-              id="p-boxes"
-              type="number"
-              min="0"
-              step="1"
-              value="${Math.max(
-                0,
-                numberOrZero(
-                  initial.boxes
-                )
-              )}"
-            >
-          </div>
-
-          <div class="inv-field">
-            <label for="p-upb">
-              Unidades por caja
-            </label>
-
-            <input
-              id="p-upb"
-              type="number"
-              min="1"
-              step="1"
-              value="${Math.max(
-                1,
-                numberOrZero(
-                  initial.unitsPerBox ||
-                  selectedUnitsPerBox ||
-                  1
-                )
-              )}"
-            >
-          </div>
-
-          <div class="inv-field">
-            <label for="p-extra">
-              Unidades sueltas
-            </label>
-
-            <input
-              id="p-extra"
-              type="number"
-              min="0"
-              step="1"
-              value="${Math.max(
-                0,
-                numberOrZero(
-                  initial.extraUnits
-                )
-              )}"
-            >
-          </div>
-
-          <div class="inv-field">
-            <label for="p-costbox">
-              Costo por caja
-            </label>
-
-            <input
-              id="p-costbox"
-              type="number"
-              min="0"
-              step="0.01"
-              value="${Math.max(
-                0,
-                numberOrZero(
-                  initial.lastCostPerBox
-                )
-              )}"
-            >
-          </div>
-
-          <div class="inv-field">
-            <label for="p-price">
-              Precio de venta
-            </label>
-
-            <input
-              id="p-price"
-              type="number"
-              min="0"
-              step="0.01"
-              value="${Math.max(
-                0,
-                numberOrZero(
-                  initial.price
-                )
-              )}"
-            >
-          </div>
-
-          <div class="inv-mini-summary">
-
-            <div class="inv-mini-card">
-              <span>Unidades a sumar</span>
-              <strong id="p-total-units">
-                0
-              </strong>
-            </div>
-
-            <div class="inv-mini-card">
-              <span>Cajas a sumar</span>
-              <strong id="p-total-boxes">
-                0
-              </strong>
-            </div>
-
-            <div class="inv-mini-card">
-              <span>Modo activo</span>
-              <strong id="p-mode-label">
-                Nuevo
-              </strong>
-            </div>
-
-          </div>
-
-        </div>
-      </div>
-    `;
-  }
-
-  function syncStockModalState() {
-    const modeEl =
-      document.getElementById(
-        "p-mode"
-      );
-
-    const existingGroup =
-      document.getElementById(
-        "existingGroup"
-      );
-
-    const nameGroup =
-      document.getElementById(
-        "nameGroup"
-      );
-
-    const existingEl =
-      document.getElementById(
-        "p-existing"
-      );
-
-    const nameEl =
-      document.getElementById(
-        "p-name"
-      );
-
-    const codeEl =
-      document.getElementById(
-        "p-code"
-      );
-
-    const upbEl =
-      document.getElementById(
-        "p-upb"
-      );
-
-    const costBoxEl =
-      document.getElementById(
-        "p-costbox"
-      );
-
-    const priceEl =
-      document.getElementById(
-        "p-price"
-      );
-
-    const hintEl =
-      document.getElementById(
-        "p-hint"
-      );
-
-    const modeLabel =
-      document.getElementById(
-        "p-mode-label"
-      );
-
-    const totalUnitsEl =
-      document.getElementById(
-        "p-total-units"
-      );
-
-    const totalBoxesEl =
-      document.getElementById(
-        "p-total-boxes"
-      );
-
-    if (
-      !modeEl ||
-      !existingGroup ||
-      !nameGroup ||
-      !existingEl ||
-      !nameEl ||
-      !codeEl ||
-      !upbEl ||
-      !costBoxEl ||
-      !priceEl ||
-      !hintEl ||
-      !modeLabel ||
-      !totalUnitsEl ||
-      !totalBoxesEl
-    ) {
-      return;
-    }
-
-    const refreshPreview =
-      () => {
-        const boxes =
-          Math.max(
-            0,
-            numberOrZero(
-              document.getElementById(
-                "p-boxes"
-              )?.value
-            )
-          );
-
-        const upb =
-          Math.max(
-            1,
-            numberOrZero(
-              document.getElementById(
-                "p-upb"
-              )?.value
-            )
-          );
-
-        const extra =
-          Math.max(
-            0,
-            numberOrZero(
-              document.getElementById(
-                "p-extra"
-              )?.value
-            )
-          );
-
-        const totalUnits =
-          boxes *
-            upb +
-          extra;
-
-        totalUnitsEl.textContent =
-          String(
-            totalUnits
-          );
-
-        totalBoxesEl.textContent =
-          String(
-            boxes
-          );
-      };
-
-    const applyExistingProduct =
-      () => {
-        const typed =
-          String(
-            existingEl.value ||
-            ""
-          ).trim();
-
-        const product =
-          findProductByName(
-            typed
-          );
-
-        if (!product) {
-          upbEl.disabled =
-            false;
-
-          hintEl.textContent =
-            "Escribe el nombre o el código exacto del producto, o selecciónalo de las sugerencias.";
-
-          return;
-        }
-
-        const unitsPerBox =
-          getUnitsPerBox(
-            product
-          );
-
-        const costPerBox =
-          numberOrZero(
-            product.lastCostPerBox
-          );
-
-        const price =
-          numberOrZero(
-            product.price
-          );
-
-        nameEl.value =
-          product.name ||
-          "";
-
-        codeEl.value =
-          getProductCode(
-            product
-          ) ||
-          "";
-
-        upbEl.value =
-          unitsPerBox;
-
-        upbEl.disabled =
-          true;
-
-        costBoxEl.value =
-          costPerBox.toFixed(
-            2
-          );
-
-        priceEl.value =
-          price.toFixed(
-            2
-          );
-
-        hintEl.innerHTML = `
-          Producto encontrado:
-          <strong>
-            ${escapeHtml(
-              product.name ||
-              ""
-            )}
-          </strong>.
-
-          El sistema usará
-          <strong>
-            ${unitsPerBox}
-          </strong>
-          unidades por caja.
-
-          <br>
-
-          Costo por caja registrado:
-          <strong>
-            ${currency(
-              costPerBox
-            )}
-          </strong>
-
-          <br>
-
-          Precio de venta registrado:
-          <strong>
-            ${currency(
-              price
-            )}
-          </strong>
-        `;
-      };
-
-    const applyMode =
-      () => {
-        const mode =
-          modeEl.value;
-
-        if (
-          mode ===
-          "existing"
-        ) {
-          existingGroup.style.display =
-            "flex";
-
-          nameGroup.style.display =
-            "none";
-
-          modeLabel.textContent =
-            "Reposición";
-
-          applyExistingProduct();
-        } else {
-          existingGroup.style.display =
-            "none";
-
-          nameGroup.style.display =
-            "flex";
-
-          modeLabel.textContent =
-            "Nuevo";
-
-          upbEl.disabled =
-            false;
-
-          if (
-            !existingEl.value.trim()
-          ) {
-            costBoxEl.value =
-              "0";
-
-            priceEl.value =
-              "0";
-          }
-
-          hintEl.textContent =
-            "Completa los datos del producto nuevo y su cantidad inicial.";
-        }
-
-        refreshPreview();
-      };
-
-    modeEl.addEventListener(
-      "change",
-      applyMode
-    );
-
-    existingEl.addEventListener(
-      "input",
-      () => {
-        if (
-          modeEl.value !==
-          "existing"
-        ) {
-          return;
-        }
-
-        applyExistingProduct();
-        refreshPreview();
-      }
-    );
-
-    existingEl.addEventListener(
-      "change",
-      () => {
-        if (
-          modeEl.value !==
-          "existing"
-        ) {
-          return;
-        }
-
-        applyExistingProduct();
-        refreshPreview();
-      }
-    );
-
-    [
-      "p-boxes",
-      "p-upb",
-      "p-extra"
-    ].forEach(
-      id => {
-        const el =
-          document.getElementById(
-            id
-          );
-
-        if (el) {
-          el.addEventListener(
-            "input",
-            refreshPreview
-          );
-        }
-      }
-    );
-
-    applyMode();
-    refreshPreview();
-  }
-
-  function readStockFormValues() {
-    const mode =
-      document.getElementById(
-        "p-mode"
-      ).value;
-
-    const existingName =
-      document.getElementById(
-        "p-existing"
-      )
-        ? document.getElementById(
-            "p-existing"
-          )
-            .value
-            .trim()
-        : "";
-
-    const name =
-      document.getElementById(
-        "p-name"
-      )
-        ? document.getElementById(
-            "p-name"
-          )
-            .value
-            .trim()
-        : "";
-
-    const codigoProducto =
-      document.getElementById(
-        "p-code"
-      )
-        ? document.getElementById(
-            "p-code"
-          )
-            .value
-            .trim()
-        : "";
-
-    const referenciaLibro =
-      document.getElementById(
-        "p-ref"
-      )
-        ? document.getElementById(
-            "p-ref"
-          )
-            .value
-            .trim()
-        : "";
-
-    const numeroDocumento =
-      document.getElementById(
-        "p-doc"
-      )
-        ? document.getElementById(
-            "p-doc"
-          )
-            .value
-            .trim()
-        : "";
-
-    const boxes =
-      Math.max(
-        0,
+  function buildMovementData({
+    productId,
+    productName,
+    codigoProducto,
+    tipoMovimiento,
+    referenciaLibro,
+    numeroDocumento,
+    entrada,
+    salida,
+    saldoAnterior,
+    saldoActual,
+    detalle,
+    user
+  }) {
+    const context =
+      currentUserInventoryContext ||
+      {};
+
+    return {
+      productId,
+
+      productName:
+        productName ||
+        "",
+
+      codigoProducto:
+        codigoProducto ||
+        "",
+
+      productCode:
+        codigoProducto ||
+        "",
+
+      tipoMovimiento:
+        tipoMovimiento ||
+        "entrada",
+
+      referenciaLibro:
+        referenciaLibro ||
+        "",
+
+      referenceBook:
+        referenciaLibro ||
+        "",
+
+      bookReference:
+        referenciaLibro ||
+        "",
+
+      numeroDocumento:
+        numeroDocumento ||
+        "",
+
+      entrada:
         numberOrZero(
-          document.getElementById(
-            "p-boxes"
-          ).value
-        )
+          entrada
+        ),
+
+      salida:
+        numberOrZero(
+          salida
+        ),
+
+      saldoAnterior:
+        numberOrZero(
+          saldoAnterior
+        ),
+
+      saldoActual:
+        numberOrZero(
+          saldoActual
+        ),
+
+      detalle:
+        detalle ||
+        "",
+
+      id_local:
+        currentLocalId ||
+        null,
+
+      localNombre:
+        currentLocalInfo.nombre ||
+        "",
+
+      localNumeroDocumento:
+        currentLocalInfo.numeroDocumento ||
+        "",
+
+      localUbicacion:
+        currentLocalInfo.ubicacion ||
+        "",
+
+      localContribuyente:
+        currentLocalInfo.contribuyente ||
+        "",
+
+      localTipoDocumento:
+        currentLocalInfo.tipoDocumento ||
+        "",
+
+      localNIT:
+        currentLocalInfo.nit ||
+        "",
+
+      localNRC:
+        currentLocalInfo.nrc ||
+        "",
+
+      userId:
+        user
+          ? user.uid
+          : null,
+
+      userName:
+        context.name ||
+        user?.email ||
+        "",
+
+      createdAt:
+        firebase.firestore
+          .FieldValue
+          .serverTimestamp()
+    };
+  }
+
+  /*
+   * ============================================================
+   * CREAR PRODUCTO NUEVO
+   * ============================================================
+   */
+
+  async function createNewProductFromLine(
+    line,
+    user
+  ) {
+    const paidBoxes =
+      integerOrZero(
+        line.boxes
+      );
+
+    const bonusBoxes =
+      integerOrZero(
+        line.bonusBoxes
+      );
+
+    const paidUnits =
+      integerOrZero(
+        line.units
+      );
+
+    const bonusUnits =
+      integerOrZero(
+        line.bonusUnits
       );
 
     const unitsPerBox =
       Math.max(
         1,
-        numberOrZero(
-          document.getElementById(
-            "p-upb"
-          ).value
-        )
+        integerOrZero(
+          line.unitsPerBox
+        ) ||
+          1
       );
 
-    const extraUnits =
+    const totalBoxes =
+      paidBoxes +
+      bonusBoxes;
+
+    const totalUnits =
+      (
+        totalBoxes *
+        unitsPerBox
+      ) +
+      paidUnits +
+      bonusUnits;
+
+    if (
+      totalUnits <=
+      0
+    ) {
+      throw new Error(
+        `El producto "${line.name}" no tiene cantidad de inventario.`
+      );
+    }
+
+    const productRef =
+      db
+        .collection(
+          PRODUCTS_COLLECTION
+        )
+        .doc();
+
+    const lastCostPerBox =
       Math.max(
         0,
         numberOrZero(
-          document.getElementById(
-            "p-extra"
-          ).value
+          line.lastCostPerBox
         )
+      );
+
+    const lastCostPerUnit =
+      unitsPerBox >
+        0
+        ? lastCostPerBox /
+          unitsPerBox
+        : 0;
+
+    const batch =
+      db.batch();
+
+    batch.set(
+      productRef,
+      {
+        name:
+          line.name,
+
+        codigoProducto:
+          line.codigoProducto ||
+          "",
+
+        productCode:
+          line.codigoProducto ||
+          "",
+
+        proveedorId:
+          line.proveedorId ||
+          null,
+
+        proveedorNombre:
+          line.proveedorNombre ||
+          "",
+
+        quantity:
+          totalUnits,
+
+        stockCurrentUnits:
+          totalUnits,
+
+        stockBaseUnits:
+          totalUnits,
+
+        boxes:
+          Math.floor(
+            totalUnits /
+              unitsPerBox
+          ),
+
+        unitsPerBox:
+          unitsPerBox,
+
+        lastCostPerBox:
+          lastCostPerBox,
+
+        lastCostPerUnit:
+          lastCostPerUnit,
+
+        price:
+          Math.max(
+            0,
+            numberOrZero(
+              line.price
+            )
+          ),
+
+        id_local:
+          currentLocalId,
+
+        localNombre:
+          currentLocalInfo.nombre ||
+          "",
+
+        localNumeroDocumento:
+          currentLocalInfo.numeroDocumento ||
+          "",
+
+        localUbicacion:
+          currentLocalInfo.ubicacion ||
+          "",
+
+        localContribuyente:
+          currentLocalInfo.contribuyente ||
+          "",
+
+        localTipoDocumento:
+          currentLocalInfo.tipoDocumento ||
+          "",
+
+        localNIT:
+          currentLocalInfo.nit ||
+          "",
+
+        localNRC:
+          currentLocalInfo.nrc ||
+          "",
+
+        referenciaLibro:
+          line.referenciaLibro ||
+          "Inventario inicial",
+
+        referenceBook:
+          line.referenciaLibro ||
+          "Inventario inicial",
+
+        numeroDocumento:
+          line.numeroDocumento ||
+          "",
+
+        createdAt:
+          firebase.firestore
+            .FieldValue
+            .serverTimestamp(),
+
+        updatedAt:
+          firebase.firestore
+            .FieldValue
+            .serverTimestamp()
+      }
+    );
+
+    const movementRef =
+      db
+        .collection(
+          MOVEMENTS_COLLECTION
+        )
+        .doc();
+
+    batch.set(
+      movementRef,
+      buildMovementData({
+        productId:
+          productRef.id,
+
+        productName:
+          line.name,
+
+        codigoProducto:
+          line.codigoProducto,
+
+        tipoMovimiento:
+          "entrada",
+
+        referenciaLibro:
+          line.referenciaLibro ||
+          "Inventario inicial",
+
+        numeroDocumento:
+          line.numeroDocumento ||
+          productRef.id,
+
+        entrada:
+          totalUnits,
+
+        salida:
+          0,
+
+        saldoAnterior:
+          0,
+
+        saldoActual:
+          totalUnits,
+
+        detalle:
+          [
+            `Cajas: ${paidBoxes}`,
+
+            `Cajas bono: ${bonusBoxes}`,
+
+            `Unidades: ${paidUnits}`,
+
+            `Unidades bono: ${bonusUnits}`
+          ].join(
+            " | "
+          ),
+
+        user
+      })
+    );
+
+    await batch.commit();
+
+    currentProductsList.push({
+      id:
+        productRef.id,
+
+      name:
+        line.name,
+
+      codigoProducto:
+        line.codigoProducto ||
+        "",
+
+      productCode:
+        line.codigoProducto ||
+        "",
+
+      proveedorId:
+        line.proveedorId ||
+        null,
+
+      proveedorNombre:
+        line.proveedorNombre ||
+        "",
+
+      quantity:
+        totalUnits,
+
+      stockCurrentUnits:
+        totalUnits,
+
+      stockBaseUnits:
+        totalUnits,
+
+      boxes:
+        Math.floor(
+          totalUnits /
+            unitsPerBox
+        ),
+
+      unitsPerBox:
+        unitsPerBox,
+
+      lastCostPerBox:
+        lastCostPerBox,
+
+      lastCostPerUnit:
+        lastCostPerUnit,
+
+      price:
+        Math.max(
+          0,
+          numberOrZero(
+            line.price
+          )
+        ),
+
+      id_local:
+        currentLocalId,
+
+      localNombre:
+        currentLocalInfo.nombre,
+
+      localNumeroDocumento:
+        currentLocalInfo.numeroDocumento,
+
+      localUbicacion:
+        currentLocalInfo.ubicacion,
+
+      localContribuyente:
+        currentLocalInfo.contribuyente,
+
+      localTipoDocumento:
+        currentLocalInfo.tipoDocumento,
+
+      localNIT:
+        currentLocalInfo.nit,
+
+      localNRC:
+        currentLocalInfo.nrc
+    });
+
+    return {
+      type:
+        "new",
+
+      productId:
+        productRef.id,
+
+      totalUnits
+    };
+  }
+
+  /*
+   * ============================================================
+   * AGREGAR A PRODUCTO EXISTENTE
+   * ============================================================
+   */
+
+  async function addStockToExistingProduct(
+    product,
+    line,
+    user
+  ) {
+    const unitsPerBox =
+      getUnitsPerBox(
+        product
+      );
+
+    const paidBoxes =
+      integerOrZero(
+        line.boxes
+      );
+
+    const bonusBoxes =
+      integerOrZero(
+        line.bonusBoxes
+      );
+
+    const paidUnits =
+      integerOrZero(
+        line.units
+      );
+
+    const bonusUnits =
+      integerOrZero(
+        line.bonusUnits
+      );
+
+    const totalUnits =
+      (
+        (
+          paidBoxes +
+          bonusBoxes
+        ) *
+        unitsPerBox
+      ) +
+      paidUnits +
+      bonusUnits;
+
+    if (
+      totalUnits <=
+      0
+    ) {
+      throw new Error(
+        `El producto "${product.name}" no tiene cantidad de entrada.`
+      );
+    }
+
+    const productRef =
+      db
+        .collection(
+          PRODUCTS_COLLECTION
+        )
+        .doc(
+          product.id
+        );
+
+    let previousStock =
+      0;
+
+    let nextStock =
+      0;
+
+    let nextCostPerBox =
+      0;
+
+    let nextCostPerUnit =
+      0;
+
+    let nextPrice =
+      0;
+
+    let nextProviderId =
+      null;
+
+    let nextProviderName =
+      "";
+
+    const transactionResult =
+      await db.runTransaction(
+        async transaction => {
+          const snap =
+            await transaction.get(
+              productRef
+            );
+
+          if (
+            !snap.exists
+          ) {
+            throw new Error(
+              `El producto "${product.name}" ya no existe.`
+            );
+          }
+
+          const data =
+            snap.data() ||
+            {};
+
+          if (
+            !matchesCurrentLocal(
+              data
+            )
+          ) {
+            throw new Error(
+              `El producto "${product.name}" no pertenece al local actual.`
+            );
+          }
+
+          previousStock =
+            getCurrentStockUnits(
+              data
+            );
+
+          nextStock =
+            previousStock +
+            totalUnits;
+
+          const costPerBoxInput =
+            numberOrZero(
+              line.lastCostPerBox
+            );
+
+          nextCostPerBox =
+            costPerBoxInput >
+              0
+              ? costPerBoxInput
+              : numberOrZero(
+                  data.lastCostPerBox
+                );
+
+          nextCostPerUnit =
+            unitsPerBox >
+              0
+              ? nextCostPerBox /
+                unitsPerBox
+              : 0;
+
+          nextPrice =
+            numberOrZero(
+              line.price
+            ) >
+              0
+              ? numberOrZero(
+                  line.price
+                )
+              : numberOrZero(
+                  data.price
+                );
+
+          /*
+           * El proveedor es opcional.
+           *
+           * Si el usuario eligió uno:
+           *   se actualiza.
+           *
+           * Si dejó el combobox vacío:
+           *   se conserva el actual.
+           *
+           * Esto evita borrar accidentalmente
+           * el proveedor de un producto existente.
+           */
+
+          if (
+            line.proveedorId
+          ) {
+            nextProviderId =
+              line.proveedorId;
+
+            nextProviderName =
+              line.proveedorNombre ||
+              "";
+          } else {
+            nextProviderId =
+              data.proveedorId ||
+              null;
+
+            nextProviderName =
+              String(
+                data.proveedorNombre ||
+                  ""
+              ).trim();
+          }
+
+          const movementRef =
+            db
+              .collection(
+                MOVEMENTS_COLLECTION
+              )
+              .doc();
+
+          transaction.update(
+            productRef,
+            {
+              codigoProducto:
+                line.codigoProducto ||
+                getProductCode(
+                  data
+                ) ||
+                "",
+
+              productCode:
+                line.codigoProducto ||
+                getProductCode(
+                  data
+                ) ||
+                "",
+
+              proveedorId:
+                nextProviderId,
+
+              proveedorNombre:
+                nextProviderName,
+
+              quantity:
+                nextStock,
+
+              stockCurrentUnits:
+                nextStock,
+
+              stockBaseUnits:
+                numberOrZero(
+                  data.stockBaseUnits
+                ) ||
+                previousStock,
+
+              boxes:
+                Math.floor(
+                  nextStock /
+                    unitsPerBox
+                ),
+
+              unitsPerBox:
+                unitsPerBox,
+
+              lastCostPerBox:
+                nextCostPerBox,
+
+              lastCostPerUnit:
+                nextCostPerUnit,
+
+              price:
+                nextPrice,
+
+              referenciaLibro:
+                line.referenciaLibro ||
+                data.referenciaLibro ||
+                "",
+
+              referenceBook:
+                line.referenciaLibro ||
+                data.referenceBook ||
+                data.referenciaLibro ||
+                "",
+
+              numeroDocumento:
+                line.numeroDocumento ||
+                data.numeroDocumento ||
+                "",
+
+              updatedAt:
+                firebase.firestore
+                  .FieldValue
+                  .serverTimestamp()
+            }
+          );
+
+          transaction.set(
+            movementRef,
+            buildMovementData({
+              productId:
+                product.id,
+
+              productName:
+                line.name ||
+                data.name ||
+                "",
+
+              codigoProducto:
+                line.codigoProducto ||
+                getProductCode(
+                  data
+                ) ||
+                "",
+
+              tipoMovimiento:
+                "entrada",
+
+              referenciaLibro:
+                line.referenciaLibro ||
+                "Compra",
+
+              numeroDocumento:
+                line.numeroDocumento ||
+                "",
+
+              entrada:
+                totalUnits,
+
+              salida:
+                0,
+
+              saldoAnterior:
+                previousStock,
+
+              saldoActual:
+                nextStock,
+
+              detalle:
+                [
+                  `Cajas: ${paidBoxes}`,
+
+                  `Cajas bono: ${bonusBoxes}`,
+
+                  `Unidades: ${paidUnits}`,
+
+                  `Unidades bono: ${bonusUnits}`
+                ].join(
+                  " | "
+                ),
+
+              user
+            })
+          );
+
+          return {
+            movementId:
+              movementRef.id
+          };
+        }
+      );
+
+    const localProduct =
+      findProductById(
+        product.id
+      );
+
+    if (
+      localProduct
+    ) {
+      Object.assign(
+        localProduct,
+        {
+          codigoProducto:
+            line.codigoProducto ||
+            getProductCode(
+              localProduct
+            ) ||
+            "",
+
+          productCode:
+            line.codigoProducto ||
+            getProductCode(
+              localProduct
+            ) ||
+            "",
+
+          proveedorId:
+            nextProviderId,
+
+          proveedorNombre:
+            nextProviderName,
+
+          quantity:
+            nextStock,
+
+          stockCurrentUnits:
+            nextStock,
+
+          boxes:
+            Math.floor(
+              nextStock /
+                unitsPerBox
+            ),
+
+          unitsPerBox:
+            unitsPerBox,
+
+          lastCostPerBox:
+            nextCostPerBox,
+
+          lastCostPerUnit:
+            nextCostPerUnit,
+
+          price:
+            nextPrice,
+
+          referenciaLibro:
+            line.referenciaLibro ||
+            localProduct.referenciaLibro ||
+            "",
+
+          referenceBook:
+            line.referenciaLibro ||
+            localProduct.referenceBook ||
+            "",
+
+          numeroDocumento:
+            line.numeroDocumento ||
+            localProduct.numeroDocumento ||
+            ""
+        }
+      );
+    }
+
+    invalidateProductStockMovementsCache(
+      product.id
+    );
+
+    return {
+      type:
+        "existing",
+
+      productId:
+        product.id,
+
+      totalUnits,
+
+      previousStock,
+
+      nextStock,
+
+      movementId:
+        transactionResult
+          ?.movementId ||
+        ""
+    };
+  }
+
+  /*
+   * ============================================================
+   * COMBOBOX DE PRODUCTO
+   * ============================================================
+   */
+
+  function buildProductCombobox(
+    rowId,
+    value = ""
+  ) {
+    return `
+      <input
+        id="batch-product-${rowId}"
+        class="batch-product-input inv-combobox"
+        type="text"
+        list="batch-product-list-${rowId}"
+        value="${escapeHtml(
+          value
+        )}"
+        placeholder="Producto existente o nombre nuevo"
+        autocomplete="off"
+      >
+
+      <datalist id="batch-product-list-${rowId}">
+        ${getProductComboOptionsHtml()}
+      </datalist>
+    `;
+  }
+
+  function refreshProductComboboxDatalist(
+    rowElement
+  ) {
+    const list =
+      rowElement.querySelector(
+        ".batch-product-list"
+      );
+
+    if (
+      !list
+    ) {
+      return;
+    }
+
+    list.innerHTML =
+      currentProductsList
+        .map(
+          product => `
+            <option
+              value="${escapeHtml(
+                product.name ||
+                  ""
+              )}"
+            >
+            </option>
+          `
+        )
+        .join("");
+  }
+
+  /*
+   * ============================================================
+   * FILA DE CARGA MÚLTIPLE
+   * ============================================================
+   */
+
+  let batchLineCounter =
+    0;
+
+  function createBatchLineData(
+    values = {}
+  ) {
+    batchLineCounter +=
+      1;
+
+    return {
+      id:
+        `line-${batchLineCounter}`,
+
+      mode:
+        values.mode ||
+        "existing",
+
+      productText:
+        values.productText ||
+        "",
+
+      name:
+        values.name ||
+        "",
+
+      codigoProducto:
+        values.codigoProducto ||
+        "",
+
+      proveedorId:
+        values.proveedorId ||
+        "",
+
+      proveedorNombre:
+        values.proveedorNombre ||
+        "",
+
+      boxes:
+        integerOrZero(
+          values.boxes
+        ),
+
+      bonusBoxes:
+        integerOrZero(
+          values.bonusBoxes
+        ),
+
+      units:
+        integerOrZero(
+          values.units
+        ),
+
+      bonusUnits:
+        integerOrZero(
+          values.bonusUnits
+        ),
+
+      unitsPerBox:
+        Math.max(
+          1,
+          integerOrZero(
+            values.unitsPerBox
+          ) ||
+            1
+        ),
+
+      lastCostPerBox:
+        numberOrZero(
+          values.lastCostPerBox
+        ),
+
+      price:
+        numberOrZero(
+          values.price
+        ),
+
+      referenciaLibro:
+        values.referenciaLibro ||
+        "",
+
+      numeroDocumento:
+        values.numeroDocumento ||
+        ""
+    };
+  }
+
+  function buildBatchLineHtml(
+    line
+  ) {
+    const isExisting =
+      line.mode ===
+      "existing";
+
+    const lineElement =
+      document.createElement(
+        "div"
+      );
+
+    lineElement.className =
+      "batch-product-row";
+
+    lineElement.dataset.lineId =
+      line.id;
+
+    lineElement.innerHTML = `
+      <div class="batch-row-header">
+
+        <div>
+          <strong>
+            Producto ${batchLineCounter}
+          </strong>
+
+          <span
+            class="batch-row-total"
+            data-role="total"
+          >
+            0 unidades
+          </span>
+        </div>
+
+        <button
+          type="button"
+          class="btn-outline batch-remove-row"
+          data-action="remove"
+        >
+          <i class="fas fa-times"></i>
+          Quitar
+        </button>
+
+      </div>
+
+      <div class="batch-grid">
+
+        <div class="inv-field">
+          <label>
+            Tipo
+          </label>
+
+          <select
+            class="batch-mode"
+          >
+            <option
+              value="existing"
+              ${
+                isExisting
+                  ? "selected"
+                  : ""
+              }
+            >
+              Existente
+            </option>
+
+            <option
+              value="new"
+              ${
+                !isExisting
+                  ? "selected"
+                  : ""
+              }
+            >
+              Nuevo
+            </option>
+          </select>
+        </div>
+
+        <div class="inv-field batch-product-field">
+          <label>
+            Producto
+          </label>
+
+          <div class="batch-product-combobox">
+            ${buildProductCombobox(
+              line.id,
+              line.productText
+            )}
+          </div>
+
+          <div
+            class="batch-product-status"
+            data-role="product-status"
+          ></div>
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Código
+          </label>
+
+          <input
+            type="text"
+            class="batch-code"
+            value="${escapeHtml(
+              line.codigoProducto
+            )}"
+            placeholder="Código"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Proveedor
+          </label>
+
+          ${getProviderComboboxHtml(
+            `batch-provider-${line.id}`,
+            `batch-provider-list-${line.id}`,
+            line.proveedorNombre
+          )}
+
+          <small>
+            Opcional
+          </small>
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Cajas
+          </label>
+
+          <input
+            type="number"
+            class="batch-boxes"
+            min="0"
+            step="1"
+            value="${line.boxes}"
+          >
+        </div>
+
+        <div class="inv-field bonus-field">
+          <label>
+            Cajas bono
+          </label>
+
+          <input
+            type="number"
+            class="batch-bonus-boxes"
+            min="0"
+            step="1"
+            value="${line.bonusBoxes}"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Unidades
+          </label>
+
+          <input
+            type="number"
+            class="batch-units"
+            min="0"
+            step="1"
+            value="${line.units}"
+          >
+        </div>
+
+        <div class="inv-field bonus-field">
+          <label>
+            Unidades bono
+          </label>
+
+          <input
+            type="number"
+            class="batch-bonus-units"
+            min="0"
+            step="1"
+            value="${line.bonusUnits}"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Unidades por caja
+          </label>
+
+          <input
+            type="number"
+            class="batch-units-per-box"
+            min="1"
+            step="1"
+            value="${line.unitsPerBox}"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Costo por caja
+          </label>
+
+          <input
+            type="number"
+            class="batch-cost-box"
+            min="0"
+            step="0.01"
+            value="${line.lastCostPerBox}"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Precio
+          </label>
+
+          <input
+            type="number"
+            class="batch-price"
+            min="0"
+            step="0.01"
+            value="${line.price}"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Referencia libro
+          </label>
+
+          <input
+            type="text"
+            class="batch-reference"
+            value="${escapeHtml(
+              line.referenciaLibro
+            )}"
+            placeholder="Compra / Inventario"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Documento
+          </label>
+
+          <input
+            type="text"
+            class="batch-document"
+            value="${escapeHtml(
+              line.numeroDocumento
+            )}"
+            placeholder="Factura / documento"
+          >
+        </div>
+
+      </div>
+
+      <div class="batch-row-summary">
+
+        <span>
+          Stock agregado:
+          <strong data-role="total">
+            0
+          </strong>
+          unidades
+        </span>
+
+        <span>
+          Cajas totales:
+          <strong data-role="total-boxes">
+            0
+          </strong>
+        </span>
+
+        <span>
+          Normales:
+          <strong data-role="normal-units">
+            0
+          </strong>
+        </span>
+
+        <span>
+          Bonificadas:
+          <strong data-role="bonus-units">
+            0
+          </strong>
+        </span>
+
+      </div>
+    `;
+
+    bindBatchLineEvents(
+      lineElement
+    );
+
+    updateBatchLineState(
+      lineElement
+    );
+
+    return lineElement;
+  }
+
+  function readBatchLine(
+    row
+  ) {
+    const mode =
+      String(
+        row.querySelector(
+          ".batch-mode"
+        )?.value ||
+          ""
+      ).trim();
+
+    const productText =
+      String(
+        row.querySelector(
+          ".batch-product-input"
+        )?.value ||
+          ""
+      ).trim();
+
+    const code =
+      String(
+        row.querySelector(
+          ".batch-code"
+        )?.value ||
+          ""
+      ).trim();
+
+    const providerText =
+      String(
+        row.querySelector(
+          ".inv-combobox"
+        )?.value ||
+          ""
+      ).trim();
+
+    /*
+     * El primer .inv-combobox de la fila es el producto,
+     * por eso el proveedor se obtiene de forma específica.
+     */
+    const providerInput =
+      row.querySelector(
+        ".batch-product-field"
+      )
+        ? row
+            .querySelector(
+              `.batch-provider`
+            )
+        : null;
+
+    let providerElement =
+      providerInput;
+
+    if (
+      !providerElement
+    ) {
+      providerElement =
+        row.querySelector(
+          'input[id^="batch-provider-"]'
+        );
+    }
+
+    const providerValue =
+      String(
+        providerElement?.value ||
+          providerText ||
+          ""
+      ).trim();
+
+    const provider =
+      findProviderByText(
+        providerValue
+      );
+
+    const boxes =
+      integerOrZero(
+        row.querySelector(
+          ".batch-boxes"
+        )?.value
+      );
+
+    const bonusBoxes =
+      integerOrZero(
+        row.querySelector(
+          ".batch-bonus-boxes"
+        )?.value
+      );
+
+    const units =
+      integerOrZero(
+        row.querySelector(
+          ".batch-units"
+        )?.value
+      );
+
+    const bonusUnits =
+      integerOrZero(
+        row.querySelector(
+          ".batch-bonus-units"
+        )?.value
+      );
+
+    const unitsPerBox =
+      Math.max(
+        1,
+        integerOrZero(
+          row.querySelector(
+            ".batch-units-per-box"
+          )?.value
+        ) ||
+          1
       );
 
     const lastCostPerBox =
       Math.max(
         0,
         numberOrZero(
-          document.getElementById(
-            "p-costbox"
-          ).value
+          row.querySelector(
+            ".batch-cost-box"
+          )?.value
         )
       );
 
@@ -3445,570 +4233,834 @@
       Math.max(
         0,
         numberOrZero(
-          document.getElementById(
-            "p-price"
-          ).value
+          row.querySelector(
+            ".batch-price"
+          )?.value
         )
       );
 
-    const quantity =
-      boxes *
-        unitsPerBox +
-      extraUnits;
+    const referenciaLibro =
+      String(
+        row.querySelector(
+          ".batch-reference"
+        )?.value ||
+          ""
+      ).trim();
+
+    const numeroDocumento =
+      String(
+        row.querySelector(
+          ".batch-document"
+        )?.value ||
+          ""
+      ).trim();
+
+    const matchedProduct =
+      findProductByText(
+        productText
+      );
 
     return {
+      id:
+        row.dataset.lineId ||
+        "",
+
       mode,
-      existingName,
-      name,
-      codigoProducto,
+
+      productText,
+
+      product:
+        matchedProduct,
+
+      name:
+        mode ===
+        "new"
+          ? productText
+          : (
+              matchedProduct?.name ||
+              productText
+            ),
+
+      codigoProducto:
+        code ||
+        getProductCode(
+          matchedProduct
+        ) ||
+        "",
+
+      proveedorId:
+        provider
+          ? String(
+              provider.id
+            ).trim()
+          : "",
+
+      proveedorNombre:
+        provider
+          ? String(
+              provider.nombre ||
+                ""
+            ).trim()
+          : "",
+
       boxes,
+
+      bonusBoxes,
+
+      units,
+
+      bonusUnits,
+
       unitsPerBox,
-      extraUnits,
+
       lastCostPerBox,
+
       price,
-      quantity,
+
       referenciaLibro,
+
       numeroDocumento
     };
   }
 
-  /*
-   * ============================================================
-   * MOVIMIENTOS
-   * ============================================================
-   */
-
-  async function registrarMovimientoStock({
-    productId,
-    productName = "",
-    codigoProducto = "",
-    tipoMovimiento = "entrada",
-    referenciaLibro = "",
-    numeroDocumento = "",
-    entrada = 0,
-    salida = 0,
-    saldoAnterior = 0,
-    saldoActual = 0,
-    detalle = ""
-  }) {
-    try {
-      const user =
-        auth.currentUser ||
-        null;
-
-      const context =
-        currentUserInventoryContext ||
-        {};
-
-      const storedUser =
-        getStoredCurrentUser() ||
-        {};
-
-      const userName =
-        context.name ||
-        storedUser.name ||
-        (
-          user
-            ? user.email
-            : ""
-        );
-
-      await db
-        .collection(
-          "stock_movimientos"
-        )
-        .add({
-          productId,
-
-          productName,
-
-          codigoProducto,
-
-          productCode:
-            codigoProducto,
-
-          tipoMovimiento,
-
-          referenciaLibro,
-
-          referenceBook:
-            referenciaLibro,
-
-          bookReference:
-            referenciaLibro,
-
-          numeroDocumento,
-
-          entrada:
-            numberOrZero(
-              entrada
-            ),
-
-          salida:
-            numberOrZero(
-              salida
-            ),
-
-          saldoAnterior:
-            numberOrZero(
-              saldoAnterior
-            ),
-
-          saldoActual:
-            numberOrZero(
-              saldoActual
-            ),
-
-          detalle,
-
-          id_local:
-            currentLocalId ||
-            null,
-
-          localNombre:
-            currentLocalInfo.nombre ||
-            "",
-
-          localNumeroDocumento:
-            currentLocalInfo.numeroDocumento ||
-            "",
-
-          localUbicacion:
-            currentLocalInfo.ubicacion ||
-            "",
-
-          localContribuyente:
-            currentLocalInfo.contribuyente ||
-            "",
-
-          localTipoDocumento:
-            currentLocalInfo.tipoDocumento ||
-            "",
-
-          localNIT:
-            currentLocalInfo.nit ||
-            "",
-
-          localNRC:
-            currentLocalInfo.nrc ||
-            "",
-
-          userId:
-            user
-              ? user.uid
-              : null,
-
-          userName,
-
-          createdAt:
-            firebase.firestore
-              .FieldValue
-              .serverTimestamp()
-        });
-
-      invalidateProductStockMovementsCache(
-        productId
+  function updateBatchLineState(
+    row
+  ) {
+    const data =
+      readBatchLine(
+        row
       );
-    } catch (
-      err
+
+    const mode =
+      data.mode;
+
+    const product =
+      data.product;
+
+    const codeInput =
+      row.querySelector(
+        ".batch-code"
+      );
+
+    const unitsPerBoxInput =
+      row.querySelector(
+        ".batch-units-per-box"
+      );
+
+    const costBoxInput =
+      row.querySelector(
+        ".batch-cost-box"
+      );
+
+    const priceInput =
+      row.querySelector(
+        ".batch-price"
+      );
+
+    const providerInput =
+      row.querySelector(
+        'input[id^="batch-provider-"]'
+      );
+
+    const status =
+      row.querySelector(
+        '[data-role="product-status"]'
+      );
+
+    const totalElement =
+      row.querySelector(
+        '[data-role="total"]'
+      );
+
+    const totalBoxesElement =
+      row.querySelector(
+        '[data-role="total-boxes"]'
+      );
+
+    const normalUnitsElement =
+      row.querySelector(
+        '[data-role="normal-units"]'
+      );
+
+    const bonusUnitsElement =
+      row.querySelector(
+        '[data-role="bonus-units"]'
+      );
+
+    const totalNormal =
+      (
+        data.boxes *
+        data.unitsPerBox
+      ) +
+      data.units;
+
+    const totalBonus =
+      (
+        data.bonusBoxes *
+        data.unitsPerBox
+      ) +
+      data.bonusUnits;
+
+    const totalUnits =
+      totalNormal +
+      totalBonus;
+
+    const totalBoxes =
+      data.boxes +
+      data.bonusBoxes;
+
+    if (
+      totalElement
     ) {
-      console.error(
-        "Error registrando movimiento de stock:",
-        err
-      );
+      totalElement.textContent =
+        String(
+          totalUnits
+        );
+    }
 
-      throw err;
+    if (
+      totalBoxesElement
+    ) {
+      totalBoxesElement.textContent =
+        String(
+          totalBoxes
+        );
+    }
+
+    if (
+      normalUnitsElement
+    ) {
+      normalUnitsElement.textContent =
+        String(
+          totalNormal
+        );
+    }
+
+    if (
+      bonusUnitsElement
+    ) {
+      bonusUnitsElement.textContent =
+        String(
+          totalBonus
+        );
+    }
+
+    if (
+      mode ===
+      "existing"
+    ) {
+      if (
+        product
+      ) {
+        if (
+          status
+        ) {
+          status.innerHTML = `
+            <span class="batch-status success">
+              Producto encontrado:
+              ${escapeHtml(
+                product.name
+              )}
+              · Stock actual:
+              ${getCurrentStockUnits(
+                product
+              )}
+            </span>
+          `;
+        }
+
+        if (
+          codeInput
+        ) {
+          codeInput.value =
+            getProductCode(
+              product
+            ) ||
+            codeInput.value ||
+            "";
+        }
+
+        const existingUnitsPerBox =
+          getUnitsPerBox(
+            product
+          );
+
+        if (
+          unitsPerBoxInput
+        ) {
+          unitsPerBoxInput.value =
+            String(
+              existingUnitsPerBox
+            );
+
+          unitsPerBoxInput.disabled =
+            true;
+        }
+
+        if (
+          costBoxInput &&
+          numberOrZero(
+            costBoxInput.value
+          ) <=
+            0
+        ) {
+          costBoxInput.value =
+            String(
+              numberOrZero(
+                product.lastCostPerBox
+              )
+            );
+        }
+
+        if (
+          priceInput &&
+          numberOrZero(
+            priceInput.value
+          ) <=
+            0
+        ) {
+          priceInput.value =
+            String(
+              numberOrZero(
+                product.price
+              )
+            );
+        }
+
+        if (
+          providerInput &&
+          !providerInput.value
+        ) {
+          providerInput.value =
+            getProductProviderName(
+              product
+            ) ||
+            "";
+        }
+
+        if (
+          !row.dataset.providerAutofilled
+        ) {
+          row.dataset.providerAutofilled =
+            "1";
+        }
+      } else {
+        if (
+          status
+        ) {
+          status.innerHTML = `
+            <span class="batch-status warning">
+              Escribe o selecciona un producto existente.
+            </span>
+          `;
+        }
+
+        if (
+          unitsPerBoxInput
+        ) {
+          unitsPerBoxInput.disabled =
+            false;
+        }
+      }
+    } else {
+      if (
+        status
+      ) {
+        status.innerHTML = `
+          <span class="batch-status info">
+            Producto nuevo
+          </span>
+        `;
+      }
+
+      if (
+        unitsPerBoxInput
+      ) {
+        unitsPerBoxInput.disabled =
+          false;
+      }
+
+      if (
+        product &&
+        normalizeText(
+          product.name
+        ) ===
+          normalizeText(
+            data.name
+          )
+      ) {
+        if (
+          status
+        ) {
+          status.innerHTML = `
+            <span class="batch-status danger">
+              Ese producto ya existe. Usa "Existente".
+            </span>
+          `;
+        }
+      }
     }
   }
 
-  /*
-   * ============================================================
-   * CREAR PRODUCTO
-   * ============================================================
-   */
-
-  async function createNewProduct(
-    values
+  function bindBatchLineEvents(
+    row
   ) {
-    const ref =
-      await db
-        .collection(
-          "productos"
-        )
-        .add({
-          name:
-            values.name,
-
-          codigoProducto:
-            values.codigoProducto ||
-            "",
-
-          productCode:
-            values.codigoProducto ||
-            "",
-
-          quantity:
-            values.quantity,
-
-          stockCurrentUnits:
-            values.quantity,
-
-          stockBaseUnits:
-            values.quantity,
-
-          boxes:
-            Math.floor(
-              values.quantity /
-                Math.max(
-                  1,
-                  values.unitsPerBox
-                )
-            ),
-
-          unitsPerBox:
-            values.unitsPerBox,
-
-          lastCostPerBox:
-            values.lastCostPerBox,
-
-          lastCostPerUnit:
-            values.unitsPerBox >
-            0
-              ? values.lastCostPerBox /
-                values.unitsPerBox
-              : 0,
-
-          price:
-            values.price,
-
-          id_local:
-            currentLocalId ||
-            null,
-
-          localNombre:
-            currentLocalInfo.nombre ||
-            "",
-
-          localNumeroDocumento:
-            currentLocalInfo.numeroDocumento ||
-            "",
-
-          localUbicacion:
-            currentLocalInfo.ubicacion ||
-            "",
-
-          localContribuyente:
-            currentLocalInfo.contribuyente ||
-            "",
-
-          localTipoDocumento:
-            currentLocalInfo.tipoDocumento ||
-            "",
-
-          localNIT:
-            currentLocalInfo.nit ||
-            "",
-
-          localNRC:
-            currentLocalInfo.nrc ||
-            "",
-
-          createdAt:
-            firebase.firestore
-              .FieldValue
-              .serverTimestamp(),
-
-          updatedAt:
-            firebase.firestore
-              .FieldValue
-              .serverTimestamp()
-        });
-
-    await registrarMovimientoStock({
-      productId:
-        ref.id,
-
-      productName:
-        values.name,
-
-      codigoProducto:
-        values.codigoProducto ||
-        "",
-
-      tipoMovimiento:
-        "entrada",
-
-      referenciaLibro:
-        values.referenciaLibro ||
-        "Inventario inicial",
-
-      numeroDocumento:
-        values.numeroDocumento ||
-        ref.id,
-
-      entrada:
-        values.quantity,
-
-      salida:
-        0,
-
-      saldoAnterior:
-        0,
-
-      saldoActual:
-        values.quantity,
-
-      detalle:
-        "Alta inicial de producto"
-    });
-  }
-
-  /*
-   * ============================================================
-   * AGREGAR STOCK
-   * ============================================================
-   */
-
-  async function addToExistingProduct(
-    product,
-    values
-  ) {
-    const currentUnitsPerBox =
-      getUnitsPerBox(
-        product
+    const modeElement =
+      row.querySelector(
+        ".batch-mode"
       );
 
-    const unitsAdded =
-      Math.max(
-        0,
-        values.boxes
-      ) *
-        currentUnitsPerBox +
-      Math.max(
-        0,
-        values.extraUnits
+    const productElement =
+      row.querySelector(
+        ".batch-product-input"
+      );
+
+    const removeButton =
+      row.querySelector(
+        ".batch-remove-row"
       );
 
     if (
-      unitsAdded <=
-      0
+      modeElement
     ) {
-      throw new Error(
-        "La cantidad a agregar debe ser mayor que cero."
+      modeElement.addEventListener(
+        "change",
+        () => {
+          row.dataset.providerAutofilled =
+            "";
+
+          updateBatchLineState(
+            row
+          );
+        }
       );
     }
 
-    const productRef =
-      db
-        .collection(
-          "productos"
-        )
-        .doc(
-          product.id
+    if (
+      productElement
+    ) {
+      [
+        "input",
+        "change"
+      ].forEach(
+        eventName => {
+          productElement.addEventListener(
+            eventName,
+            () => {
+              row.dataset.providerAutofilled =
+                "";
+
+              updateBatchLineState(
+                row
+              );
+            }
+          );
+        }
+      );
+    }
+
+    row.querySelectorAll(
+      "input, select"
+    ).forEach(
+      input => {
+        if (
+          input ===
+            productElement ||
+          input ===
+            modeElement
+        ) {
+          return;
+        }
+
+        input.addEventListener(
+          "input",
+          () => {
+            updateBatchLineState(
+              row
+            );
+          }
         );
 
-    let saldoAnterior =
-      0;
-
-    let saldoActual =
-      0;
-
-    await db.runTransaction(
-      async t => {
-        const snap =
-          await t.get(
-            productRef
-          );
-
-        if (
-          !snap.exists
-        ) {
-          throw new Error(
-            "El producto ya no existe."
-          );
-        }
-
-        const data =
-          snap.data() ||
-          {};
-
-        if (
-          !matchesCurrentLocal(
-            data
-          )
-        ) {
-          throw new Error(
-            "Este producto no pertenece al local actual."
-          );
-        }
-
-        const currentStock =
-          getCurrentStockUnits(
-            data
-          );
-
-        const nextQuantity =
-          currentStock +
-          unitsAdded;
-
-        const nextBoxes =
-          Math.floor(
-            nextQuantity /
-              currentUnitsPerBox
-          );
-
-        saldoAnterior =
-          currentStock;
-
-        saldoActual =
-          nextQuantity;
-
-        const nextLastCostPerBox =
-          values.lastCostPerBox >
-          0
-            ? values.lastCostPerBox
-            : numberOrZero(
-                data.lastCostPerBox
-              );
-
-        const nextPrice =
-          values.price >
-          0
-            ? values.price
-            : numberOrZero(
-                data.price
-              );
-
-        const nextCodigoProducto =
-          values.codigoProducto ||
-          getProductCode(
-            data
-          ) ||
-          "";
-
-        t.update(
-          productRef,
-          {
-            name:
-              values.name ||
-              data.name ||
-              "",
-
-            codigoProducto:
-              nextCodigoProducto,
-
-            productCode:
-              nextCodigoProducto,
-
-            quantity:
-              nextQuantity,
-
-            stockCurrentUnits:
-              nextQuantity,
-
-            boxes:
-              nextBoxes,
-
-            unitsPerBox:
-              currentUnitsPerBox,
-
-            lastCostPerBox:
-              nextLastCostPerBox,
-
-            lastCostPerUnit:
-              currentUnitsPerBox >
-              0
-                ? nextLastCostPerBox /
-                  currentUnitsPerBox
-                : 0,
-
-            price:
-              nextPrice,
-
-            id_local:
-              currentLocalId ||
-              data.id_local ||
-              null,
-
-            localNombre:
-              currentLocalInfo.nombre ||
-              data.localNombre ||
-              "",
-
-            localNumeroDocumento:
-              currentLocalInfo.numeroDocumento ||
-              data.localNumeroDocumento ||
-              "",
-
-            localUbicacion:
-              currentLocalInfo.ubicacion ||
-              data.localUbicacion ||
-              "",
-
-            updatedAt:
-              firebase.firestore
-                .FieldValue
-                .serverTimestamp()
+        input.addEventListener(
+          "change",
+          () => {
+            updateBatchLineState(
+              row
+            );
           }
         );
       }
     );
 
-    await registrarMovimientoStock({
-      productId:
-        product.id,
+    if (
+      removeButton
+    ) {
+      removeButton.addEventListener(
+        "click",
+        () => {
+          row.remove();
 
-      productName:
-        values.name ||
-        product.name ||
-        "",
+          updateBatchLineNumbers();
+        }
+      );
+    }
+  }
 
-      codigoProducto:
-        values.codigoProducto ||
-        getProductCode(
-          product
-        ) ||
-        "",
+  function updateBatchLineNumbers() {
+    document
+      .querySelectorAll(
+        ".batch-product-row"
+      )
+      .forEach(
+        (
+          row,
+          index
+        ) => {
+          const title =
+            row.querySelector(
+              ".batch-row-header strong"
+            );
 
-      tipoMovimiento:
-        "entrada",
+          if (
+            title
+          ) {
+            title.textContent =
+              `Producto ${
+                index +
+                1
+              }`;
+          }
 
-      referenciaLibro:
-        values.referenciaLibro ||
-        "Compra",
+          refreshProductComboboxDatalist(
+            row
+          );
+        }
+      );
+  }
 
-      numeroDocumento:
-        values.numeroDocumento ||
-        "",
+  function addBatchLine(
+    container,
+    values = {}
+  ) {
+    const line =
+      createBatchLineData(
+        values
+      );
 
-      entrada:
-        unitsAdded,
+    const row =
+      buildBatchLineHtml(
+        line
+      );
 
-      salida:
-        0,
+    container.appendChild(
+      row
+    );
 
-      saldoAnterior,
+    updateBatchLineNumbers();
 
-      saldoActual,
+    row
+      .querySelector(
+        ".batch-product-input"
+      )
+      ?.focus();
 
-      detalle:
-        "Entrada de inventario"
-    });
+    return row;
   }
 
   /*
    * ============================================================
-   * MODAL AGREGAR
+   * VALIDACIÓN DE LÍNEAS
    * ============================================================
    */
 
-  async function showAddProductModal() {
+  function validateBatchLines(
+    rows
+  ) {
+    const errors =
+      [];
+
+    const parsed =
+      rows.map(
+        readBatchLine
+      );
+
+    const namesForNew =
+      new Set();
+
+    parsed.forEach(
+      (
+        line,
+        index
+      ) => {
+        const label =
+          `Producto ${
+            index + 1
+          }`;
+
+        if (
+          !line.productText
+        ) {
+          errors.push(
+            `${label}: debes indicar el producto.`
+          );
+
+          return;
+        }
+
+        if (
+          line.mode ===
+          "existing"
+        ) {
+          if (
+            !line.product
+          ) {
+            errors.push(
+              `${label}: no se encontró el producto existente "${line.productText}".`
+            );
+
+            return;
+          }
+        }
+
+        if (
+          line.mode ===
+          "new"
+        ) {
+          if (
+            !line.name
+          ) {
+            errors.push(
+              `${label}: el nombre es obligatorio.`
+            );
+          }
+
+          const newKey =
+            normalizeText(
+              line.name
+            );
+
+          if (
+            findProductByText(
+              line.name
+            )
+          ) {
+            errors.push(
+              `${label}: "${line.name}" ya existe. Selecciona "Existente".`
+            );
+          }
+
+          if (
+            namesForNew.has(
+              newKey
+            )
+          ) {
+            errors.push(
+              `${label}: el mismo producto nuevo aparece más de una vez.`
+            );
+          }
+
+          namesForNew.add(
+            newKey
+          );
+
+          if (
+            !line.codigoProducto
+          ) {
+            errors.push(
+              `${label}: el código es obligatorio para un producto nuevo.`
+            );
+          }
+        }
+
+        const totalUnits =
+          (
+            (
+              line.boxes +
+              line.bonusBoxes
+            ) *
+            line.unitsPerBox
+          ) +
+          line.units +
+          line.bonusUnits;
+
+        if (
+          totalUnits <=
+          0
+        ) {
+          errors.push(
+            `${label}: debes ingresar cajas, cajas bono, unidades o unidades bono.`
+          );
+        }
+
+        if (
+          line.unitsPerBox <=
+          0
+        ) {
+          errors.push(
+            `${label}: las unidades por caja deben ser mayores que cero.`
+          );
+        }
+      }
+    );
+
+    return {
+      errors,
+      parsed
+    };
+  }
+
+  /*
+   * ============================================================
+   * PROCESAMIENTO MÚLTIPLE
+   * ============================================================
+   */
+
+  async function processBatchLines(
+    lines
+  ) {
+    const user =
+      auth.currentUser ||
+      null;
+
+    const results =
+      [];
+
+    /*
+     * Procesamos secuencialmente para que:
+     *
+     * 1. Los errores sean identificables.
+     * 2. No haya varias operaciones simultáneas
+     *    sobre el mismo producto.
+     * 3. El cache local se actualice inmediatamente.
+     */
+
+    for (
+      let index =
+        0;
+
+      index <
+      lines.length;
+
+      index++
+    ) {
+      const line =
+        lines[index];
+
+      const label =
+        `Producto ${
+          index + 1
+        }`;
+
+      if (
+        line.mode ===
+        "existing"
+      ) {
+        const product =
+          line.product;
+
+        if (
+          !product
+        ) {
+          throw new Error(
+            `${label}: producto existente no encontrado.`
+          );
+        }
+
+        const result =
+          await addStockToExistingProduct(
+            product,
+            line,
+            user
+          );
+
+        results.push(
+          {
+            ...result,
+            name:
+              product.name
+          }
+        );
+
+        continue;
+      }
+
+      const result =
+        await createNewProductFromLine(
+          line,
+          user
+        );
+
+      results.push(
+        {
+          ...result,
+          name:
+            line.name
+        }
+      );
+    }
+
+    return results;
+  }
+
+  /*
+   * ============================================================
+   * MODAL MÚLTIPLE
+   * ============================================================
+   */
+
+  function buildBatchModalHtml() {
+    return `
+      <div
+        id="batch-products-container"
+        class="batch-products-container"
+      ></div>
+
+      <button
+        type="button"
+        id="batch-add-row"
+        class="btn-primary"
+        style="
+          width:100%;
+          margin-top:12px;
+        "
+      >
+        <i class="fas fa-plus"></i>
+        Agregar otro producto
+      </button>
+
+      <div class="batch-info-box">
+
+        <strong>
+          Operación múltiple
+        </strong>
+
+        <p>
+          Cada fila se procesa de acuerdo con su tipo:
+          los productos existentes reciben una entrada de stock
+          y los productos nuevos se crean.
+        </p>
+
+        <p>
+          Las cajas bono y unidades bono aumentan el stock
+          igual que las cantidades normales, pero se conservan
+          identificadas dentro del detalle del movimiento.
+        </p>
+
+        <p>
+          El proveedor es opcional.
+        </p>
+
+      </div>
+    `;
+  }
+
+  async function openBatchAddModal() {
     if (
       !canEditInventory
     ) {
       await Swal.fire(
         "Sin permisos",
-        "No puedes agregar productos desde este rol.",
+        "No puedes modificar el inventario con este usuario.",
         "warning"
       );
 
@@ -4027,214 +5079,30 @@
       return;
     }
 
-    if (
-      !currentProductsList.length
-    ) {
-      const result =
-        await Swal.fire({
-          title:
-            "Nuevo producto",
-
-          html:
-            buildStockFormHtml({
-              mode:
-                "new",
-
-              boxes:
-                0,
-
-              unitsPerBox:
-                1,
-
-              extraUnits:
-                0,
-
-              lastCostPerBox:
-                0,
-
-              price:
-                0,
-
-              referenciaLibro:
-                "Inventario inicial",
-
-              numeroDocumento:
-                "",
-
-              codigoProducto:
-                ""
-            }),
-
-          showCancelButton:
-            true,
-
-          confirmButtonText:
-            "Guardar",
-
-          cancelButtonText:
-            "Cancelar",
-
-          focusConfirm:
-            false,
-
-          didOpen:
-            syncStockModalState,
-
-          preConfirm:
-            () => {
-              const values =
-                readStockFormValues();
-
-              if (
-                !values.name
-              ) {
-                Swal.showValidationMessage(
-                  "El nombre es obligatorio."
-                );
-
-                return;
-              }
-
-              if (
-                !values.codigoProducto
-              ) {
-                Swal.showValidationMessage(
-                  "El código de producto es obligatorio."
-                );
-
-                return;
-              }
-
-              if (
-                values.quantity <=
-                0
-              ) {
-                Swal.showValidationMessage(
-                  "Debes ingresar cajas o unidades sueltas."
-                );
-
-                return;
-              }
-
-              return values;
-            }
-        });
-
-      if (
-        !result.isConfirmed
-      ) {
-        return;
-      }
-
-      try {
-        await createNewProduct(
-          result.value
-        );
-
-        await Swal.fire({
-          toast:
-            true,
-
-          position:
-            "top-end",
-
-          icon:
-            "success",
-
-          title:
-            "Producto agregado",
-
-          timer:
-            1400,
-
-          showConfirmButton:
-            false
-        });
-      } catch (
-        err
-      ) {
-        console.error(
-          "Error guardando producto:",
-          err
-        );
-
-        await Swal.fire(
-          "Error",
-          "No se pudo guardar el producto.",
-          "error"
-        );
-      }
-
-      return;
-    }
-
-    const initialProduct =
-      currentProductsList[
-        0
-      ] ||
-      null;
+    const initialRow =
+      createBatchLineData({
+        mode:
+          currentProductsList.length
+            ? "existing"
+            : "new"
+      });
 
     const result =
       await Swal.fire({
         title:
-          "Agregar / reponer producto",
+          "Agregar productos",
 
         html:
-          buildStockFormHtml({
-            mode:
-              "existing",
+          buildBatchModalHtml(),
 
-            productName:
-              initialProduct
-                ? initialProduct.name
-                : "",
-
-            codigoProducto:
-              initialProduct
-                ? getProductCode(
-                    initialProduct
-                  )
-                : "",
-
-            boxes:
-              0,
-
-            unitsPerBox:
-              initialProduct
-                ? getUnitsPerBox(
-                    initialProduct
-                  )
-                : 1,
-
-            extraUnits:
-              0,
-
-            lastCostPerBox:
-              initialProduct
-                ? numberOrZero(
-                    initialProduct.lastCostPerBox
-                  )
-                : 0,
-
-            price:
-              initialProduct
-                ? numberOrZero(
-                    initialProduct.price
-                  )
-                : 0,
-
-            referenciaLibro:
-              "Compra",
-
-            numeroDocumento:
-              ""
-          }),
+        width:
+          "1100px",
 
         showCancelButton:
           true,
 
         confirmButtonText:
-          "Guardar",
+          "Guardar todo",
 
         cancelButtonText:
           "Cancelar",
@@ -4242,101 +5110,108 @@
         focusConfirm:
           false,
 
+        customClass: {
+          popup:
+            "inventory-batch-modal"
+        },
+
         didOpen:
-          syncStockModalState,
+          () => {
+            const container =
+              document.getElementById(
+                "batch-products-container"
+              );
+
+            const addButton =
+              document.getElementById(
+                "batch-add-row"
+              );
+
+            if (
+              !container ||
+              !addButton
+            ) {
+              return;
+            }
+
+            addBatchLine(
+              container,
+              initialRow
+            );
+
+            addButton.addEventListener(
+              "click",
+              () => {
+                addBatchLine(
+                  container,
+                  {
+                    mode:
+                      currentProductsList.length
+                        ? "existing"
+                        : "new"
+                  }
+                );
+              }
+            );
+          },
 
         preConfirm:
           () => {
-            const values =
-              readStockFormValues();
+            const container =
+              document.getElementById(
+                "batch-products-container"
+              );
 
             if (
-              values.mode ===
-              "existing"
+              !container
             ) {
-              if (
-                !values.existingName
-              ) {
-                Swal.showValidationMessage(
-                  "Debes escribir o seleccionar un producto existente."
-                );
+              Swal.showValidationMessage(
+                "No se pudo construir el formulario."
+              );
 
-                return;
-              }
+              return;
+            }
 
-              if (
-                !findProductByName(
-                  values.existingName
+            const rows =
+              Array.from(
+                container.querySelectorAll(
+                  ".batch-product-row"
                 )
-              ) {
-                Swal.showValidationMessage(
-                  "No se encontró el producto. Selecciónalo de las sugerencias."
-                );
-
-                return;
-              }
-
-              if (
-                values.quantity <=
-                0
-              ) {
-                Swal.showValidationMessage(
-                  "Debes ingresar cajas o unidades sueltas."
-                );
-
-                return;
-              }
-
-              return values;
-            }
+              );
 
             if (
-              !values.name
+              !rows.length
             ) {
               Swal.showValidationMessage(
-                "El nombre es obligatorio."
+                "Debes agregar al menos un producto."
               );
 
               return;
             }
 
+            const validation =
+              validateBatchLines(
+                rows
+              );
+
             if (
-              !values.codigoProducto
+              validation.errors.length
             ) {
               Swal.showValidationMessage(
-                "El código de producto es obligatorio."
+                validation.errors
+                  .slice(
+                    0,
+                    5
+                  )
+                  .join(
+                    "<br>"
+                  )
               );
 
               return;
             }
 
-            if (
-              findProductByName(
-                values.name
-              ) ||
-              findProductByName(
-                values.codigoProducto
-              )
-            ) {
-              Swal.showValidationMessage(
-                "Ese producto ya existe. Usa la opción de producto existente."
-              );
-
-              return;
-            }
-
-            if (
-              values.quantity <=
-              0
-            ) {
-              Swal.showValidationMessage(
-                "Debes ingresar cajas o unidades sueltas."
-              );
-
-              return;
-            }
-
-            return values;
+            return validation.parsed;
           }
       });
 
@@ -4346,93 +5221,150 @@
       return;
     }
 
+    const lines =
+      Array.isArray(
+        result.value
+      )
+        ? result.value
+        : [];
+
+    if (
+      !lines.length
+    ) {
+      return;
+    }
+
+    let progressAlert =
+      null;
+
     try {
-      const values =
-        result.value;
-
-      if (
-        values.mode ===
-        "existing"
-      ) {
-        const product =
-          findProductByName(
-            values.existingName
-          );
-
-        if (
-          !product
-        ) {
-          await Swal.fire(
-            "No encontrado",
-            "El producto seleccionado no existe.",
-            "warning"
-          );
-
-          return;
-        }
-
-        await addToExistingProduct(
-          product,
-          values
-        );
-
-        await Swal.fire({
-          toast:
-            true,
-
-          position:
-            "top-end",
-
-          icon:
-            "success",
-
+      progressAlert =
+        Swal.fire({
           title:
-            "Stock agregado al producto",
+            "Procesando productos",
 
-          timer:
-            1400,
+          html:
+            `Preparando ${
+              lines.length
+            } producto(s)...`,
 
-          showConfirmButton:
-            false
+          allowOutsideClick:
+            false,
+
+          allowEscapeKey:
+            false,
+
+          didOpen:
+            () => {
+              Swal.showLoading();
+            }
         });
 
-        return;
+      const results =
+        await processBatchLines(
+          lines
+        );
+
+      const created =
+        results.filter(
+          result =>
+            result.type ===
+            "new"
+        ).length;
+
+      const existing =
+        results.filter(
+          result =>
+            result.type ===
+            "existing"
+        ).length;
+
+      const totalUnits =
+        results.reduce(
+          (
+            sum,
+            result
+          ) =>
+            sum +
+            numberOrZero(
+              result.totalUnits
+            ),
+          0
+        );
+
+      if (
+        progressAlert
+      ) {
+        Swal.close();
       }
 
-      await createNewProduct(
-        values
-      );
+      refreshInventoryView();
 
       await Swal.fire({
-        toast:
-          true,
-
-        position:
-          "top-end",
-
         icon:
           "success",
 
         title:
-          "Producto agregado",
+          "Carga completada",
 
-        timer:
-          1400,
+        html:
+          `
+            <div
+              style="
+                text-align:left;
+              "
+            >
+              <p>
+                Productos procesados:
+                <strong>
+                  ${results.length}
+                </strong>
+              </p>
 
-        showConfirmButton:
-          false
+              <p>
+                Nuevos:
+                <strong>
+                  ${created}
+                </strong>
+              </p>
+
+              <p>
+                Existentes:
+                <strong>
+                  ${existing}
+                </strong>
+              </p>
+
+              <p>
+                Unidades agregadas:
+                <strong>
+                  ${totalUnits}
+                </strong>
+              </p>
+            </div>
+          `,
+
+        confirmButtonText:
+          "Aceptar"
       });
     } catch (
-      err
+      error
     ) {
+      if (
+        progressAlert
+      ) {
+        Swal.close();
+      }
+
       console.error(
-        "Error guardando producto:",
-        err
+        "Error procesando carga múltiple:",
+        error
       );
 
       await Swal.fire(
         "Error",
-        "No se pudo guardar el producto.",
+        error.message ||
+          "No se pudo completar la operación.",
         "error"
       );
     }
@@ -4440,313 +5372,197 @@
 
   /*
    * ============================================================
-   * FORMULARIO DE EDICIÓN
+   * EDICIÓN INDIVIDUAL
    * ============================================================
    */
 
-  function buildProductFormHtml(
-    initial = {}
+  function buildEditFormHtml(
+    product
   ) {
     return `
-      <div style="text-align:left;">
+      <div
+        style="
+          text-align:left;
+        "
+      >
 
-        <input
-          id="p-name"
-          class="swal2-input"
-          placeholder="Nombre del producto"
-          value="${escapeHtml(
-            initial.name ||
-            ""
-          )}"
-        >
+        <div class="inv-field">
+          <label>
+            Nombre
+          </label>
 
-        <input
-          id="p-code"
-          class="swal2-input"
-          placeholder="Código del producto"
-          value="${escapeHtml(
-            initial.codigoProducto ||
-            ""
-          )}"
-        >
+          <input
+            id="edit-name"
+            type="text"
+            value="${escapeHtml(
+              product.name ||
+                ""
+            )}"
+          >
+        </div>
 
-        <input
-          id="p-boxes"
-          type="number"
-          class="swal2-input"
-          placeholder="Número de cajas"
-          min="0"
-          value="${numberOrZero(
-            initial.boxes
-          )}"
-        >
+        <div class="inv-field">
+          <label>
+            Código
+          </label>
 
-        <input
-          id="p-upb"
-          type="number"
-          class="swal2-input"
-          placeholder="Unidades por caja"
-          min="1"
-          value="${Math.max(
-            1,
-            numberOrZero(
-              initial.unitsPerBox ||
-              1
+          <input
+            id="edit-code"
+            type="text"
+            value="${escapeHtml(
+              getProductCode(
+                product
+              )
+            )}"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Proveedor
+          </label>
+
+          ${getProviderComboboxHtml(
+            "edit-provider",
+            "edit-provider-list",
+            getProductProviderName(
+              product
             )
-          )}"
-        >
+          )}
 
-        <input
-          id="p-extra"
-          type="number"
-          class="swal2-input"
-          placeholder="Unidades sueltas"
-          min="0"
-          value="${numberOrZero(
-            initial.extraUnits
-          )}"
-        >
-
-        <input
-          id="p-costbox"
-          type="number"
-          class="swal2-input"
-          placeholder="Costo por caja"
-          step="0.01"
-          min="0"
-          value="${numberOrZero(
-            initial.lastCostPerBox
-          )}"
-        >
-
-        <input
-          id="p-price"
-          type="number"
-          class="swal2-input"
-          placeholder="Precio de venta"
-          step="0.01"
-          min="0"
-          value="${numberOrZero(
-            initial.price
-          )}"
-        >
-
-        ${
-          initial.bookReferencesHtml
-            ? `
-              <label
-                for="p-ref-history"
-                style="
-                  display:block;
-                  margin-top:12px;
-                  margin-bottom:5px;
-                  font-weight:600;
-                "
-              >
-                Referencias a libro registradas
-              </label>
-
-              <select
-                id="p-ref-history"
-                class="swal2-select"
-                style="
-                  width:100%;
-                  margin:0 0 8px 0;
-                "
-              >
-                ${initial.bookReferencesHtml}
-              </select>
-            `
-            : ""
-        }
-
-        <input
-          id="p-ref"
-          class="swal2-input"
-          placeholder="Referencia a libro"
-          value="${escapeHtml(
-            initial.referenciaLibro ||
-            ""
-          )}"
-        >
-
-        <input
-          id="p-doc"
-          class="swal2-input"
-          placeholder="Número de documento"
-          value="${escapeHtml(
-            initial.numeroDocumento ||
-            ""
-          )}"
-        >
-
-        ${
-          initial.bookReferencesCount >
-          0
-            ? `
-                <div
-                  style="
-                    margin-top:8px;
-                    padding:8px 10px;
-                    border-radius:6px;
-                    background:#f3f4f6;
-                    color:#374151;
-                    font-size:12px;
-                  "
-                >
-                  Se encontraron
-                  <strong>
-                    ${initial.bookReferencesCount}
-                  </strong>
-                  referencia(s) registradas para
-                  este producto.
-                </div>
-              `
-            : `
-                <div
-                  style="
-                    margin-top:8px;
-                    padding:8px 10px;
-                    border-radius:6px;
-                    background:#fef3c7;
-                    color:#92400e;
-                    font-size:12px;
-                  "
-                >
-                  No se encontraron referencias
-                  anteriores en los movimientos de
-                  este producto.
-                </div>
-              `
-        }
-
-        <div
-          style="
-            text-align:left;
-            margin-top:10px;
-          "
-        >
           <small>
-            La cantidad total se calcula con
-            cajas × unidades por caja +
-            unidades sueltas.
+            Opcional.
           </small>
+        </div>
+
+        <div class="edit-stock-grid">
+
+          <div class="inv-field">
+            <label>
+              Cajas
+            </label>
+
+            <input
+              id="edit-boxes"
+              type="number"
+              min="0"
+              step="1"
+              value="${getStockBoxes(
+                product
+              )}"
+            >
+          </div>
+
+          <div class="inv-field">
+            <label>
+              Unidades por caja
+            </label>
+
+            <input
+              id="edit-upb"
+              type="number"
+              min="1"
+              step="1"
+              value="${getUnitsPerBox(
+                product
+              )}"
+            >
+          </div>
+
+          <div class="inv-field">
+            <label>
+              Unidades sueltas
+            </label>
+
+            <input
+              id="edit-extra"
+              type="number"
+              min="0"
+              step="1"
+              value="${
+                getCurrentStockUnits(
+                  product
+                ) -
+                (
+                  getStockBoxes(
+                    product
+                  ) *
+                  getUnitsPerBox(
+                    product
+                  )
+                )
+              }"
+            >
+          </div>
+
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Costo por caja
+          </label>
+
+          <input
+            id="edit-cost"
+            type="number"
+            min="0"
+            step="0.01"
+            value="${numberOrZero(
+              product.lastCostPerBox
+            )}"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Precio
+          </label>
+
+          <input
+            id="edit-price"
+            type="number"
+            min="0"
+            step="0.01"
+            value="${numberOrZero(
+              product.price
+            )}"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Referencia libro
+          </label>
+
+          <input
+            id="edit-reference"
+            type="text"
+            value="${escapeHtml(
+              product.referenciaLibro ||
+                product.referenceBook ||
+                ""
+            )}"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Documento
+          </label>
+
+          <input
+            id="edit-document"
+            type="text"
+            value="${escapeHtml(
+              product.numeroDocumento ||
+                ""
+            )}"
+          >
         </div>
 
       </div>
     `;
   }
-
-  function readProductFormValues() {
-    const name =
-      document.getElementById(
-        "p-name"
-      )
-        .value
-        .trim();
-
-    const codigoProducto =
-      document.getElementById(
-        "p-code"
-      )
-        .value
-        .trim();
-
-    const boxes =
-      Math.max(
-        0,
-        numberOrZero(
-          document.getElementById(
-            "p-boxes"
-          ).value
-        )
-      );
-
-    const unitsPerBox =
-      Math.max(
-        1,
-        numberOrZero(
-          document.getElementById(
-            "p-upb"
-          ).value
-        )
-      );
-
-    const extraUnits =
-      Math.max(
-        0,
-        numberOrZero(
-          document.getElementById(
-            "p-extra"
-          ).value
-        )
-      );
-
-    const lastCostPerBox =
-      Math.max(
-        0,
-        numberOrZero(
-          document.getElementById(
-            "p-costbox"
-          ).value
-        )
-      );
-
-    const price =
-      Math.max(
-        0,
-        numberOrZero(
-          document.getElementById(
-            "p-price"
-          ).value
-        )
-      );
-
-    const referenciaLibro =
-      document.getElementById(
-        "p-ref"
-      )
-        ? document.getElementById(
-            "p-ref"
-          )
-            .value
-            .trim()
-        : "";
-
-    const numeroDocumento =
-      document.getElementById(
-        "p-doc"
-      )
-        ? document.getElementById(
-            "p-doc"
-          )
-            .value
-            .trim()
-        : "";
-
-    return {
-      name,
-      codigoProducto,
-      boxes,
-      unitsPerBox,
-      extraUnits,
-      lastCostPerBox,
-      price,
-      referenciaLibro,
-      numeroDocumento,
-
-      quantity:
-        boxes *
-          unitsPerBox +
-        extraUnits
-    };
-  }
-
-  /*
-   * ============================================================
-   * EDICIÓN
-   * ============================================================
-   */
 
   async function openEditModal(
     productId
@@ -4763,289 +5579,263 @@
       return;
     }
 
-    try {
-      /*
-       * No consulta productos.
-       * El producto ya está en currentProductsList.
-       */
-      const product =
-        findProductById(
-          productId
-        );
+    const product =
+      findProductById(
+        productId
+      );
 
-      if (
-        !product
-      ) {
-        await Swal.fire(
-          "No encontrado",
-          "El producto no existe o ya no pertenece al local actual.",
-          "warning"
-        );
+    if (
+      !product
+    ) {
+      await Swal.fire(
+        "No encontrado",
+        "El producto ya no está disponible.",
+        "warning"
+      );
 
-        return;
-      }
+      return;
+    }
 
-      if (
-        !matchesCurrentLocal(
-          product
-        )
-      ) {
-        await Swal.fire(
-          "Sin permisos",
-          "Este producto no pertenece al local actual.",
-          "error"
-        );
+    const movements =
+      await loadProductStockMovements(
+        productId
+      );
 
-        return;
-      }
+    const references =
+      getUniqueBookReferences(
+        movements
+      );
 
-      /*
-       * Única consulta adicional necesaria:
-       * movimientos históricos.
-       *
-       * También está cacheada.
-       */
-      const movements =
-        await loadProductStockMovements(
-          productId
-        );
+    const result =
+      await Swal.fire({
+        title:
+          `Editar: ${
+            product.name ||
+            ""
+          }`,
 
-      const uniqueReferences =
-        getUniqueBookReferences(
-          movements
-        );
+        html:
+          buildEditFormHtml(
+            product
+          ),
 
-      let initialReference =
-        String(
-          product.referenciaLibro ||
-          product.referenceBook ||
-          ""
-        ).trim();
+        width:
+          "700px",
 
-      let initialDocument =
-        String(
-          product.numeroDocumento ||
-          product.documentNumber ||
-          ""
-        ).trim();
+        showCancelButton:
+          true,
 
-      if (
-        !initialReference &&
-        uniqueReferences.length >
-          0
-      ) {
-        initialReference =
-          uniqueReferences[0]
-            .referenciaLibro ||
-          "";
+        confirmButtonText:
+          "Actualizar",
 
-        initialDocument =
-          uniqueReferences[0]
-            .numeroDocumento ||
-          "";
-      }
+        cancelButtonText:
+          "Cancelar",
 
-      const bookReferencesHtml =
-        buildBookReferenceOptions(
-          uniqueReferences,
-          initialReference,
-          initialDocument
-        );
+        focusConfirm:
+          false,
 
-      const currentUnitsPerBox =
-        getUnitsPerBox(
-          product
-        );
+        preConfirm:
+          () => {
+            const name =
+              String(
+                document.getElementById(
+                  "edit-name"
+                )?.value ||
+                  ""
+              ).trim();
 
-      const currentUnits =
-        getCurrentStockUnits(
-          product
-        );
+            const code =
+              String(
+                document.getElementById(
+                  "edit-code"
+                )?.value ||
+                  ""
+              ).trim();
 
-      const currentBoxes =
-        Math.floor(
-          currentUnits /
-            currentUnitsPerBox
-        );
+            const providerText =
+              String(
+                document.getElementById(
+                  "edit-provider"
+                )?.value ||
+                  ""
+              ).trim();
 
-      const extraUnits =
-        Math.max(
-          0,
-          currentUnits -
-            (
-              currentBoxes *
-              currentUnitsPerBox
-            )
-        );
+            const provider =
+              findProviderByText(
+                providerText
+              );
 
-      const result =
-        await Swal.fire({
-          title:
-            `Editar: ${product.name || ""}`,
+            const boxes =
+              integerOrZero(
+                document.getElementById(
+                  "edit-boxes"
+                )?.value
+              );
 
-          html:
-            buildProductFormHtml({
-              name:
-                product.name ||
-                "",
+            const unitsPerBox =
+              Math.max(
+                1,
+                integerOrZero(
+                  document.getElementById(
+                    "edit-upb"
+                  )?.value
+                ) ||
+                  1
+              );
+
+            const extraUnits =
+              integerOrZero(
+                document.getElementById(
+                  "edit-extra"
+                )?.value
+              );
+
+            const totalUnits =
+              (
+                boxes *
+                unitsPerBox
+              ) +
+              extraUnits;
+
+            const lastCostPerBox =
+              Math.max(
+                0,
+                numberOrZero(
+                  document.getElementById(
+                    "edit-cost"
+                  )?.value
+                )
+              );
+
+            const price =
+              Math.max(
+                0,
+                numberOrZero(
+                  document.getElementById(
+                    "edit-price"
+                  )?.value
+                )
+              );
+
+            const reference =
+              String(
+                document.getElementById(
+                  "edit-reference"
+                )?.value ||
+                  ""
+              ).trim();
+
+            const documentNumber =
+              String(
+                document.getElementById(
+                  "edit-document"
+                )?.value ||
+                  ""
+              ).trim();
+
+            if (
+              !name
+            ) {
+              Swal.showValidationMessage(
+                "El nombre es obligatorio."
+              );
+
+              return;
+            }
+
+            if (
+              !code
+            ) {
+              Swal.showValidationMessage(
+                "El código es obligatorio."
+              );
+
+              return;
+            }
+
+            if (
+              totalUnits <
+              0
+            ) {
+              Swal.showValidationMessage(
+                "El stock no puede ser negativo."
+              );
+
+              return;
+            }
+
+            return {
+              name,
 
               codigoProducto:
-                getProductCode(
-                  product
-                ),
+                code,
 
-              boxes:
-                currentBoxes,
+              proveedorId:
+                provider
+                  ? String(
+                      provider.id
+                    ).trim()
+                  : "",
 
-              unitsPerBox:
-                currentUnitsPerBox,
+              proveedorNombre:
+                provider
+                  ? String(
+                      provider.nombre ||
+                        ""
+                    ).trim()
+                  : "",
+
+              boxes,
+
+              unitsPerBox,
 
               extraUnits,
 
-              lastCostPerBox:
-                numberOrZero(
-                  product.lastCostPerBox
-                ),
+              totalUnits,
 
-              price:
-                numberOrZero(
-                  product.price
-                ),
+              lastCostPerBox,
+
+              lastCostPerUnit:
+                unitsPerBox >
+                  0
+                  ? lastCostPerBox /
+                    unitsPerBox
+                  : 0,
+
+              price,
 
               referenciaLibro:
-                initialReference,
+                reference,
 
               numeroDocumento:
-                initialDocument,
+                documentNumber,
 
-              bookReferencesHtml,
+              references
+            };
+          }
+      });
 
-              bookReferencesCount:
-                uniqueReferences.length
-            }),
+    if (
+      !result.isConfirmed
+    ) {
+      return;
+    }
 
-          focusConfirm:
-            false,
+    const values =
+      result.value;
 
-          showCancelButton:
-            true,
+    const oldStock =
+      getCurrentStockUnits(
+        product
+      );
 
-          confirmButtonText:
-            "Actualizar",
+    const newStock =
+      values.totalUnits;
 
-          cancelButtonText:
-            "Cancelar",
-
-          didOpen:
-            () => {
-              const historySelect =
-                document.getElementById(
-                  "p-ref-history"
-                );
-
-              if (
-                !historySelect
-              ) {
-                return;
-              }
-
-              historySelect.addEventListener(
-                "change",
-                () => {
-                  const index =
-                    Number(
-                      historySelect.value
-                    );
-
-                  if (
-                    !Number.isInteger(
-                      index
-                    ) ||
-                    index < 0 ||
-                    index >=
-                      uniqueReferences.length
-                  ) {
-                    return;
-                  }
-
-                  const selected =
-                    uniqueReferences[
-                      index
-                    ];
-
-                  const refInput =
-                    document.getElementById(
-                      "p-ref"
-                    );
-
-                  const docInput =
-                    document.getElementById(
-                      "p-doc"
-                    );
-
-                  if (
-                    refInput
-                  ) {
-                    refInput.value =
-                      selected.referenciaLibro ||
-                      "";
-                  }
-
-                  if (
-                    docInput
-                  ) {
-                    docInput.value =
-                      selected.numeroDocumento ||
-                      "";
-                  }
-                }
-              );
-            },
-
-          preConfirm:
-            () => {
-              const values =
-                readProductFormValues();
-
-              if (
-                !values.name
-              ) {
-                Swal.showValidationMessage(
-                  "El nombre es obligatorio."
-                );
-
-                return;
-              }
-
-              if (
-                !values.codigoProducto
-              ) {
-                Swal.showValidationMessage(
-                  "El código de producto es obligatorio."
-                );
-
-                return;
-              }
-
-              return values;
-            }
-        });
-
-      if (
-        !result.isConfirmed
-      ) {
-        return;
-      }
-
-      const values =
-        result.value;
-
-      const nextUnits =
-        values.quantity;
-
+    try {
       await db
         .collection(
-          "productos"
+          PRODUCTS_COLLECTION
         )
         .doc(
           productId
@@ -5060,6 +5850,41 @@
           productCode:
             values.codigoProducto,
 
+          proveedorId:
+            values.proveedorId ||
+            null,
+
+          proveedorNombre:
+            values.proveedorNombre ||
+            "",
+
+          quantity:
+            newStock,
+
+          stockCurrentUnits:
+            newStock,
+
+          stockBaseUnits:
+            numberOrZero(
+              product.stockBaseUnits
+            ) ||
+            oldStock,
+
+          boxes:
+            values.boxes,
+
+          unitsPerBox:
+            values.unitsPerBox,
+
+          lastCostPerBox:
+            values.lastCostPerBox,
+
+          lastCostPerUnit:
+            values.lastCostPerUnit,
+
+          price:
+            values.price,
+
           referenciaLibro:
             values.referenciaLibro,
 
@@ -5069,17 +5894,108 @@
           numeroDocumento:
             values.numeroDocumento,
 
+          updatedAt:
+            firebase.firestore
+              .FieldValue
+              .serverTimestamp()
+        });
+
+      const difference =
+        newStock -
+        oldStock;
+
+      if (
+        difference !==
+        0
+      ) {
+        const user =
+          auth.currentUser ||
+          null;
+
+        const movementRef =
+          db
+            .collection(
+              MOVEMENTS_COLLECTION
+            )
+            .doc();
+
+        await movementRef.set(
+          buildMovementData({
+            productId,
+
+            productName:
+              values.name,
+
+            codigoProducto:
+              values.codigoProducto,
+
+            tipoMovimiento:
+              "ajuste",
+
+            referenciaLibro:
+              values.referenciaLibro ||
+              "Ajuste manual",
+
+            numeroDocumento:
+              values.numeroDocumento ||
+              "",
+
+            entrada:
+              difference >
+                0
+                ? difference
+                : 0,
+
+            salida:
+              difference <
+                0
+                ? Math.abs(
+                    difference
+                  )
+                : 0,
+
+            saldoAnterior:
+              oldStock,
+
+            saldoActual:
+              newStock,
+
+            detalle:
+              "Ajuste manual de inventario",
+
+            user
+          })
+        );
+      }
+
+      Object.assign(
+        product,
+        {
+          name:
+            values.name,
+
+          codigoProducto:
+            values.codigoProducto,
+
+          productCode:
+            values.codigoProducto,
+
+          proveedorId:
+            values.proveedorId ||
+            null,
+
+          proveedorNombre:
+            values.proveedorNombre ||
+            "",
+
           quantity:
-            nextUnits,
+            newStock,
 
           stockCurrentUnits:
-            nextUnits,
+            newStock,
 
           boxes:
-            Math.floor(
-              nextUnits /
-                values.unitsPerBox
-            ),
+            values.boxes,
 
           unitsPerBox:
             values.unitsPerBox,
@@ -5088,89 +6004,27 @@
             values.lastCostPerBox,
 
           lastCostPerUnit:
-            values.unitsPerBox >
-            0
-              ? values.lastCostPerBox /
-                values.unitsPerBox
-              : 0,
+            values.lastCostPerUnit,
 
           price:
             values.price,
 
-          id_local:
-            currentLocalId ||
-            product.id_local ||
-            null,
-
-          localNombre:
-            currentLocalInfo.nombre ||
-            product.localNombre ||
-            "",
-
-          localNumeroDocumento:
-            currentLocalInfo.numeroDocumento ||
-            product.localNumeroDocumento ||
-            "",
-
-          localUbicacion:
-            currentLocalInfo.ubicacion ||
-            product.localUbicacion ||
-            "",
-
-          updatedAt:
-            firebase.firestore
-              .FieldValue
-              .serverTimestamp()
-        });
-
-      if (
-        nextUnits !==
-        currentUnits
-      ) {
-        await registrarMovimientoStock({
-          productId,
-
-          productName:
-            values.name,
-
-          codigoProducto:
-            values.codigoProducto,
-
-          tipoMovimiento:
-            "ajuste",
-
           referenciaLibro:
-            values.referenciaLibro ||
-            "Ajuste manual",
+            values.referenciaLibro,
+
+          referenceBook:
+            values.referenciaLibro,
 
           numeroDocumento:
-            values.numeroDocumento ||
-            `AJ-${Date.now()}`,
+            values.numeroDocumento
+        }
+      );
 
-          entrada:
-            Math.max(
-              0,
-              nextUnits -
-                currentUnits
-            ),
+      invalidateProductStockMovementsCache(
+        productId
+      );
 
-          salida:
-            Math.max(
-              0,
-              currentUnits -
-                nextUnits
-            ),
-
-          saldoAnterior:
-            currentUnits,
-
-          saldoActual:
-            nextUnits,
-
-          detalle:
-            "Edición manual de stock"
-        });
-      }
+      refreshInventoryView();
 
       await Swal.fire({
         toast:
@@ -5185,23 +6039,24 @@
         title:
           "Producto actualizado",
 
-        timer:
-          1400,
-
         showConfirmButton:
-          false
+          false,
+
+        timer:
+          1500
       });
     } catch (
-      err
+      error
     ) {
       console.error(
-        "Error editando producto:",
-        err
+        "Error actualizando producto:",
+        error
       );
 
       await Swal.fire(
         "Error",
-        "No se pudo actualizar el producto.",
+        error.message ||
+          "No se pudo actualizar el producto.",
         "error"
       );
     }
@@ -5213,7 +6068,7 @@
    * ============================================================
    */
 
-  function confirmDeleteProduct(
+  async function confirmDeleteProduct(
     productId,
     productName
   ) {
@@ -5225,8 +6080,8 @@
           "admin"
       )
     ) {
-      Swal.fire(
-        "No tienes permisos",
+      await Swal.fire(
+        "Sin permisos",
         "Solo el administrador puede eliminar productos.",
         "error"
       );
@@ -5234,199 +6089,328 @@
       return;
     }
 
-    Swal.fire({
-      title:
-        `Eliminar "${productName}"?`,
+    const confirmation =
+      await Swal.fire({
+        title:
+          `¿Eliminar "${productName}"?`,
 
-      text:
-        "Esta acción no se puede deshacer",
+        text:
+          "Esta acción no se puede deshacer.",
 
-      icon:
-        "warning",
+        icon:
+          "warning",
 
-      showCancelButton:
-        true,
+        showCancelButton:
+          true,
 
-      confirmButtonText:
-        "Sí, eliminar",
+        confirmButtonText:
+          "Sí, eliminar",
 
-      cancelButtonText:
-        "Cancelar"
-    }).then(
-      async result => {
-        if (
-          !result.isConfirmed
-        ) {
-          return;
-        }
-
-        try {
-          await db
-            .collection(
-              "productos"
-            )
-            .doc(
-              productId
-            )
-            .delete();
-
-          invalidateProductStockMovementsCache(
-            productId
-          );
-
-          Swal.fire({
-            toast:
-              true,
-
-            position:
-              "top-end",
-
-            icon:
-              "success",
-
-            title:
-              "Producto eliminado",
-
-            showConfirmButton:
-              false,
-
-            timer:
-              1400
-          });
-        } catch (
-          err
-        ) {
-          console.error(
-            "Error eliminando producto:",
-            err
-          );
-
-          Swal.fire(
-            "Error",
-            "No se pudo eliminar el producto.",
-            "error"
-          );
-        }
-      }
-    );
-  }
-
-  /*
-   * ============================================================
-   * FILTRO
-   * ============================================================
-   */
-
-  function filterWithDataTable() {
-    const dt =
-      ensureInventoryDataTable();
+        cancelButtonText:
+          "Cancelar"
+      });
 
     if (
-      !dt
+      !confirmation.isConfirmed
     ) {
       return;
     }
 
-    dt.search(
-      searchInput
-        ? searchInput.value.trim()
-        : ""
-    ).draw();
-  }
+    try {
+      await db
+        .collection(
+          PRODUCTS_COLLECTION
+        )
+        .doc(
+          productId
+        )
+        .delete();
 
-  function destroyInventoryDataTable() {
-    if (
-      inventoryDT
+      currentProductsList =
+        currentProductsList.filter(
+          product =>
+            String(
+              product.id
+            ) !==
+            String(
+              productId
+            )
+        );
+
+      invalidateProductStockMovementsCache(
+        productId
+      );
+
+      refreshInventoryView();
+
+      await Swal.fire({
+        toast:
+          true,
+
+        position:
+          "top-end",
+
+        icon:
+          "success",
+
+        title:
+          "Producto eliminado",
+
+        showConfirmButton:
+          false,
+
+        timer:
+          1500
+      });
+    } catch (
+      error
     ) {
-      inventoryDT.destroy();
+      console.error(
+        "Error eliminando producto:",
+        error
+      );
 
-      inventoryDT =
-        null;
+      await Swal.fire(
+        "Error",
+        "No se pudo eliminar el producto.",
+        "error"
+      );
     }
   }
 
   /*
    * ============================================================
-   * NORMALIZACIÓN OPCIONAL
+   * BÚSQUEDA
    * ============================================================
    */
 
-  async function backfillStockBaseUnitsIfNeeded(
-    products
-  ) {
+  function applySearch() {
     if (
-      !(
-        currentRole ===
-          "administrador" ||
-        currentRole ===
-          "admin" ||
-        currentRole ===
-          "bodega"
+      !inventoryDT
+    ) {
+      return;
+    }
+
+    inventoryDT
+      .search(
+        searchInput
+          ? searchInput.value.trim()
+          : ""
+      )
+      .draw();
+  }
+
+  /*
+   * ============================================================
+   * ESTILOS
+   * ============================================================
+   */
+
+  function injectInventoryStyles() {
+    if (
+      document.getElementById(
+        "inventoryBatchStyles"
       )
     ) {
       return;
     }
 
-    const batch =
-      db.batch();
+    const style =
+      document.createElement(
+        "style"
+      );
 
-    let pending =
-      0;
+    style.id =
+      "inventoryBatchStyles";
 
-    products.forEach(
-      product => {
-        if (
-          !Number.isFinite(
-            Number(
-              product.stockCurrentUnits
-            )
-          )
-        ) {
-          const ref =
-            db
-              .collection(
-                "productos"
-              )
-              .doc(
-                product.id
-              );
+    style.textContent = `
+      .inventory-batch-modal {
+        max-height: 94vh !important;
+        overflow-y: auto !important;
+      }
 
-          batch.update(
-            ref,
-            {
-              stockCurrentUnits:
-                getCurrentStockUnits(
-                  product
-                ),
+      .batch-products-container {
+        display:flex;
+        flex-direction:column;
+        gap:14px;
+        text-align:left;
+        max-height:62vh;
+        overflow-y:auto;
+        padding:3px;
+      }
 
-              updatedAt:
-                firebase.firestore
-                  .FieldValue
-                  .serverTimestamp()
-            }
-          );
+      .batch-product-row {
+        border:1px solid #e5e7eb;
+        border-radius:14px;
+        padding:14px;
+        background:#f9fafb;
+      }
 
-          pending +=
-            1;
+      .batch-row-header {
+        display:flex;
+        justify-content:space-between;
+        gap:12px;
+        align-items:center;
+        margin-bottom:12px;
+      }
+
+      .batch-row-header strong {
+        font-size:1rem;
+        color:#111827;
+      }
+
+      .batch-row-total {
+        display:inline-block;
+        margin-left:10px;
+        font-size:.8rem;
+        color:#2563eb;
+        font-weight:700;
+      }
+
+      .batch-grid {
+        display:grid;
+        grid-template-columns:
+          repeat(4, minmax(0, 1fr));
+        gap:10px;
+      }
+
+      .inv-field {
+        display:flex;
+        flex-direction:column;
+        gap:5px;
+      }
+
+      .inv-field label {
+        font-size:.82rem;
+        font-weight:700;
+        color:#374151;
+      }
+
+      .inv-field input,
+      .inv-field select,
+      .inv-combobox {
+        width:100%;
+        min-height:40px;
+        box-sizing:border-box;
+      }
+
+      .inv-field small {
+        color:#6b7280;
+        font-size:.72rem;
+      }
+
+      .batch-product-field {
+        grid-column:span 2;
+      }
+
+      .batch-product-combobox {
+        width:100%;
+      }
+
+      .batch-product-status {
+        min-height:18px;
+      }
+
+      .batch-status {
+        display:inline-block;
+        margin-top:3px;
+        font-size:.72rem;
+        font-weight:600;
+      }
+
+      .batch-status.success {
+        color:#166534;
+      }
+
+      .batch-status.warning {
+        color:#92400e;
+      }
+
+      .batch-status.info {
+        color:#1d4ed8;
+      }
+
+      .batch-status.danger {
+        color:#b91c1c;
+      }
+
+      .bonus-field {
+        background:#fff7ed;
+        border-radius:10px;
+        padding:7px;
+      }
+
+      .bonus-field label {
+        color:#9a3412;
+      }
+
+      .batch-row-summary {
+        display:flex;
+        flex-wrap:wrap;
+        gap:12px;
+        margin-top:12px;
+        padding:10px;
+        border-radius:10px;
+        background:#eef2ff;
+        color:#374151;
+        font-size:.78rem;
+      }
+
+      .batch-row-summary strong {
+        color:#111827;
+      }
+
+      .batch-info-box {
+        margin-top:14px;
+        padding:12px;
+        border-radius:10px;
+        background:#f3f4f6;
+        text-align:left;
+        color:#4b5563;
+        font-size:.8rem;
+      }
+
+      .batch-info-box p {
+        margin:5px 0;
+      }
+
+      .edit-stock-grid {
+        display:grid;
+        grid-template-columns:
+          repeat(3, minmax(0, 1fr));
+        gap:10px;
+      }
+
+      @media (max-width:900px) {
+        .batch-grid {
+          grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+        }
+
+        .batch-product-field {
+          grid-column:span 2;
         }
       }
-    );
 
-    if (
-      pending >
-      0
-    ) {
-      try {
-        await batch.commit();
-      } catch (
-        err
-      ) {
-        console.warn(
-          "No se pudo completar la normalización de stockCurrentUnits:",
-          err
-        );
+      @media (max-width:600px) {
+        .batch-grid,
+        .edit-stock-grid {
+          grid-template-columns:1fr;
+        }
+
+        .batch-product-field {
+          grid-column:span 1;
+        }
+
+        .batch-products-container {
+          max-height:55vh;
+        }
       }
-    }
+    `;
+
+    document.head.appendChild(
+      style
+    );
   }
 
   /*
@@ -5435,9 +6419,120 @@
    * ============================================================
    */
 
+  async function initializeInventory(
+    user
+  ) {
+    if (
+      inventoryInitialized
+    ) {
+      return;
+    }
+
+    inventoryInitialized =
+      true;
+
+    try {
+      injectInventoryStyles();
+
+      await resolveInventoryContext(
+        user
+      );
+
+      if (
+        !currentLocalId
+      ) {
+        throw new Error(
+          "El usuario no tiene un local asignado."
+        );
+      }
+
+      if (
+        typeof window.renderNavigationForRole ===
+        "function"
+      ) {
+        window.renderNavigationForRole(
+          currentUserInventoryContext.role ||
+            ""
+        );
+      }
+
+      ensureInventoryDataTable();
+
+      /*
+       * Proveedores se cargan una sola vez.
+       * Si fallan, el proveedor seguirá siendo opcional.
+       */
+      await loadInventoryProviders();
+
+      /*
+       * Productos y ventas se cargan una sola vez.
+       */
+      await loadInventoryData();
+    } catch (
+      error
+    ) {
+      inventoryInitialized =
+        false;
+
+      console.error(
+        "Error leyendo contexto del inventario:",
+        error
+      );
+
+      await Swal.fire({
+        icon:
+          "error",
+
+        title:
+          "Error de inventario",
+
+        text:
+          error.message ||
+          "No se pudo cargar el inventario."
+      });
+    }
+  }
+
+  /*
+   * ============================================================
+   * EVENTOS
+   * ============================================================
+   */
+
+  document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+      injectInventoryStyles();
+
+      if (
+        btnAdd
+      ) {
+        btnAdd.addEventListener(
+          "click",
+          openBatchAddModal
+        );
+      }
+
+      if (
+        searchInput
+      ) {
+        searchInput.addEventListener(
+          "input",
+          applySearch
+        );
+      }
+    }
+  );
+
+  /*
+   * ============================================================
+   * AUTH
+   * ============================================================
+   */
+
   auth.onAuthStateChanged(
-    async user => {
-      const page =
+    user => {
+      const currentPage =
         window.location.pathname
           .split("/")
           .pop()
@@ -5447,9 +6542,9 @@
         !user
       ) {
         if (
-          page !==
+          currentPage !==
             "index.html" &&
-          page !==
+          currentPage !==
             "login.html"
         ) {
           window.location.href =
@@ -5459,127 +6554,8 @@
         return;
       }
 
-      try {
-        /*
-         * Esperamos el contexto central de app.js.
-         */
-        await resolveInventoryContext(
-          user
-        );
-
-        if (
-          !currentLocalId
-        ) {
-          await Swal.fire({
-            icon:
-              "warning",
-
-            title:
-              "Sin local",
-
-            text:
-              "El usuario no tiene id_local asignado. El inventario no puede filtrarse."
-          });
-
-          return;
-        }
-
-        /*
-         * La navegación sigue siendo responsabilidad
-         * de app.js, pero puede actualizarse aquí
-         * si la función existe.
-         */
-        if (
-          typeof window.renderNavigationForRole ===
-          "function"
-        ) {
-          window.renderNavigationForRole(
-            currentUserInventoryContext.role ||
-            ""
-          );
-        }
-
-        /*
-         * Inicializar DataTable una sola vez.
-         */
-        ensureInventoryDataTable();
-
-        /*
-         * Los únicos listeners permanentes del módulo.
-         */
-        startRealtimeListeners();
-
-      } catch (
-        err
-      ) {
-        console.error(
-          "Error leyendo contexto del inventario:",
-          err
-        );
-
-        await Swal.fire({
-          icon:
-            "error",
-
-          title:
-            "Error de contexto",
-
-          text:
-            err.message ||
-            "No se pudo resolver el local del usuario."
-        });
-      }
-    }
-  );
-
-  /*
-   * ============================================================
-   * EVENTOS DOM
-   * ============================================================
-   */
-
-  document.addEventListener(
-    "DOMContentLoaded",
-    () => {
-      if (
-        btnAdd
-      ) {
-        btnAdd.addEventListener(
-          "click",
-          showAddProductModal
-        );
-      }
-
-      if (
-        searchInput
-      ) {
-        searchInput.addEventListener(
-          "input",
-          filterWithDataTable
-        );
-      }
-
-      /*
-       * NO registrar logout aquí.
-       *
-       * app.js ya registra:
-       * - #logoutButton
-       * - #logoutButtonMobile
-       *
-       * Así se evita duplicar handlers.
-       */
-
-      window.addEventListener(
-        "beforeunload",
-        () => {
-          stopRealtimeListeners();
-
-          destroyInventoryDataTable();
-
-          productStockMovementsCache.clear();
-
-          productStockMovementsPending.clear();
-        }
+      initializeInventory(
+        user
       );
     }
   );
