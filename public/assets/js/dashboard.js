@@ -1701,7 +1701,7 @@ document.addEventListener(
 
       return String(
         supplierName ||
-          ""
+        ""
       ).trim() ||
         "—";
     }
@@ -1812,23 +1812,23 @@ document.addEventListener(
       movement,
       product
     ) {
-      const candidates = [
+      /*
+       * ==========================================================
+       * 1. COSTO HISTÓRICO DEL MOVIMIENTO
+       * ==========================================================
+       *
+       * Tiene prioridad absoluta.
+       */
+      const movementCosts = [
         movement?.costoUnitario,
         movement?.unitCost,
         movement?.costPerUnit,
-        movement?.costoPorUnidad,
-        movement?.lastCostPerUnit,
-
-        product?.costoUnitario,
-        product?.unitCost,
-        product?.costPerUnit,
-        product?.costoPorUnidad,
-        product?.lastCostPerUnit
+        movement?.costoPorUnidad
       ];
 
       for (
         const candidate of
-        candidates
+        movementCosts
       ) {
         const value =
           Number(
@@ -1839,15 +1839,89 @@ document.addEventListener(
           Number.isFinite(
             value
           ) &&
-          value > 0
+          value >= 0
         ) {
           return value;
         }
       }
 
-      return getProductUnitCost(
+      /*
+       * ==========================================================
+       * 2. FALLBACK AL PRODUCTO ACTUAL
+       * ==========================================================
+       *
+       * Esto se utiliza únicamente para movimientos antiguos
+       * que no tenían costo almacenado.
+       */
+      if (
         product
-      );
+      ) {
+        const productCosts = [
+          product.unitCost,
+          product.costoUnitario,
+          product.costPerUnit,
+          product.costoPorUnidad,
+          product.lastCostPerUnit,
+          product.ultimoCostoUnitario,
+          product.cost,
+          product.costo
+        ];
+
+        for (
+          const candidate of
+          productCosts
+        ) {
+          const value =
+            Number(
+              candidate
+            );
+
+          if (
+            Number.isFinite(
+              value
+            ) &&
+            value >= 0
+          ) {
+            return value;
+          }
+        }
+
+        const unitsPerBox =
+          getUnitsPerBox(
+            product
+          );
+
+        const boxCosts = [
+          product.costPerBox,
+          product.costoPorCaja,
+          product.lastCostPerBox,
+          product.ultimoCostoPorCaja
+        ];
+
+        for (
+          const candidate of
+          boxCosts
+        ) {
+          const value =
+            Number(
+              candidate
+            );
+
+          if (
+            Number.isFinite(
+              value
+            ) &&
+            value >= 0
+          ) {
+            return (
+              value /
+              unitsPerBox
+            );
+          }
+        }
+      }
+
+      return 0;
     }
 
     /*
@@ -3982,56 +4056,56 @@ document.addEventListener(
               item,
               index
             ) => [
-              index +
-              1,
+                index +
+                1,
 
-              item.dateStr ||
-              "",
+                item.dateStr ||
+                "",
 
-              item.productName ||
-              "",
+                item.productName ||
+                "",
 
-              item.productCode ||
-              "",
+                item.productCode ||
+                "",
 
-              item.docNumber ||
-              "",
+                item.docNumber ||
+                "",
 
-              item.bookReference ||
-              "",
+                item.bookReference ||
+                "",
 
-              item.supplierName ||
-              "—",
+                item.supplierName ||
+                "—",
 
-              numberOrZero(
-                item.unitCost
-              ),
+                numberOrZero(
+                  item.unitCost
+                ),
 
-              numberOrZero(
-                item.inventoryValue
-              ),
+                numberOrZero(
+                  item.inventoryValue
+                ),
 
-              numberOrZero(
-                item.entry
-              ),
+                numberOrZero(
+                  item.entry
+                ),
 
-              numberOrZero(
-                item.exit
-              ),
+                numberOrZero(
+                  item.exit
+                ),
 
-              numberOrZero(
-                item.balanceBefore
-              ),
+                numberOrZero(
+                  item.balanceBefore
+                ),
 
-              numberOrZero(
-                item.balanceAfter
-              )
-            ]
+                numberOrZero(
+                  item.balanceAfter
+                )
+              ]
           );
 
         const sheetData = [
           [
-            "REPORTE DE MOVIMIENTOS DE INVENTARIO"
+            "CONTROL DE INVENTARIO"
           ],
 
           [
@@ -4499,7 +4573,7 @@ document.addEventListener(
           "success"
         );
       } catch (
-        error
+      error
       ) {
         debugError(
           "Error exportando movimientos a Excel:",
@@ -4686,7 +4760,7 @@ document.addEventListener(
             )}`
         });
       } catch (
-        error
+      error
       ) {
         debugError(
           "Error en cierre de caja:",
@@ -4750,7 +4824,7 @@ document.addEventListener(
       try {
         await loadDashboardForRange();
       } catch (
-        error
+      error
       ) {
         debugError(
           "Error aplicando rango:",
@@ -4779,7 +4853,7 @@ document.addEventListener(
       try {
         await loadDashboardForRange();
       } catch (
-        error
+      error
       ) {
         debugError(
           "Error restaurando rango:",
@@ -4822,7 +4896,7 @@ document.addEventListener(
 
         await loadDashboardForRange();
       } catch (
-        error
+      error
       ) {
         initialized =
           false;

@@ -299,12 +299,12 @@
     const d =
       value.seconds
         ? new Date(
-            value.seconds *
-              1000
-          )
+          value.seconds *
+          1000
+        )
         : new Date(
-            value
-          );
+          value
+        );
 
     if (
       isNaN(
@@ -327,12 +327,12 @@
     const d =
       value.seconds
         ? new Date(
-            value.seconds *
-              1000
-          )
+          value.seconds *
+          1000
+        )
         : new Date(
-            value
-          );
+          value
+        );
 
     if (
       isNaN(
@@ -364,12 +364,12 @@
     const d =
       value.seconds
         ? new Date(
-            value.seconds *
-              1000
-          )
+          value.seconds *
+          1000
+        )
         : new Date(
-            value
-          );
+          value
+        );
 
     if (
       isNaN(
@@ -385,7 +385,7 @@
     const month =
       String(
         d.getMonth() +
-          1
+        1
       ).padStart(
         2,
         "0"
@@ -412,12 +412,12 @@
     const d =
       value.seconds
         ? new Date(
-            value.seconds *
-              1000
-          )
+          value.seconds *
+          1000
+        )
         : new Date(
-            value
-          );
+          value
+        );
 
     if (
       isNaN(
@@ -483,9 +483,9 @@
 
     if (
       dateParts.length !==
-        3 ||
+      3 ||
       timeParts.length <
-        2
+      2
     ) {
       return null;
     }
@@ -547,15 +547,15 @@
 
     if (
       result.getFullYear() !==
-        year ||
+      year ||
       result.getMonth() !==
-        month - 1 ||
+      month - 1 ||
       result.getDate() !==
-        day ||
+      day ||
       result.getHours() !==
-        hours ||
+      hours ||
       result.getMinutes() !==
-        minutes
+      minutes
     ) {
       return null;
     }
@@ -573,12 +573,12 @@
     const d =
       value.seconds
         ? new Date(
-            value.seconds *
-              1000
-          )
+          value.seconds *
+          1000
+        )
         : new Date(
-            value
-          );
+          value
+        );
 
     const time =
       d.getTime();
@@ -721,7 +721,7 @@
         localStorage.getItem(
           "currentUser"
         ) ||
-          "null"
+        "null"
       );
     } catch {
       return null;
@@ -772,13 +772,13 @@
 
     const canonical =
       typeof window.getCanonicalRole ===
-      "function"
+        "function"
         ? window.getCanonicalRole(
-            role
-          )
+          role
+        )
         : String(
-            role
-          ).trim();
+          role
+        ).trim();
 
     return (
       canonical ===
@@ -821,7 +821,7 @@
     currentLocalId =
       String(
         context.id_local ||
-          ""
+        ""
       ).trim();
 
     currentLocalInfo = {
@@ -831,43 +831,43 @@
       nombre:
         String(
           context.localNombre ||
-            ""
+          ""
         ).trim(),
 
       numeroDocumento:
         String(
           context.localNumeroDocumento ||
-            ""
+          ""
         ).trim(),
 
       ubicacion:
         String(
           context.localUbicacion ||
-            ""
+          ""
         ).trim(),
 
       contribuyente:
         String(
           context.localContribuyente ||
-            ""
+          ""
         ).trim(),
 
       tipoDocumento:
         String(
           context.localTipoDocumento ||
-            ""
+          ""
         ).trim(),
 
       nit:
         String(
           context.localNIT ||
-            ""
+          ""
         ).trim(),
 
       nrc:
         String(
           context.localNRC ||
-            ""
+          ""
         ).trim()
     };
 
@@ -882,12 +882,10 @@
     userGreeting.forEach(
       element => {
         element.textContent =
-          `Hola, ${
-            context.name ||
-            "Usuario"
-          } (${
-            context.role ||
-            ""
+          `Hola, ${context.name ||
+          "Usuario"
+          } (${context.role ||
+          ""
           })`;
       }
     );
@@ -903,9 +901,9 @@
       currentLocalId =
         String(
           stored.id_local ||
-            stored.idLocal ||
-            stored.localId ||
-            ""
+          stored.idLocal ||
+          stored.localId ||
+          ""
         ).trim();
 
       currentLocalInfo = {
@@ -915,50 +913,50 @@
         nombre:
           String(
             stored.localNombre ||
-              stored.localName ||
-              ""
+            stored.localName ||
+            ""
           ).trim(),
 
         numeroDocumento:
           String(
             stored.localNumeroDocumento ||
-              stored.localDocumentNumber ||
-              ""
+            stored.localDocumentNumber ||
+            ""
           ).trim(),
 
         ubicacion:
           String(
             stored.localUbicacion ||
-              stored.localLocation ||
-              ""
+            stored.localLocation ||
+            ""
           ).trim(),
 
         contribuyente:
           String(
             stored.localContribuyente ||
-              stored.contribuyente ||
-              ""
+            stored.contribuyente ||
+            ""
           ).trim(),
 
         tipoDocumento:
           String(
             stored.localTipoDocumento ||
-              stored.tipoDocumento ||
-              ""
+            stored.tipoDocumento ||
+            ""
           ).trim(),
 
         nit:
           String(
             stored.localNIT ||
-              stored.nit ||
-              ""
+            stored.nit ||
+            ""
           ).trim(),
 
         nrc:
           String(
             stored.localNRC ||
-              stored.nrc ||
-              ""
+            stored.nrc ||
+            ""
           ).trim()
       };
     }
@@ -966,12 +964,12 @@
     if (
       !currentLocalId &&
       typeof window.getCurrentLocalId ===
-        "function"
+      "function"
     ) {
       currentLocalId =
         String(
           window.getCurrentLocalId() ||
-            ""
+          ""
         ).trim();
     }
 
@@ -982,7 +980,7 @@
         !currentLocalInfo.ubicacion
       ) &&
       typeof window.getCurrentLocalInfo ===
-        "function"
+      "function"
     ) {
       const info =
         window.getCurrentLocalInfo() ||
@@ -995,49 +993,49 @@
           currentLocalId ||
           String(
             info.id_local ||
-              ""
+            ""
           ).trim(),
 
         nombre:
           String(
             info.nombre ||
-              ""
+            ""
           ).trim(),
 
         numeroDocumento:
           String(
             info.numeroDocumento ||
-              ""
+            ""
           ).trim(),
 
         ubicacion:
           String(
             info.ubicacion ||
-              ""
+            ""
           ).trim(),
 
         contribuyente:
           String(
             info.contribuyente ||
-              ""
+            ""
           ).trim(),
 
         tipoDocumento:
           String(
             info.tipoDocumento ||
-              ""
+            ""
           ).trim(),
 
         nit:
           String(
             info.nit ||
-              ""
+            ""
           ).trim(),
 
         nrc:
           String(
             info.nrc ||
-              ""
+            ""
           ).trim()
       };
     }
@@ -1048,10 +1046,10 @@
   ) {
     return String(
       data.id_local ||
-        data.idLocal ||
-        data.localId ||
-        data.idlocal ||
-        ""
+      data.idLocal ||
+      data.localId ||
+      data.idlocal ||
+      ""
     ).trim();
   }
 
@@ -1122,7 +1120,7 @@
     const value =
       numberOrZero(
         product &&
-          product.unitsPerBox
+        product.unitsPerBox
       );
 
     return value >
@@ -1136,14 +1134,14 @@
   ) {
     return Boolean(
       product &&
-        (
-          product.saleByBox ===
-            true ||
-          product.saleMode ===
-            "box" ||
-          product.saleType ===
-            "box"
-        )
+      (
+        product.saleByBox ===
+        true ||
+        product.saleMode ===
+        "box" ||
+        product.saleType ===
+        "box"
+      )
     );
   }
 
@@ -1168,7 +1166,7 @@
     const saved =
       numberOrZero(
         product &&
-          product.boxPrice
+        product.boxPrice
       );
 
     if (
@@ -1180,7 +1178,7 @@
     return (
       numberOrZero(
         product &&
-          product.price
+        product.price
       ) *
       unitsPerBox
     );
@@ -1264,8 +1262,90 @@
       getAvailableUnits(
         product
       ) /
-        unitsPerBox
+      unitsPerBox
     );
+  }
+
+  function getProductUnitCost(
+    product
+  ) {
+    if (!product) {
+      return 0;
+    }
+
+    /*
+     * Prioridad para costos unitarios almacenados
+     * directamente en el producto.
+     */
+    const directCosts = [
+      product.unitCost,
+      product.costoUnitario,
+      product.costPerUnit,
+      product.costoPorUnidad,
+      product.lastCostPerUnit,
+      product.ultimoCostoUnitario,
+      product.cost,
+      product.costo
+    ];
+
+    for (
+      const candidate of
+      directCosts
+    ) {
+      const value =
+        Number(
+          candidate
+        );
+
+      if (
+        Number.isFinite(
+          value
+        ) &&
+        value >= 0
+      ) {
+        return value;
+      }
+    }
+
+    /*
+     * Si solamente existe costo por caja,
+     * se convierte a costo unitario.
+     */
+    const unitsPerBox =
+      normalizeUnitsPerBox(
+        product
+      );
+
+    const boxCosts = [
+      product.costPerBox,
+      product.costoPorCaja,
+      product.lastCostPerBox,
+      product.ultimoCostoPorCaja
+    ];
+
+    for (
+      const candidate of
+      boxCosts
+    ) {
+      const value =
+        Number(
+          candidate
+        );
+
+      if (
+        Number.isFinite(
+          value
+        ) &&
+        value >= 0
+      ) {
+        return (
+          value /
+          unitsPerBox
+        );
+      }
+    }
+
+    return 0;
   }
 
   /*
@@ -1289,8 +1369,8 @@
 
     return value
       ? String(
-          value
-        )
+        value
+      )
       : "";
   }
 
@@ -1312,9 +1392,9 @@
     const mode =
       String(
         product.mode ||
-          product.saleMode ||
-          product.saleType ||
-          ""
+        product.saleMode ||
+        product.saleType ||
+        ""
       ).toLowerCase();
 
     const quantity =
@@ -1325,7 +1405,7 @@
     const explicitUnits =
       numberOrZero(
         product.unitsTotal ||
-          product.totalUnits
+        product.totalUnits
       );
 
     if (
@@ -1353,7 +1433,7 @@
   ) {
     return getDateTimeMillis(
       sale &&
-        sale.createdAt
+      sale.createdAt
     );
   }
 
@@ -1390,7 +1470,7 @@
       new Date(
         now.getFullYear(),
         now.getMonth() +
-          1,
+        1,
         1,
         0,
         0,
@@ -1400,9 +1480,9 @@
 
     return (
       millis >=
-        start.getTime() &&
+      start.getTime() &&
       millis <
-        nextMonth.getTime()
+      nextMonth.getTime()
     );
   }
 
@@ -1460,7 +1540,7 @@
             ] =
               (
                 unitsMap[
-                  productId
+                productId
                 ] ||
                 0
               ) +
@@ -1516,33 +1596,33 @@
             )
           )
             ? Math.max(
+              0,
+              numberOrZero(
+                data.stockCurrentUnits
+              )
+            )
+            : Number.isFinite(
+              Number(
+                data.quantity
+              )
+            )
+              ? Math.max(
                 0,
                 numberOrZero(
-                  data.stockCurrentUnits
-                )
-              )
-            : Number.isFinite(
-                Number(
                   data.quantity
                 )
               )
-              ? Math.max(
+              : Number.isFinite(
+                Number(
+                  data.stockBaseUnits
+                )
+              )
+                ? Math.max(
                   0,
                   numberOrZero(
-                    data.quantity
-                  )
-                )
-              : Number.isFinite(
-                  Number(
                     data.stockBaseUnits
                   )
                 )
-                ? Math.max(
-                    0,
-                    numberOrZero(
-                      data.stockBaseUnits
-                    )
-                  )
                 : 0;
 
         products[
@@ -1678,7 +1758,7 @@
     if (
       !window.jQuery ||
       typeof $.fn.select2 !==
-        "function" ||
+      "function" ||
       !productSelect
     ) {
       return;
@@ -1708,7 +1788,7 @@
           0
       });
     } catch (
-      err
+    err
     ) {
       console.warn(
         "No se pudo inicializar Select2:",
@@ -1770,11 +1850,11 @@
         ) =>
           String(
             a[1].name ||
-              ""
+            ""
           ).localeCompare(
             String(
               b[1].name ||
-                ""
+              ""
             ),
             "es",
             {
@@ -1860,7 +1940,7 @@
     if (
       currentValue &&
       PRODUCTS_CACHE[
-        currentValue
+      currentValue
       ]
     ) {
       productSelect.value =
@@ -1870,7 +1950,7 @@
     if (
       window.jQuery &&
       typeof $.fn.select2 ===
-        "function"
+      "function"
     ) {
       $("#productSelect").trigger(
         "change.select2"
@@ -1887,8 +1967,8 @@
     const product =
       productId
         ? PRODUCTS_CACHE[
-            productId
-          ]
+        productId
+        ]
         : null;
 
     const mode =
@@ -1901,7 +1981,7 @@
     ) {
       saleQuantityLabel.textContent =
         mode ===
-        "box"
+          "box"
           ? "Cantidad (cajas)"
           : "Cantidad (unidades)";
     }
@@ -1911,7 +1991,7 @@
     ) {
       boxPriceGroup.style.display =
         mode ===
-        "box"
+          "box"
           ? "block"
           : "none";
     }
@@ -1934,7 +2014,7 @@
         numberOrZero(
           boxPriceInput.value
         ) <=
-          0
+        0
       ) {
         boxPriceInput.value =
           "0.00";
@@ -1951,8 +2031,8 @@
     const product =
       productId
         ? PRODUCTS_CACHE[
-            productId
-          ]
+        productId
+        ]
         : null;
 
     if (
@@ -1964,8 +2044,8 @@
     saleModeSelect.value =
       product
         ? getDefaultSaleMode(
-            product
-          )
+          product
+        )
         : "unit";
 
     refreshSaleModeUI();
@@ -2051,7 +2131,7 @@
 
       const product =
         PRODUCTS_CACHE[
-          productId
+        productId
         ];
 
       if (
@@ -2070,8 +2150,8 @@
         saleModeSelect
           ? saleModeSelect.value
           : getDefaultSaleMode(
-              product
-            );
+            product
+          );
 
       const quantity =
         Math.max(
@@ -2079,7 +2159,7 @@
           Math.floor(
             Number(
               saleQuantityInput.value ||
-                1
+              1
             )
           )
         );
@@ -2096,9 +2176,9 @@
 
       if (
         mode ===
-          "box" &&
+        "box" &&
         unitsPerBox <=
-          1
+        1
       ) {
         Swal.fire({
           icon:
@@ -2125,9 +2205,9 @@
 
       const unitsToDiscount =
         mode ===
-        "box"
+          "box"
           ? quantity *
-            unitsPerBox
+          unitsPerBox
           : quantity;
 
       const alreadyUnitsInCart =
@@ -2151,7 +2231,7 @@
 
       if (
         alreadyUnitsInCart +
-          unitsToDiscount >
+        unitsToDiscount >
         availableUnits
       ) {
         Swal.fire({
@@ -2172,15 +2252,15 @@
         CART.find(
           item =>
             item.productId ===
-              productId &&
+            productId &&
             item.mode ===
-              mode &&
+            mode &&
             Number(
               item.price
             ) ===
-              Number(
-                linePrice
-              )
+            Number(
+              linePrice
+            )
         );
 
       if (
@@ -2260,7 +2340,7 @@
 
       if (
         mode ===
-          "box" &&
+        "box" &&
         productId
       ) {
         boxPriceInput.value =
@@ -2274,7 +2354,7 @@
       if (
         window.jQuery &&
         typeof $.fn.select2 ===
-          "function"
+        "function"
       ) {
         $("#productSelect")
           .val(
@@ -2307,7 +2387,7 @@
           sum +
           Number(
             item.total ||
-              0
+            0
           ),
         0
       );
@@ -2319,7 +2399,7 @@
 
     btnFinalize.disabled =
       CART.length ===
-        0 ||
+      0 ||
       isFinalizingSale;
 
     return subtotal;
@@ -2434,18 +2514,17 @@
         tdName.innerHTML =
           `
             ${escapeHtml(
-              item.name
-            )}
+            item.name
+          )}
 
             <br>
 
             <small>
-              ${
-                item.mode ===
-                "box"
-                  ? `${item.quantity} cajas (${item.unitsTotal} unidades)`
-                  : `${item.quantity} unidades`
-              }
+              ${item.mode ===
+            "box"
+            ? `${item.quantity} cajas (${item.unitsTotal} unidades)`
+            : `${item.quantity} unidades`
+          }
             </small>
           `;
 
@@ -2514,7 +2593,7 @@
 
             const product =
               PRODUCTS_CACHE[
-                item.productId
+              item.productId
               ];
 
             const availableUnits =
@@ -2531,7 +2610,7 @@
               item.mode ===
                 "box"
                 ? value *
-                  unitsPerBox
+                unitsPerBox
                 : value;
 
             const currentInCartUnits =
@@ -2539,9 +2618,9 @@
                 .filter(
                   other =>
                     other.productId ===
-                      item.productId &&
+                    item.productId &&
                     other !==
-                      item
+                    item
                 )
                 .reduce(
                   (
@@ -2557,7 +2636,7 @@
 
             if (
               currentInCartUnits +
-                newUnitsTotal >
+              newUnitsTotal >
               availableUnits
             ) {
               Swal.fire({
@@ -2845,13 +2924,13 @@
         price:
           Number(
             item.price ||
-              0
+            0
           ),
 
         quantity:
           Number(
             item.quantity ||
-              0
+            0
           ),
 
         mode:
@@ -2860,19 +2939,19 @@
         unitsPerBox:
           Number(
             item.unitsPerBox ||
-              1
+            1
           ),
 
         unitsTotal:
           Number(
             item.unitsTotal ||
-              0
+            0
           ),
 
         total:
           Number(
             item.total ||
-              0
+            0
           )
       })
     );
@@ -2896,8 +2975,14 @@
     saldoActual,
     detalle,
     userName,
-    userId
+    userId,
+    costoUnitario
   }) {
+    const normalizedUnitCost =
+      numberOrZero(
+        costoUnitario
+      );
+
     return {
       productId,
 
@@ -2942,6 +3027,19 @@
         numberOrZero(
           saldoActual
         ),
+
+      /*
+       * Costo histórico del producto en el momento
+       * en que se creó este movimiento.
+       */
+      costoUnitario:
+        normalizedUnitCost,
+
+      unitCost:
+        normalizedUnitCost,
+
+      costoPorUnidad:
+        normalizedUnitCost,
 
       detalle:
         detalle ||
@@ -3149,23 +3247,22 @@
                 >
                   <span>
                     ${escapeHtml(
-                      item.name
-                    )}
+                item.name
+              )}
 
                     x${item.quantity}
 
-                    ${
-                      item.mode ===
-                      "box"
-                        ? "(cajas)"
-                        : "(unid.)"
-                    }
+                    ${item.mode ===
+                "box"
+                ? "(cajas)"
+                : "(unid.)"
+              }
                   </span>
 
                   <strong>
                     ${currency(
-                      item.total
-                    )}
+                item.total
+              )}
                   </strong>
                 </div>
               `
@@ -3199,8 +3296,8 @@
 
                   <strong>
                     ${escapeHtml(
-                      saleDateTime.toLocaleDateString()
-                    )}
+              saleDateTime.toLocaleDateString()
+            )}
                   </strong>
                 </div>
 
@@ -3218,17 +3315,17 @@
 
                   <strong>
                     ${escapeHtml(
-                      saleDateTime.toLocaleTimeString(
-                        [],
-                        {
-                          hour:
-                            "2-digit",
+              saleDateTime.toLocaleTimeString(
+                [],
+                {
+                  hour:
+                    "2-digit",
 
-                          minute:
-                            "2-digit"
-                        }
-                      )
-                    )}
+                  minute:
+                    "2-digit"
+                }
+              )
+            )}
                   </strong>
                 </div>
 
@@ -3246,8 +3343,8 @@
 
                   <strong>
                     ${escapeHtml(
-                      referenciaLibro
-                    )}
+              referenciaLibro
+            )}
                   </strong>
                 </div>
 
@@ -3264,8 +3361,8 @@
 
                   <strong>
                     ${currency(
-                      total
-                    )}
+              total
+            )}
                   </strong>
                 </div>
 
@@ -3310,7 +3407,7 @@
           ] =
             (
               unitsByProduct[
-                productId
+              productId
               ] ||
               0
             ) +
@@ -3348,7 +3445,7 @@
 
           for (
             const productId
-              of productIds
+            of productIds
           ) {
             const productRef =
               db
@@ -3382,9 +3479,8 @@
               )
             ) {
               throw new Error(
-                `El producto ${
-                  data.name ||
-                  productId
+                `El producto ${data.name ||
+                productId
                 } no pertenece al local actual.`
               );
             }
@@ -3409,7 +3505,7 @@
             productId => {
               const productInfo =
                 productSnapshots[
-                  productId
+                productId
                 ];
 
               const data =
@@ -3418,7 +3514,7 @@
               const unitsToDiscount =
                 numberOrZero(
                   unitsByProduct[
-                    productId
+                  productId
                   ]
                 );
 
@@ -3429,33 +3525,33 @@
                   )
                 )
                   ? Math.max(
+                    0,
+                    numberOrZero(
+                      data.stockCurrentUnits
+                    )
+                  )
+                  : Number.isFinite(
+                    Number(
+                      data.quantity
+                    )
+                  )
+                    ? Math.max(
                       0,
                       numberOrZero(
-                        data.stockCurrentUnits
-                      )
-                    )
-                  : Number.isFinite(
-                      Number(
                         data.quantity
                       )
                     )
-                    ? Math.max(
+                    : Number.isFinite(
+                      Number(
+                        data.stockBaseUnits
+                      )
+                    )
+                      ? Math.max(
                         0,
                         numberOrZero(
-                          data.quantity
-                        )
-                      )
-                    : Number.isFinite(
-                        Number(
                           data.stockBaseUnits
                         )
                       )
-                      ? Math.max(
-                          0,
-                          numberOrZero(
-                            data.stockBaseUnits
-                          )
-                        )
                       : 0;
 
               if (
@@ -3491,7 +3587,7 @@
                   boxes:
                     Math.floor(
                       remainingUnits /
-                        unitsPerBox
+                      unitsPerBox
                     ),
 
                   updatedAt:
@@ -3507,6 +3603,11 @@
                     "stock_movimientos"
                   )
                   .doc();
+
+              const costoUnitario =
+                getProductUnitCost(
+                  data
+                );
 
               transaction.set(
                 movementRef,
@@ -3536,6 +3637,12 @@
 
                   saldoActual:
                     remainingUnits,
+
+                  /*
+                   * Se guarda el costo que tenía el producto
+                   * exactamente al momento de registrar la venta.
+                   */
+                  costoUnitario,
 
                   detalle:
                     `Salida por venta ${ventaRef.id} - Referencia: ${referenciaLibro}`,
@@ -3597,7 +3704,7 @@
         productId => {
           const product =
             PRODUCTS_CACHE[
-              productId
+            productId
             ];
 
           if (!product) {
@@ -3607,7 +3714,7 @@
           const unitsToDiscount =
             numberOrZero(
               unitsByProduct[
-                productId
+              productId
               ]
             );
 
@@ -3620,7 +3727,7 @@
             Math.max(
               0,
               currentUnits -
-                unitsToDiscount
+              unitsToDiscount
             );
 
           const unitsPerBox =
@@ -3637,7 +3744,7 @@
           product.boxes =
             Math.floor(
               nextUnits /
-                unitsPerBox
+              unitsPerBox
             );
         }
       );
@@ -3720,7 +3827,7 @@
           1500
       });
     } catch (
-      err
+    err
     ) {
       console.error(
         "Error finalizando venta:",
@@ -3730,7 +3837,7 @@
       await Swal.fire(
         "Error",
         err.message ||
-          "No se pudo finalizar la venta.",
+        "No se pudo finalizar la venta.",
         "error"
       );
     } finally {
@@ -3947,7 +4054,7 @@
           1400
       });
     } catch (
-      err
+    err
     ) {
       console.error(
         "Error guardando borrador:",
@@ -4010,7 +4117,7 @@
         ] =
           (
             result[
-              productId
+            productId
             ] ||
             0
           ) +
@@ -4039,17 +4146,17 @@
 
         const cachedProduct =
           PRODUCTS_CACHE[
-            productId
+          productId
           ];
 
         const mode =
           String(
             product.mode ||
-              product.saleMode ||
-              product.saleType ||
-              ""
+            product.saleMode ||
+            product.saleType ||
+            ""
           ).toLowerCase() ===
-          "box"
+            "box"
             ? "box"
             : "unit";
 
@@ -4058,11 +4165,11 @@
             1,
             numberOrZero(
               product.unitsPerBox ||
-                (
-                  cachedProduct
-                    ? cachedProduct.unitsPerBox
-                    : 1
-                )
+              (
+                cachedProduct
+                  ? cachedProduct.unitsPerBox
+                  : 1
+              )
             )
           );
 
@@ -4084,9 +4191,9 @@
 
         const unitsTotal =
           mode ===
-          "box"
+            "box"
             ? quantity *
-              unitsPerBox
+            unitsPerBox
             : quantity;
 
         return {
@@ -4095,11 +4202,11 @@
           name:
             String(
               product.name ||
-                (
-                  cachedProduct
-                    ? cachedProduct.name
-                    : ""
-                )
+              (
+                cachedProduct
+                  ? cachedProduct.name
+                  : ""
+              )
             ),
 
           price,
@@ -4199,8 +4306,8 @@
         <div
           class="sale-products-readonly"
           data-sale-id="${escapeAttribute(
-            saleId
-          )}"
+        saleId
+      )}"
         >
           -
         </div>
@@ -4211,39 +4318,36 @@
       <div
         class="sale-products-readonly"
         data-sale-id="${escapeAttribute(
-          saleId
-        )}"
+      saleId
+    )}"
         style="
           display:flex;
           flex-direction:column;
           gap:2px;
         "
       >
-        ${
-          products
-            .map(
-              product =>
-                `
+        ${products
+        .map(
+          product =>
+            `
                   <div>
                     ${escapeHtml(
-                      product.name
-                    )}
+              product.name
+            )}
 
-                    x${
-                      product.quantity
-                    }
+                    x${product.quantity
+            }
 
-                    ${
-                      product.mode ===
-                      "box"
-                        ? "(cajas)"
-                        : "(unid.)"
-                    }
+                    ${product.mode ===
+              "box"
+              ? "(cajas)"
+              : "(unid.)"
+            }
                   </div>
                 `
-            )
-            .join("")
-        }
+        )
+        .join("")
+      }
       </div>
     `;
   }
@@ -4257,7 +4361,7 @@
     ) {
       return escapeHtml(
         reference ||
-          "venta"
+        "venta"
       );
     }
 
@@ -4266,12 +4370,12 @@
         type="text"
         class="inline-sale-reference"
         data-sale-id="${escapeAttribute(
-          saleId
-        )}"
+      saleId
+    )}"
         value="${escapeAttribute(
-          reference ||
-            "venta"
-        )}"
+      reference ||
+      "venta"
+    )}"
         maxlength="100"
         autocomplete="off"
         style="
@@ -4306,11 +4410,11 @@
         type="date"
         class="inline-sale-date"
         data-sale-id="${escapeAttribute(
-          saleId
-        )}"
+      saleId
+    )}"
         value="${escapeAttribute(
-          value
-        )}"
+      value
+    )}"
         title="Fecha de la venta"
         style="
           width:100%;
@@ -4344,11 +4448,11 @@
         type="time"
         class="inline-sale-time"
         data-sale-id="${escapeAttribute(
-          saleId
-        )}"
+      saleId
+    )}"
         value="${escapeAttribute(
-          value
-        )}"
+      value
+    )}"
         title="Hora de la venta"
         style="
           width:100%;
@@ -4376,8 +4480,8 @@
         type="button"
         class="btn-outline btn-delete-sale"
         data-sale-id="${escapeAttribute(
-          saleId
-        )}"
+      saleId
+    )}"
         title="Eliminar venta"
       >
         <i class="fas fa-trash"></i>
@@ -4652,9 +4756,9 @@
             if (
               cell &&
               typeof cell ===
-                "object" &&
+              "object" &&
               cell.display !==
-                undefined
+              undefined
             ) {
               td.innerHTML =
                 String(
@@ -4664,7 +4768,7 @@
               td.innerHTML =
                 String(
                   cell ??
-                    ""
+                  ""
                 );
             }
 
@@ -4752,20 +4856,20 @@
           `
             <strong>
               ${currency(
-                total
-              )}
+            total
+          )}
             </strong>
           `,
 
           buildReferenceEditorHtml(
             saleId,
             sale.referenciaLibro ||
-              "venta"
+            "venta"
           ),
 
           escapeHtml(
             sale.userName ||
-              "-"
+            "-"
           ),
 
           {
@@ -4860,12 +4964,12 @@
 
     if (
       saleSaveTimers[
-        saleId
+      saleId
       ]
     ) {
       clearTimeout(
         saleSaveTimers[
-          saleId
+        saleId
         ]
       );
     }
@@ -4936,12 +5040,12 @@
 
               if (
                 saleSaveTimers[
-                  saleId
+                saleId
                 ]
               ) {
                 clearTimeout(
                   saleSaveTimers[
-                    saleId
+                  saleId
                   ]
                 );
 
@@ -5021,7 +5125,7 @@
 
     const sale =
       SALES_CACHE[
-        saleId
+      saleId
       ];
 
     if (!sale) {
@@ -5068,9 +5172,9 @@
         referenceInput
           ? referenceInput.value
           : (
-              sale.referenciaLibro ||
-              "venta"
-            )
+            sale.referenciaLibro ||
+            "venta"
+          )
       ).trim() ||
       "venta";
 
@@ -5115,7 +5219,7 @@
     const oldReference =
       String(
         sale.referenciaLibro ||
-          "venta"
+        "venta"
       ).trim();
 
     const oldCreatedAtMillis =
@@ -5195,7 +5299,7 @@
           const latestReference =
             String(
               latestSale.referenciaLibro ||
-                "venta"
+              "venta"
             ).trim();
 
           const finalReference =
@@ -5207,11 +5311,11 @@
             dateTimeChanged
               ? newCreatedAt
               : (
-                  latestSale.createdAt ||
-                  firebase.firestore.Timestamp.fromDate(
-                    new Date()
-                  )
-                );
+                latestSale.createdAt ||
+                firebase.firestore.Timestamp.fromDate(
+                  new Date()
+                )
+              );
 
           transaction.update(
             saleRef,
@@ -5273,7 +5377,7 @@
           1200
       });
     } catch (
-      error
+    error
     ) {
       console.error(
         "Error actualizando venta:",
@@ -5283,7 +5387,7 @@
       await Swal.fire(
         "Error",
         error.message ||
-          "No se pudo actualizar la venta.",
+        "No se pudo actualizar la venta.",
         "error"
       );
     } finally {
@@ -5324,12 +5428,12 @@
 
     if (
       saleSaveTimers[
-        saleId
+      saleId
       ]
     ) {
       clearTimeout(
         saleSaveTimers[
-          saleId
+        saleId
         ]
       );
 
@@ -5340,7 +5444,7 @@
 
     const sale =
       SALES_CACHE[
-        saleId
+      saleId
       ];
 
     if (!sale) {
@@ -5463,7 +5567,7 @@
 
           for (
             const productId
-              of productIds
+            of productIds
           ) {
             const productRef =
               db
@@ -5497,9 +5601,8 @@
               )
             ) {
               throw new Error(
-                `El producto ${
-                  productData.name ||
-                  productId
+                `El producto ${productData.name ||
+                productId
                 } no pertenece al local actual.`
               );
             }
@@ -5520,7 +5623,7 @@
               const unitsToReturn =
                 numberOrZero(
                   unitsByProduct[
-                    productId
+                  productId
                   ]
                 );
 
@@ -5533,7 +5636,7 @@
 
               const productInfo =
                 productSnapshots[
-                  productId
+                productId
                 ];
 
               const data =
@@ -5546,33 +5649,33 @@
                   )
                 )
                   ? Math.max(
+                    0,
+                    numberOrZero(
+                      data.stockCurrentUnits
+                    )
+                  )
+                  : Number.isFinite(
+                    Number(
+                      data.quantity
+                    )
+                  )
+                    ? Math.max(
                       0,
                       numberOrZero(
-                        data.stockCurrentUnits
-                      )
-                    )
-                  : Number.isFinite(
-                      Number(
                         data.quantity
                       )
                     )
-                    ? Math.max(
+                    : Number.isFinite(
+                      Number(
+                        data.stockBaseUnits
+                      )
+                    )
+                      ? Math.max(
                         0,
                         numberOrZero(
-                          data.quantity
-                        )
-                      )
-                    : Number.isFinite(
-                        Number(
                           data.stockBaseUnits
                         )
                       )
-                      ? Math.max(
-                          0,
-                          numberOrZero(
-                            data.stockBaseUnits
-                          )
-                        )
                       : 0;
 
               const resultingStock =
@@ -5599,7 +5702,7 @@
                   boxes:
                     Math.floor(
                       resultingStock /
-                        unitsPerBox
+                      unitsPerBox
                     ),
 
                   updatedAt:
@@ -5615,6 +5718,11 @@
                     "stock_movimientos"
                   )
                   .doc();
+
+              const costoUnitario =
+                getProductUnitCost(
+                  data
+                );
 
               transaction.set(
                 movementRef,
@@ -5653,6 +5761,18 @@
                   diferencia:
                     unitsToReturn,
 
+                  /*
+                   * Costo del producto vigente al crear
+                   * el movimiento de devolución.
+                   */
+                  costoUnitario,
+
+                  unitCost:
+                    costoUnitario,
+
+                  costoPorUnidad:
+                    costoUnitario,
+
                   detalle:
                     `Devolución de ${unitsToReturn} unidades por eliminación de venta ${saleId}.`,
 
@@ -5683,7 +5803,7 @@
         productId => {
           const product =
             PRODUCTS_CACHE[
-              productId
+            productId
             ];
 
           if (
@@ -5695,7 +5815,7 @@
           const unitsToReturn =
             numberOrZero(
               unitsByProduct[
-                productId
+              productId
               ]
             );
 
@@ -5722,7 +5842,7 @@
           product.boxes =
             Math.floor(
               resultingStock /
-                unitsPerBox
+              unitsPerBox
             );
         }
       );
@@ -5763,7 +5883,7 @@
           1600
       });
     } catch (
-      error
+    error
     ) {
       console.error(
         "Error eliminando venta:",
@@ -5773,7 +5893,7 @@
       await Swal.fire(
         "Error",
         error.message ||
-          "No se pudo eliminar la venta.",
+        "No se pudo eliminar la venta.",
         "error"
       );
     } finally {
@@ -5820,8 +5940,8 @@
       ) {
         window.renderNavigationForRole(
           currentSalesContext.role ||
-            currentSalesContext.position ||
-            ""
+          currentSalesContext.position ||
+          ""
         );
       }
 
@@ -5840,7 +5960,7 @@
 
       await loadInitialSalesData();
     } catch (
-      error
+    error
     ) {
       salesInitialized =
         false;
@@ -5853,7 +5973,7 @@
       await Swal.fire(
         "Error",
         error.message ||
-          "No se pudieron cargar las ventas.",
+        "No se pudieron cargar las ventas.",
         "error"
       );
     }
@@ -5875,9 +5995,9 @@
       ) {
         if (
           page !==
-            "index.html" &&
+          "index.html" &&
           page !==
-            "login.html"
+          "login.html"
         ) {
           window.location.href =
             "index.html";
