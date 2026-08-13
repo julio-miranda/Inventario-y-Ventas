@@ -41,6 +41,12 @@
 // - No vuelve a leer productos después de guardar.
 // - Mantiene los datos actualizados en memoria.
 //
+// - Al registrar productos se genera automáticamente
+//   un gasto en la colección "gastos" con el costo total
+//   de las cantidades pagadas.
+// - Las cantidades bono no generan costo.
+// - Una carga múltiple genera un solo gasto consolidado.
+//
 
 (function () {
   "use strict";
@@ -89,6 +95,9 @@
 
   const PROVIDERS_COLLECTION =
     "proveedores";
+
+  const EXPENSES_COLLECTION =
+    "gastos";
 
   const LOW_STOCK_THRESHOLD =
     5;
@@ -955,6 +964,495 @@
     }
 
     return 0;
+  }
+
+  /*
+   * ============================================================
+   * COSTO DE LA ENTRADA
+   * ============================================================
+   *
+   * Solo las cantidades PAGADAS generan costo.
+   *
+   * Costo:
+   *
+   *   cajas pagadas * costo por caja
+   *   +
+   *   unidades pagadas * costo por unidad
+   *
+   * Las cajas bono y unidades bono NO generan costo.
+   */
+
+  function getEffectiveCostPerBoxForLine(
+    line,
+    product = null
+  ) {
+    let costPerBox =
+      numberOrZero(
+        line?.lastCostPerBox
+      );
+
+    /*
+     * Para productos existentes, si el usuario
+     * deja el costo en cero, reutilizamos el
+     * último costo guardado del producto.
+     */
+    if (
+      costPerBox <=
+        0 &&
+      product
+    ) {
+      costPerBox =
+        numberOrZero(
+          product.lastCostPerBox
+        );
+    }
+
+    return Math.max(
+      0,
+      costPerBox
+    );
+  }
+
+  function calculateLinePurchaseCost(
+    line,
+    product = null
+  ) {
+    if (
+      !line
+    ) {
+      return 0;
+    }
+
+    const paidBoxes =
+      integerOrZero(
+        line.boxes
+      );
+
+    const paidUnits =
+      integerOrZero(
+        line.units
+      );
+
+    const unitsPerBox =
+      Math.max(
+        1,
+        integerOrZero(
+          product
+            ? getUnitsPerBox(
+                product
+              )
+            : line.unitsPerBox
+        ) ||
+          1
+      );
+
+    const costPerBox =
+      getEffectiveCostPerBoxForLine(
+        line,
+        product
+      );
+
+    const costPerUnit =
+      unitsPerBox >
+        0
+        ? costPerBox /
+          unitsPerBox
+        : 0;
+
+    const costFromBoxes =
+      paidBoxes *
+      costPerBox;
+
+    const costFromUnits =
+      paidUnits *
+      costPerUnit;
+
+    return Math.max(
+      0,
+      costFromBoxes +
+        costFromUnits
+    );
+  }
+
+  function getInventoryDayKey(
+    date = new Date()
+  ) {
+    try {
+      if (
+        typeof window.getTodayBounds ===
+        "function"
+      ) {
+        const bounds =
+          window.getTodayBounds(
+            date
+          );
+
+        if (
+          bounds &&
+          bounds.dayKey
+        ) {
+          return String(
+            bounds.dayKey
+          );
+        }
+      }
+    } catch (
+      error
+    ) {
+      console.warn(
+        "No se pudo obtener dayKey mediante getTodayBounds:",
+        error
+      );
+    }
+
+    const year =
+      date.getFullYear();
+
+    const month =
+      String(
+        date.getMonth() +
+          1
+      ).padStart(
+        2,
+        "0"
+      );
+
+    const day =
+      String(
+        date.getDate()
+      ).padStart(
+        2,
+        "0"
+      );
+
+    return `${year}-${month}-${day}`;
+  }
+
+  function buildInventoryExpenseDetails(
+    lines
+  ) {
+    return lines
+      .map(
+        (
+          line,
+          index
+        ) => {
+          const product =
+            line.product ||
+            null;
+
+          const cost =
+            calculateLinePurchaseCost(
+              line,
+              product
+            );
+
+          const paidBoxes =
+            integerOrZero(
+              line.boxes
+            );
+
+          const paidUnits =
+            integerOrZero(
+              line.units
+            );
+
+          const bonusBoxes =
+            integerOrZero(
+              line.bonusBoxes
+            );
+
+          const bonusUnits =
+            integerOrZero(
+              line.bonusUnits
+            );
+
+          const costPerBox =
+            getEffectiveCostPerBoxForLine(
+              line,
+              product
+            );
+
+          const unitsPerBox =
+            Math.max(
+              1,
+              integerOrZero(
+                product
+                  ? getUnitsPerBox(
+                      product
+                    )
+                  : line.unitsPerBox
+              ) ||
+                1
+            );
+
+          return [
+            `${index + 1}. ${
+              line.name ||
+              line.productText ||
+              "Producto"
+            }`,
+
+            `Cajas pagadas: ${paidBoxes}`,
+
+            `Unidades pagadas: ${paidUnits}`,
+
+            `Cajas bono: ${bonusBoxes}`,
+
+            `Unidades bono: ${bonusUnits}`,
+
+            `Unidades por caja: ${unitsPerBox}`,
+
+            `Costo por caja: ${currency(
+              costPerBox
+            )}`,
+
+            `Costo línea: ${currency(
+              cost
+            )}`
+          ].join(
+            " | "
+          );
+        }
+      )
+      .join(
+        "\n"
+      );
+  }
+
+  async function registerInventoryExpense(
+    totalAmount,
+    lines,
+    user
+  ) {
+    const amount =
+      Math.max(
+        0,
+        numberOrZero(
+          totalAmount
+        )
+      );
+
+    /*
+     * Si el costo total es cero no tiene sentido
+     * crear un gasto de $0.00.
+     */
+    if (
+      amount <=
+      0
+    ) {
+      return {
+        created:
+          false,
+
+        amount:
+          0,
+
+        id:
+          ""
+      };
+    }
+
+    const context =
+      currentUserInventoryContext ||
+      {};
+
+    const localInfo =
+      currentLocalInfo ||
+      {};
+
+    const productCount =
+      Array.isArray(
+        lines
+      )
+        ? lines.length
+        : 0;
+
+    const totalUnits =
+      Array.isArray(
+        lines
+      )
+        ? lines.reduce(
+            (
+              sum,
+              line
+            ) => {
+              const product =
+                line.product ||
+                null;
+
+              const unitsPerBox =
+                Math.max(
+                  1,
+                  integerOrZero(
+                    product
+                      ? getUnitsPerBox(
+                          product
+                        )
+                      : line.unitsPerBox
+                  ) ||
+                    1
+                );
+
+              const totalLineUnits =
+                (
+                  (
+                    integerOrZero(
+                      line.boxes
+                    ) +
+                    integerOrZero(
+                      line.bonusBoxes
+                    )
+                  ) *
+                  unitsPerBox
+                ) +
+                integerOrZero(
+                  line.units
+                ) +
+                integerOrZero(
+                  line.bonusUnits
+                );
+
+              return (
+                sum +
+                totalLineUnits
+              );
+            },
+            0
+          )
+        : 0;
+
+    const expenseRef =
+      db
+        .collection(
+          EXPENSES_COLLECTION
+        )
+        .doc();
+
+    const concept =
+      productCount ===
+      1
+        ? `Compra de inventario - ${
+            lines[0]?.name ||
+            lines[0]?.productText ||
+            "Producto"
+          }`
+        : `Compra de inventario - ${productCount} productos`;
+
+    const details =
+      buildInventoryExpenseDetails(
+        lines
+      );
+
+    const notes =
+      [
+        "Gasto generado automáticamente desde Inventario.",
+
+        "Las cantidades bono no generan costo.",
+
+        `Productos ingresados: ${productCount}`,
+
+        `Unidades totales ingresadas: ${totalUnits}`,
+
+        "",
+
+        details
+      ].join(
+        "\n"
+      );
+
+    const expenseData = {
+      concept,
+
+      category:
+        "Inventario",
+
+      amount,
+
+      paymentMethod:
+        "No especificado",
+
+      notes,
+
+      dayKey:
+        getInventoryDayKey(
+          new Date()
+        ),
+
+      createdAt:
+        firebase.firestore
+          .FieldValue
+          .serverTimestamp(),
+
+      userId:
+        user
+          ? user.uid
+          : auth.currentUser
+              ? auth.currentUser.uid
+              : null,
+
+      userName:
+        context.name ||
+        user?.email ||
+        "Usuario",
+
+      id_local:
+        currentLocalId,
+
+      localNombre:
+        localInfo.nombre ||
+        "",
+
+      localNumeroDocumento:
+        localInfo.numeroDocumento ||
+        "",
+
+      localUbicacion:
+        localInfo.ubicacion ||
+        "",
+
+      localContribuyente:
+        localInfo.contribuyente ||
+        "",
+
+      localTipoDocumento:
+        localInfo.tipoDocumento ||
+        "",
+
+      localNIT:
+        localInfo.nit ||
+        "",
+
+      localNRC:
+        localInfo.nrc ||
+        "",
+
+      source:
+        "inventario",
+
+      inventoryOperation:
+        true,
+
+      inventoryProductCount:
+        productCount,
+
+      inventoryTotalUnits:
+        totalUnits
+    };
+
+    await expenseRef.set(
+      expenseData
+    );
+
+    return {
+      created:
+        true,
+
+      amount,
+
+      id:
+        expenseRef.id
+    };
   }
 
   /*
@@ -5043,11 +5541,17 @@
         <p>
           Las cajas bono y unidades bono aumentan el stock
           igual que las cantidades normales, pero se conservan
-          identificadas dentro del detalle del movimiento.
+          identificadas dentro del detalle del movimiento
+          y no generan costo.
         </p>
 
         <p>
           El proveedor es opcional.
+        </p>
+
+        <p>
+          El costo de las cantidades pagadas se registra
+          automáticamente como gasto de inventario.
         </p>
 
       </div>
@@ -5260,6 +5764,9 @@
             }
         });
 
+      /*
+       * Primero se guarda el inventario.
+       */
       const results =
         await processBatchLines(
           lines
@@ -5292,6 +5799,72 @@
           0
         );
 
+      /*
+       * ========================================================
+       * CALCULAR COSTO TOTAL DE LA OPERACIÓN
+       * ========================================================
+       *
+       * Importante:
+       *
+       * - Las cajas pagadas tienen costo.
+       * - Las unidades pagadas tienen costo proporcional.
+       * - Las cajas bono no tienen costo.
+       * - Las unidades bono no tienen costo.
+       *
+       * En productos existentes, si el costo de la línea
+       * queda en cero, se utiliza lastCostPerBox del producto.
+       */
+      const totalPurchaseCost =
+        lines.reduce(
+          (
+            sum,
+            line
+          ) =>
+            sum +
+            calculateLinePurchaseCost(
+              line,
+              line.product ||
+                null
+            ),
+          0
+        );
+
+      /*
+       * ========================================================
+       * REGISTRAR GASTO AUTOMÁTICO
+       * ========================================================
+       *
+       * Se registra después de guardar el inventario.
+       *
+       * Esto evita generar un gasto de una compra que
+       * finalmente no logró ingresar al inventario.
+       */
+      let expenseResult =
+        null;
+
+      let expenseError =
+        null;
+
+      try {
+        expenseResult =
+          await registerInventoryExpense(
+            totalPurchaseCost,
+            lines,
+            auth.currentUser ||
+              null
+          );
+      } catch (
+        error
+      ) {
+        expenseError =
+          error;
+
+        console.error(
+          "El inventario fue guardado, pero no se pudo registrar el gasto automático:",
+          error
+        );
+      }
+
       if (
         progressAlert
       ) {
@@ -5300,12 +5873,62 @@
 
       refreshInventoryView();
 
+      /*
+       * ========================================================
+       * RESULTADO
+       * ========================================================
+       */
+
+      const expenseStatus =
+        expenseError
+          ? `
+              <p
+                style="
+                  color:#b91c1c;
+                  font-weight:700;
+                "
+              >
+                Advertencia:
+                el inventario se guardó correctamente,
+                pero el gasto automático no pudo registrarse.
+                Debes revisar la colección "gastos".
+              </p>
+            `
+          : totalPurchaseCost >
+              0
+            ? `
+                <p>
+                  Gasto registrado:
+                  <strong>
+                    ${currency(
+                      totalPurchaseCost
+                    )}
+                  </strong>
+                </p>
+              `
+            : `
+                <p>
+                  Gasto registrado:
+                  <strong>
+                    $0.00
+                  </strong>
+                  <br>
+                  No se creó un registro de gasto porque
+                  el costo total de las cantidades pagadas
+                  fue cero.
+                </p>
+              `;
+
       await Swal.fire({
         icon:
-          "success",
+          expenseError
+            ? "warning"
+            : "success",
 
         title:
-          "Carga completada",
+          expenseError
+            ? "Carga completada con advertencia"
+            : "Carga completada",
 
         html:
           `
@@ -5341,6 +5964,17 @@
                   ${totalUnits}
                 </strong>
               </p>
+
+              <p>
+                Costo total de productos:
+                <strong>
+                  ${currency(
+                    totalPurchaseCost
+                  )}
+                </strong>
+              </p>
+
+              ${expenseStatus}
             </div>
           `,
 
