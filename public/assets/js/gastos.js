@@ -11,986 +11,1211 @@
 // - getCurrentLocalId
 // - getCurrentLocalInfo
 // - getCurrentUserContext
+// - ensureSessionDataLoaded
+// - getSessionCollection
+// - getSessionCollectionData
+// - upsertSessionDocument
+// - removeSessionDocument
 // - renderNavigationForRole
 // - getCanonicalRole
 //
 // Optimización:
-// - No consulta empleados directamente.
-// - No consulta local directamente.
-// - Reutiliza el contexto central de app.js.
-// - No ejecuta una consulta adicional para el resumen.
-// - Solo mantiene:
-//      1 listener para ventas del día.
-//      1 listener para gastos del día.
-// - El resumen se calcula desde las cachés.
-// - Se evita crear listeners duplicados.
-// - Los listeners se limpian al salir de la página.
+// - NO consulta empleados.
+// - NO consulta local.
+// - NO consulta ventas directamente.
+// - NO consulta gastos directamente.
+// - NO utiliza onSnapshot().
+// - NO mantiene listeners realtime.
+// - NO hace una consulta adicional para el resumen.
+//
+// Todas las lecturas normales salen de la caché de sesión
+// preparada por app.js.
+//
+// Las escrituras continúan realizándose en Firestore.
+// Después de una escritura, se actualiza la caché de sesión
+// para mantener la interfaz consistente sin otra lectura.
 //
 
-const expenseConceptInput =
-  document.getElementById(
-    "expenseConcept"
-  );
+(() => {
+  "use strict";
 
-const expenseCategoryInput =
-  document.getElementById(
-    "expenseCategory"
-  );
+  /*
+   * ==========================================================
+   * CONSTANTES LOCALES
+   * ==========================================================
+   *
+   * Se mantienen dentro de esta IIFE para evitar conflictos
+   * con las constantes globales declaradas por app.js.
+   */
 
-const expenseAmountInput =
-  document.getElementById(
-    "expenseAmount"
-  );
+  const EXPENSES_COLLECTION =
+    "gastos";
 
-const expensePaymentInput =
-  document.getElementById(
-    "expensePayment"
-  );
+  const SALES_COLLECTION =
+    "ventas";
 
-const expenseNotesInput =
-  document.getElementById(
-    "expenseNotes"
-  );
+  /*
+   * ==========================================================
+   * DOM
+   * ==========================================================
+   */
 
-const btnAddExpense =
-  document.getElementById(
-    "btnAddExpense"
-  );
-
-const btnClearExpenseForm =
-  document.getElementById(
-    "btnClearExpenseForm"
-  );
-
-const expensesTableBody =
-  document.querySelector(
-    "#expensesTable tbody"
-  );
-
-const summarySalesEl =
-  document.getElementById(
-    "summarySales"
-  );
-
-const summaryExpensesEl =
-  document.getElementById(
-    "summaryExpenses"
-  );
-
-const summaryNetEl =
-  document.getElementById(
-    "summaryNet"
-  );
-
-let currentUserInfo = {
-  uid: null,
-  employeeId: "",
-  name: "Usuario",
-  role: "",
-  id_local: ""
-};
-
-let expensesCache = [];
-let salesCache = [];
-
-let unsubscribeExpenses =
-  null;
-
-let unsubscribeSales =
-  null;
-
-let isAddingExpense =
-  false;
-
-let isDeletingExpense =
-  false;
-
-let expensesListenersStarted =
-  false;
-
-let currentContextLoaded =
-  false;
-
-/*
- * ============================================================
- * UTILIDADES
- * ============================================================
- */
-
-function escapeHtml(
-  text
-) {
-  return String(
-    text ?? ""
-  )
-    .replaceAll(
-      "&",
-      "&amp;"
-    )
-    .replaceAll(
-      "<",
-      "&lt;"
-    )
-    .replaceAll(
-      ">",
-      "&gt;"
-    )
-    .replaceAll(
-      '"',
-      "&quot;"
-    )
-    .replaceAll(
-      "'",
-      "&#039;"
+  const expenseConceptInput =
+    document.getElementById(
+      "expenseConcept"
     );
-}
 
-function numberOrZero(
-  value
-) {
-  const number =
-    Number(value);
+  const expenseCategoryInput =
+    document.getElementById(
+      "expenseCategory"
+    );
 
-  return Number.isFinite(
-    number
-  )
-    ? number
-    : 0;
-}
+  const expenseAmountInput =
+    document.getElementById(
+      "expenseAmount"
+    );
 
-function formatDateOnly(
-  value
-) {
-  if (!value) {
-    return "-";
+  const expensePaymentInput =
+    document.getElementById(
+      "expensePayment"
+    );
+
+  const expenseNotesInput =
+    document.getElementById(
+      "expenseNotes"
+    );
+
+  const btnAddExpense =
+    document.getElementById(
+      "btnAddExpense"
+    );
+
+  const btnClearExpenseForm =
+    document.getElementById(
+      "btnClearExpenseForm"
+    );
+
+  const expensesTableBody =
+    document.querySelector(
+      "#expensesTable tbody"
+    );
+
+  const summarySalesEl =
+    document.getElementById(
+      "summarySales"
+    );
+
+  const summaryExpensesEl =
+    document.getElementById(
+      "summaryExpenses"
+    );
+
+  const summaryNetEl =
+    document.getElementById(
+      "summaryNet"
+    );
+
+  /*
+   * ==========================================================
+   * ESTADO
+   * ==========================================================
+   */
+
+  let currentUserInfo = {
+    uid:
+      null,
+
+    employeeId:
+      "",
+
+    name:
+      "Usuario",
+
+    role:
+      "",
+
+    id_local:
+      ""
+  };
+
+  let expensesCache =
+    [];
+
+  let salesCache =
+    [];
+
+  let isAddingExpense =
+    false;
+
+  let isDeletingExpense =
+    false;
+
+  let currentContextLoaded =
+    false;
+
+  let dataLoadedFromSession =
+    false;
+
+  /*
+   * ==========================================================
+   * UTILIDADES
+   * ==========================================================
+   */
+
+  function escapeHtml(
+    text
+  ) {
+    return String(
+      text ?? ""
+    )
+      .replaceAll(
+        "&",
+        "&amp;"
+      )
+      .replaceAll(
+        "<",
+        "&lt;"
+      )
+      .replaceAll(
+        ">",
+        "&gt;"
+      )
+      .replaceAll(
+        '"',
+        "&quot;"
+      )
+      .replaceAll(
+        "'",
+        "&#039;"
+      );
   }
 
-  const date =
-    value.seconds
-      ? new Date(
-          value.seconds *
-            1000
-        )
-      : new Date(value);
+  function numberOrZero(
+    value
+  ) {
+    const number =
+      Number(
+        value
+      );
 
-  if (
-    isNaN(
+    return Number.isFinite(
+      number
+    )
+      ? number
+      : 0;
+  }
+
+  function getTimestampMs(
+    value
+  ) {
+    if (
+      value ===
+        null ||
+      value ===
+        undefined ||
+      value ===
+        ""
+    ) {
+      return 0;
+    }
+
+    if (
+      typeof value.toMillis ===
+      "function"
+    ) {
+      return value.toMillis();
+    }
+
+    if (
+      typeof value.toDate ===
+      "function"
+    ) {
+      const date =
+        value.toDate();
+
+      return Number.isNaN(
+        date.getTime()
+      )
+        ? 0
+        : date.getTime();
+    }
+
+    if (
+      typeof value ===
+        "object" &&
+      typeof value.seconds ===
+        "number"
+    ) {
+      const nanoseconds =
+        typeof value.nanoseconds ===
+        "number"
+          ? value.nanoseconds
+          : 0;
+
+      return (
+        value.seconds *
+          1000 +
+        Math.floor(
+          nanoseconds /
+            1000000
+        )
+      );
+    }
+
+    if (
+      value instanceof
+      Date
+    ) {
+      return value.getTime();
+    }
+
+    const numeric =
+      Number(
+        value
+      );
+
+    if (
+      Number.isFinite(
+        numeric
+      )
+    ) {
+      return numeric;
+    }
+
+    const date =
+      new Date(
+        value
+      );
+
+    return Number.isNaN(
       date.getTime()
     )
+      ? 0
+      : date.getTime();
+  }
+
+  function formatDateOnly(
+    value
   ) {
-    return "-";
-  }
+    const timestamp =
+      getTimestampMs(
+        value
+      );
 
-  return date.toLocaleDateString(
-    "es-ES"
-  );
-}
-
-function formatTimeOnly(
-  value
-) {
-  if (!value) {
-    return "-";
-  }
-
-  const date =
-    value.seconds
-      ? new Date(
-          value.seconds *
-            1000
-        )
-      : new Date(value);
-
-  if (
-    isNaN(
-      date.getTime()
-    )
-  ) {
-    return "-";
-  }
-
-  return date.toLocaleTimeString(
-    "es-ES",
-    {
-      hour:
-        "2-digit",
-
-      minute:
-        "2-digit"
+    if (
+      !timestamp
+    ) {
+      return "-";
     }
-  );
-}
 
-function currency(
-  value
-) {
-  if (
-    typeof formatMoney ===
-    "function"
-  ) {
-    return formatMoney(
-      value
+    return new Date(
+      timestamp
+    ).toLocaleDateString(
+      "es-ES"
     );
   }
 
-  return new Intl.NumberFormat(
-    "es-ES",
-    {
-      style:
-        "currency",
+  function formatTimeOnly(
+    value
+  ) {
+    const timestamp =
+      getTimestampMs(
+        value
+      );
 
-      currency:
-        "USD"
+    if (
+      !timestamp
+    ) {
+      return "-";
     }
-  ).format(
-    Number(
-      value || 0
-    )
-  );
-}
 
-function getStoredUser() {
-  try {
+    return new Date(
+      timestamp
+    ).toLocaleTimeString(
+      "es-ES",
+      {
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit"
+      }
+    );
+  }
+
+  function currency(
+    value
+  ) {
+    if (
+      typeof window.formatMoney ===
+      "function"
+    ) {
+      return window.formatMoney(
+        value
+      );
+    }
+
+    return new Intl.NumberFormat(
+      "es-ES",
+      {
+        style:
+          "currency",
+
+        currency:
+          "USD"
+      }
+    ).format(
+      Number(
+        value ||
+          0
+      )
+    );
+  }
+
+  function getStoredUser() {
+    try {
+      return (
+        JSON.parse(
+          localStorage.getItem(
+            "currentUser"
+          ) ||
+            "null"
+        ) ||
+        null
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  /*
+   * ==========================================================
+   * PERMISOS
+   * ==========================================================
+   */
+
+  function canManageExpenses(
+    role = ""
+  ) {
+    const canonical =
+      typeof window
+        .getCanonicalRole ===
+      "function"
+        ? window.getCanonicalRole(
+            role
+          )
+        : String(
+            role ||
+              ""
+          )
+            .trim()
+            .toLowerCase();
+
     return (
-      JSON.parse(
-        localStorage.getItem(
-          "currentUser"
-        )
-      ) || null
+      canonical ===
+        "Administrador" ||
+      canonical ===
+        "Cajero" ||
+      canonical ===
+        "Vendedor"
     );
-  } catch {
-    return null;
   }
-}
 
-/*
- * ============================================================
- * PERMISOS
- * ============================================================
- */
+  function isAdministratorRole(
+    role = ""
+  ) {
+    const canonical =
+      typeof window
+        .getCanonicalRole ===
+      "function"
+        ? window.getCanonicalRole(
+            role
+          )
+        : String(
+            role ||
+              ""
+          ).trim();
 
-function canManageExpenses(
-  role = ""
-) {
-  const canonical =
-    typeof window
-      .getCanonicalRole ===
-    "function"
-      ? window.getCanonicalRole(
-          role
-        )
-      : String(
-          role || ""
-        )
-          .trim()
-          .toLowerCase();
+    return (
+      canonical ===
+      "Administrador"
+    );
+  }
 
-  return (
-    canonical ===
-      "Administrador" ||
-    canonical ===
-      "Cajero" ||
-    canonical ===
-      "Vendedor" ||
-    canonical ===
-      "administrador" ||
-    canonical ===
-      "cajero" ||
-    canonical ===
-      "vendedor"
-  );
-}
+  /*
+   * ==========================================================
+   * CONTEXTO LOCAL
+   * ==========================================================
+   */
 
-function isAdministratorRole(
-  role = ""
-) {
-  const canonical =
-    typeof window
-      .getCanonicalRole ===
-    "function"
-      ? window.getCanonicalRole(
-          role
-        )
-      : String(
-          role || ""
+  function getCurrentContextLocalId() {
+    const contextId =
+      String(
+        currentUserInfo.id_local ||
+          ""
+      ).trim();
+
+    if (
+      contextId
+    ) {
+      return contextId;
+    }
+
+    if (
+      typeof window.getCurrentLocalId ===
+      "function"
+    ) {
+      const helperId =
+        String(
+          window.getCurrentLocalId() ||
+            ""
         ).trim();
 
-  return (
-    canonical ===
-    "Administrador"
-  );
-}
+      if (
+        helperId
+      ) {
+        return helperId;
+      }
+    }
 
-/*
- * ============================================================
- * CONTEXTO LOCAL
- * ============================================================
- */
+    const stored =
+      getStoredUser();
 
-function getCurrentContextLocalId() {
-  return String(
-    currentUserInfo.id_local ||
-      (
-        typeof getCurrentLocalId ===
-        "function"
-          ? getCurrentLocalId()
-          : ""
-      ) ||
-      ""
-  ).trim();
-}
-
-function getDocumentLocalId(
-  data = {}
-) {
-  return String(
-    data.id_local ||
-      data.idLocal ||
-      data.localId ||
-      data.idlocal ||
-      ""
-  ).trim();
-}
-
-function matchesCurrentLocal(
-  data = {}
-) {
-  const targetLocalId =
-    getCurrentContextLocalId();
-
-  if (!targetLocalId) {
-    return false;
+    return String(
+      stored?.id_local ||
+        stored?.idLocal ||
+        stored?.localId ||
+        ""
+    ).trim();
   }
 
-  return (
-    getDocumentLocalId(
-      data
-    ) ===
-    targetLocalId
-  );
-}
+  function getDocumentLocalId(
+    data = {}
+  ) {
+    return String(
+      data.id_local ||
+        data.idLocal ||
+        data.localId ||
+        data.idlocal ||
+        ""
+    ).trim();
+  }
 
-/*
- * ============================================================
- * RESUMEN
- * ============================================================
- *
- * NO hace consultas.
- *
- * Usa exclusivamente:
- * - salesCache
- * - expensesCache
- */
+  function matchesCurrentLocal(
+    data = {}
+  ) {
+    const targetLocalId =
+      getCurrentContextLocalId();
 
-function updateDailySummary() {
-  const totalSales =
-    salesCache.reduce(
-      (
-        sum,
-        item
-      ) =>
-        sum +
-        numberOrZero(
-          item.total
-        ),
-      0
+    if (
+      !targetLocalId
+    ) {
+      return false;
+    }
+
+    return (
+      getDocumentLocalId(
+        data
+      ) ===
+      targetLocalId
     );
+  }
 
-  const totalExpenses =
-    expensesCache.reduce(
-      (
-        sum,
-        item
-      ) =>
-        sum +
-        numberOrZero(
-          item.amount
-        ),
-      0
-    );
+  /*
+   * ==========================================================
+   * CACHE DE SESIÓN
+   * ==========================================================
+   */
 
-  const net =
-    totalSales -
-    totalExpenses;
-
-  if (
-    summarySalesEl
+  function getSessionCollection(
+    collectionName
   ) {
-    summarySalesEl.textContent =
-      currency(
-        totalSales
-      );
-  }
-
-  if (
-    summaryExpensesEl
-  ) {
-    summaryExpensesEl.textContent =
-      currency(
-        totalExpenses
-      );
-  }
-
-  if (
-    summaryNetEl
-  ) {
-    summaryNetEl.textContent =
-      currency(
-        net
-      );
-  }
-}
-
-/*
- * ============================================================
- * FORMULARIO
- * ============================================================
- */
-
-function clearForm() {
-  if (
-    expenseConceptInput
-  ) {
-    expenseConceptInput.value =
-      "";
-  }
-
-  if (
-    expenseCategoryInput
-  ) {
-    expenseCategoryInput.value =
-      "Transporte";
-  }
-
-  if (
-    expenseAmountInput
-  ) {
-    expenseAmountInput.value =
-      "0";
-  }
-
-  if (
-    expensePaymentInput
-  ) {
-    expensePaymentInput.value =
-      "Efectivo";
-  }
-
-  if (
-    expenseNotesInput
-  ) {
-    expenseNotesInput.value =
-      "";
-  }
-}
-
-function setExpenseButtonsDisabled(
-  disabled
-) {
-  if (
-    btnAddExpense
-  ) {
-    btnAddExpense.disabled =
-      disabled;
-  }
-
-  if (
-    btnClearExpenseForm
-  ) {
-    btnClearExpenseForm.disabled =
-      disabled;
-  }
-}
-
-/*
- * ============================================================
- * ELIMINACIÓN
- * ============================================================
- */
-
-function canDeleteExpenseItem(
-  item
-) {
-  if (!item) {
-    return false;
-  }
-
-  const currentRole =
-    currentUserInfo.role ||
-    "";
-
-  const isAdmin =
-    isAdministratorRole(
-      currentRole
-    );
-
-  const isOwner =
-    item.userId &&
-    currentUserInfo.uid &&
-    String(
-      item.userId
-    ) ===
-      String(
-        currentUserInfo.uid
-      );
-
-  return (
-    isAdmin ||
-    isOwner
-  );
-}
-
-/*
- * ============================================================
- * RENDER
- * ============================================================
- */
-
-function renderExpenses(
-  list
-) {
-  if (
-    !expensesTableBody
-  ) {
-    return;
-  }
-
-  expensesTableBody.innerHTML =
-    "";
-
-  if (
-    !list.length
-  ) {
-    expensesTableBody.innerHTML =
-      `
-        <tr>
-          <td colspan="8">
-            No hay gastos registrados hoy.
-          </td>
-        </tr>
-      `;
-
-    return;
-  }
-
-  list.forEach(
-    item => {
-      const tr =
-        document.createElement(
-          "tr"
-        );
-
-      tr.innerHTML = `
-        <td>
-          ${escapeHtml(
-            item.concept ||
-            "-"
-          )}
-        </td>
-
-        <td>
-          ${escapeHtml(
-            item.category ||
-            "-"
-          )}
-        </td>
-
-        <td>
-          ${currency(
-            item.amount ||
-            0
-          )}
-        </td>
-
-        <td>
-          ${escapeHtml(
-            item.paymentMethod ||
-            "-"
-          )}
-        </td>
-
-        <td>
-          ${escapeHtml(
-            item.userName ||
-            "-"
-          )}
-        </td>
-
-        <td>
-          ${escapeHtml(
-            formatDateOnly(
-              item.createdAt
-            )
-          )}
-        </td>
-
-        <td>
-          ${escapeHtml(
-            formatTimeOnly(
-              item.createdAt
-            )
-          )}
-        </td>
-
-        <td>
-          ${
-            canDeleteExpenseItem(
-              item
-            )
-              ? `
-                <button
-                  class="btn-delete"
-                  type="button"
-                  data-id="${escapeHtml(
-                    item.id
-                  )}"
-                >
-                  Eliminar
-                </button>
-              `
-              : "-"
-          }
-        </td>
-      `;
-
-      expensesTableBody.appendChild(
-        tr
+    if (
+      typeof window.getSessionCollection !==
+      "function"
+    ) {
+      throw new Error(
+        "app.js no expuso getSessionCollection()."
       );
     }
-  );
 
-  expensesTableBody
-    .querySelectorAll(
-      "button[data-id]"
+    const documents =
+      window.getSessionCollection(
+        collectionName
+      );
+
+    if (
+      !Array.isArray(
+        documents
+      )
+    ) {
+      return [];
+    }
+
+    return documents
+      .filter(
+        item =>
+          item &&
+          typeof item ===
+            "object"
+      )
+      .map(
+        item => ({
+          id:
+            item.id ||
+            "",
+
+          data:
+            item.data ||
+            {}
+        })
+      );
+  }
+
+  function loadExpensesFromSession() {
+    return getSessionCollection(
+      EXPENSES_COLLECTION
     )
-    .forEach(
-      button => {
-        if (
-          button.dataset.bound ===
-          "1"
-        ) {
-          return;
-        }
+      .filter(
+        ({
+          data
+        }) =>
+          matchesCurrentLocal(
+            data
+          )
+      )
+      .map(
+        ({
+          id,
+          data
+        }) => ({
+          id,
 
-        button.dataset.bound =
-          "1";
+          ...data
+        })
+      )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          getTimestampMs(
+            b.createdAt
+          ) -
+          getTimestampMs(
+            a.createdAt
+          )
+      );
+  }
 
-        button.addEventListener(
-          "click",
-          async () => {
-            if (
-              isDeletingExpense
-            ) {
-              return;
+  function loadSalesFromSession() {
+    return getSessionCollection(
+      SALES_COLLECTION
+    )
+      .filter(
+        ({
+          data
+        }) =>
+          matchesCurrentLocal(
+            data
+          )
+      )
+      .map(
+        ({
+          id,
+          data
+        }) => ({
+          id,
+
+          ...data
+        })
+      )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          getTimestampMs(
+            b.createdAt
+          ) -
+          getTimestampMs(
+            a.createdAt
+          )
+      );
+  }
+
+  /*
+   * ==========================================================
+   * FILTRADO DEL DÍA
+   * ==========================================================
+   */
+
+  function getTodayRange() {
+    const today =
+      new Date();
+
+    const start =
+      new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        0,
+        0,
+        0,
+        0
+      );
+
+    const end =
+      new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+
+    return {
+      start,
+      end
+    };
+  }
+
+  function isToday(
+    value
+  ) {
+    const timestamp =
+      getTimestampMs(
+        value
+      );
+
+    if (
+      !timestamp
+    ) {
+      return false;
+    }
+
+    const {
+      start,
+      end
+    } =
+      getTodayRange();
+
+    return (
+      timestamp >=
+        start.getTime() &&
+      timestamp <=
+        end.getTime()
+    );
+  }
+
+  function rebuildDailyCaches() {
+    expensesCache =
+      loadExpensesFromSession()
+        .filter(
+          item =>
+            isToday(
+              item.createdAt
+            )
+        );
+
+    salesCache =
+      loadSalesFromSession()
+        .filter(
+          item =>
+            isToday(
+              item.createdAt
+            )
+        );
+  }
+
+  /*
+   * ==========================================================
+   * RESUMEN
+   * ==========================================================
+   *
+   * 100 % en memoria.
+   *
+   * No se consulta Firestore.
+   */
+
+  function updateDailySummary() {
+    const totalSales =
+      salesCache.reduce(
+        (
+          sum,
+          item
+        ) =>
+          sum +
+          numberOrZero(
+            item.total
+          ),
+        0
+      );
+
+    const totalExpenses =
+      expensesCache.reduce(
+        (
+          sum,
+          item
+        ) =>
+          sum +
+          numberOrZero(
+            item.amount
+          ),
+        0
+      );
+
+    const net =
+      totalSales -
+      totalExpenses;
+
+    if (
+      summarySalesEl
+    ) {
+      summarySalesEl.textContent =
+        currency(
+          totalSales
+        );
+    }
+
+    if (
+      summaryExpensesEl
+    ) {
+      summaryExpensesEl.textContent =
+        currency(
+          totalExpenses
+        );
+    }
+
+    if (
+      summaryNetEl
+    ) {
+      summaryNetEl.textContent =
+        currency(
+          net
+        );
+    }
+  }
+
+  /*
+   * ==========================================================
+   * FORMULARIO
+   * ==========================================================
+   */
+
+  function clearForm() {
+    if (
+      expenseConceptInput
+    ) {
+      expenseConceptInput.value =
+        "";
+    }
+
+    if (
+      expenseCategoryInput
+    ) {
+      expenseCategoryInput.value =
+        "Transporte";
+    }
+
+    if (
+      expenseAmountInput
+    ) {
+      expenseAmountInput.value =
+        "0";
+    }
+
+    if (
+      expensePaymentInput
+    ) {
+      expensePaymentInput.value =
+        "Efectivo";
+    }
+
+    if (
+      expenseNotesInput
+    ) {
+      expenseNotesInput.value =
+        "";
+    }
+  }
+
+  function setExpenseButtonsDisabled(
+    disabled
+  ) {
+    if (
+      btnAddExpense
+    ) {
+      btnAddExpense.disabled =
+        disabled;
+    }
+
+    if (
+      btnClearExpenseForm
+    ) {
+      btnClearExpenseForm.disabled =
+        disabled;
+    }
+  }
+
+  /*
+   * ==========================================================
+   * ELIMINACIÓN
+   * ==========================================================
+   */
+
+  function canDeleteExpenseItem(
+    item
+  ) {
+    if (
+      !item
+    ) {
+      return false;
+    }
+
+    const currentRole =
+      currentUserInfo.role ||
+      "";
+
+    const isAdmin =
+      isAdministratorRole(
+        currentRole
+      );
+
+    const isOwner =
+      item.userId &&
+      currentUserInfo.uid &&
+      String(
+        item.userId
+      ) ===
+        String(
+          currentUserInfo.uid
+        );
+
+    return (
+      isAdmin ||
+      isOwner
+    );
+  }
+
+  /*
+   * ==========================================================
+   * RENDER
+   * ==========================================================
+   */
+
+  function renderExpenses(
+    list
+  ) {
+    if (
+      !expensesTableBody
+    ) {
+      return;
+    }
+
+    expensesTableBody.innerHTML =
+      "";
+
+    if (
+      !list.length
+    ) {
+      expensesTableBody.innerHTML =
+        `
+          <tr>
+            <td colspan="8">
+              No hay gastos registrados hoy.
+            </td>
+          </tr>
+        `;
+
+      return;
+    }
+
+    list.forEach(
+      item => {
+        const tr =
+          document.createElement(
+            "tr"
+          );
+
+        tr.innerHTML = `
+          <td>
+            ${escapeHtml(
+              item.concept ||
+              "-"
+            )}
+          </td>
+
+          <td>
+            ${escapeHtml(
+              item.category ||
+              "-"
+            )}
+          </td>
+
+          <td>
+            ${currency(
+              item.amount ||
+              0
+            )}
+          </td>
+
+          <td>
+            ${escapeHtml(
+              item.paymentMethod ||
+              "-"
+            )}
+          </td>
+
+          <td>
+            ${escapeHtml(
+              item.userName ||
+              "-"
+            )}
+          </td>
+
+          <td>
+            ${escapeHtml(
+              formatDateOnly(
+                item.createdAt
+              )
+            )}
+          </td>
+
+          <td>
+            ${escapeHtml(
+              formatTimeOnly(
+                item.createdAt
+              )
+            )}
+          </td>
+
+          <td>
+            ${
+              canDeleteExpenseItem(
+                item
+              )
+                ? `
+                  <button
+                    class="btn-delete"
+                    type="button"
+                    data-id="${escapeHtml(
+                      item.id
+                    )}"
+                  >
+                    Eliminar
+                  </button>
+                `
+                : "-"
             }
+          </td>
+        `;
 
-            const id =
-              button.getAttribute(
-                "data-id"
-              );
-
-            await deleteExpense(
-              id
-            );
-          }
+        expensesTableBody.appendChild(
+          tr
         );
       }
     );
-}
 
-/*
- * ============================================================
- * LISTENER DE VENTAS
- * ============================================================
- *
- * Una sola consulta/listener.
- */
-
-function startSalesListener() {
-  if (
-    unsubscribeSales
-  ) {
-    return;
-  }
-
-  const {
-    start,
-    end
-  } =
-    getTodayBounds(
-      new Date()
-    );
-
-  unsubscribeSales =
-    db
-      .collection(
-        "ventas"
+    expensesTableBody
+      .querySelectorAll(
+        "button[data-id]"
       )
-      .where(
-        "createdAt",
-        ">=",
-        start
-      )
-      .where(
-        "createdAt",
-        "<=",
-        end
-      )
-      .onSnapshot(
-        snapshot => {
-          salesCache =
-            [];
+      .forEach(
+        button => {
+          if (
+            button.dataset.bound ===
+            "1"
+          ) {
+            return;
+          }
 
-          snapshot.forEach(
-            doc => {
-              const data =
-                doc.data() || {};
+          button.dataset.bound =
+            "1";
 
+          button.addEventListener(
+            "click",
+            async () => {
               if (
-                !matchesCurrentLocal(
-                  data
-                )
+                isDeletingExpense
               ) {
                 return;
               }
 
-              salesCache.push({
-                id:
-                  doc.id,
+              const id =
+                button.getAttribute(
+                  "data-id"
+                );
 
-                ...data
-              });
+              await deleteExpense(
+                id
+              );
             }
           );
-
-          updateDailySummary();
-        },
-        error => {
-          console.error(
-            "Error escuchando ventas del día:",
-            error
-          );
-
-          salesCache =
-            [];
-
-          updateDailySummary();
         }
       );
-}
-
-/*
- * ============================================================
- * LISTENER DE GASTOS
- * ============================================================
- *
- * Una sola consulta/listener.
- */
-
-function startExpensesListener() {
-  if (
-    unsubscribeExpenses
-  ) {
-    return;
   }
 
-  const {
-    start,
-    end
-  } =
-    getTodayBounds(
-      new Date()
+  /*
+   * ==========================================================
+   * RECARGAR DESDE LA CACHÉ
+   * ==========================================================
+   */
+
+  function refreshFromSessionCache() {
+    if (
+      !dataLoadedFromSession
+    ) {
+      return;
+    }
+
+    rebuildDailyCaches();
+
+    renderExpenses(
+      expensesCache
     );
 
-  unsubscribeExpenses =
-    db
-      .collection(
-        "gastos"
+    updateDailySummary();
+  }
+
+  /*
+   * ==========================================================
+   * AGREGAR GASTO
+   * ==========================================================
+   */
+
+  async function addExpense() {
+    if (
+      isAddingExpense
+    ) {
+      return;
+    }
+
+    if (
+      !canManageExpenses(
+        currentUserInfo.role
       )
-      .where(
-        "createdAt",
-        ">=",
-        start
-      )
-      .where(
-        "createdAt",
-        "<=",
-        end
-      )
-      .orderBy(
-        "createdAt",
-        "desc"
-      )
-      .onSnapshot(
-        snapshot => {
-          expensesCache =
-            [];
-
-          snapshot.forEach(
-            doc => {
-              const data =
-                doc.data() || {};
-
-              if (
-                !matchesCurrentLocal(
-                  data
-                )
-              ) {
-                return;
-              }
-
-              expensesCache.push({
-                id:
-                  doc.id,
-
-                ...data
-              });
-            }
-          );
-
-          renderExpenses(
-            expensesCache
-          );
-
-          updateDailySummary();
-        },
-        error => {
-          console.error(
-            "Error escuchando gastos del día:",
-            error
-          );
-
-          expensesCache =
-            [];
-
-          renderExpenses(
-            expensesCache
-          );
-
-          updateDailySummary();
-        }
+    ) {
+      await Swal.fire(
+        "No tienes permisos",
+        "No tienes permisos para registrar gastos.",
+        "error"
       );
-}
 
-/*
- * ============================================================
- * AGREGAR GASTO
- * ============================================================
- */
+      return;
+    }
 
-async function addExpense() {
-  if (
-    isAddingExpense
-  ) {
-    return;
-  }
+    const id_local =
+      getCurrentContextLocalId();
 
-  if (
-    !canManageExpenses(
-      currentUserInfo.role
-    )
-  ) {
-    await Swal.fire(
-      "No tienes permisos",
-      "No tienes permisos para registrar gastos.",
-      "error"
-    );
+    if (
+      !id_local
+    ) {
+      console.error(
+        "No se encontró id_local para el usuario actual:",
+        currentUserInfo
+      );
 
-    return;
-  }
+      await Swal.fire(
+        "Error de configuración",
+        "El usuario actual no tiene un local asociado. No se puede registrar el gasto.",
+        "error"
+      );
 
-  const id_local =
-    getCurrentContextLocalId();
+      return;
+    }
 
-  if (!id_local) {
-    console.error(
-      "No se encontró id_local para el usuario actual:",
-      currentUserInfo
-    );
+    const concept =
+      String(
+        expenseConceptInput?.value ||
+          ""
+      ).trim();
 
-    await Swal.fire(
-      "Error de configuración",
-      "El usuario actual no tiene un local asociado. No se puede registrar el gasto.",
-      "error"
-    );
+    const category =
+      String(
+        expenseCategoryInput?.value ||
+          ""
+      ).trim();
 
-    return;
-  }
+    const amount =
+      Number(
+        expenseAmountInput?.value ||
+          0
+      );
 
-  const concept =
-    String(
-      expenseConceptInput?.value ||
-        ""
-    ).trim();
+    const paymentMethod =
+      String(
+        expensePaymentInput?.value ||
+          ""
+      ).trim();
 
-  const category =
-    String(
-      expenseCategoryInput?.value ||
-        ""
-    ).trim();
+    const notes =
+      String(
+        expenseNotesInput?.value ||
+          ""
+      ).trim();
 
-  const amount =
-    Number(
-      expenseAmountInput?.value ||
+    if (
+      !concept
+    ) {
+      await Swal.fire(
+        "Validación",
+        "El concepto del gasto es obligatorio.",
+        "warning"
+      );
+
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        amount
+      ) ||
+      amount <=
         0
+    ) {
+      await Swal.fire(
+        "Validación",
+        "Ingresa un monto válido mayor que cero.",
+        "warning"
+      );
+
+      return;
+    }
+
+    if (
+      !window.auth ||
+      !window.auth.currentUser
+    ) {
+      await Swal.fire(
+        "Sesión inválida",
+        "La sesión actual no es válida. Inicia sesión nuevamente.",
+        "error"
+      );
+
+      return;
+    }
+
+    isAddingExpense =
+      true;
+
+    setExpenseButtonsDisabled(
+      true
     );
 
-  const paymentMethod =
-    String(
-      expensePaymentInput?.value ||
-        ""
-    ).trim();
+    try {
+      const localInfo =
+        typeof window.getCurrentLocalInfo ===
+        "function"
+          ? window.getCurrentLocalInfo()
+          : {};
 
-  const notes =
-    String(
-      expenseNotesInput?.value ||
-        ""
-    ).trim();
+      const createdAtMillis =
+        Date.now();
 
-  if (!concept) {
-    await Swal.fire(
-      "Validación",
-      "El concepto del gasto es obligatorio.",
-      "warning"
-    );
-
-    return;
-  }
-
-  if (
-    !Number.isFinite(
-      amount
-    ) ||
-    amount <= 0
-  ) {
-    await Swal.fire(
-      "Validación",
-      "Ingresa un monto válido mayor que cero.",
-      "warning"
-    );
-
-    return;
-  }
-
-  isAddingExpense =
-    true;
-
-  setExpenseButtonsDisabled(
-    true
-  );
-
-  try {
-    const localInfo =
-      typeof getCurrentLocalInfo ===
-      "function"
-        ? getCurrentLocalInfo()
-        : {};
-
-    await db
-      .collection(
-        "gastos"
-      )
-      .add({
+      const expenseData = {
         concept,
 
         category,
@@ -1002,10 +1227,22 @@ async function addExpense() {
         notes,
 
         dayKey:
-          getTodayBounds(
-            new Date()
-          ).dayKey,
+          typeof window.getTodayBounds ===
+          "function"
+            ? window.getTodayBounds(
+                new Date()
+              ).dayKey
+            : new Date()
+                .toISOString()
+                .slice(
+                  0,
+                  10
+                ),
 
+        /*
+         * La escritura continúa utilizando el timestamp
+         * del servidor de Firestore.
+         */
         createdAt:
           firebase.firestore
             .FieldValue
@@ -1013,12 +1250,7 @@ async function addExpense() {
 
         userId:
           currentUserInfo.uid ||
-          (
-            auth.currentUser
-              ? auth.currentUser
-                  .uid
-              : null
-          ),
+          window.auth.currentUser.uid,
 
         userName:
           currentUserInfo.name ||
@@ -1053,567 +1285,787 @@ async function addExpense() {
         localNRC:
           localInfo.nrc ||
           ""
-      });
-
-    await Swal.fire({
-      toast:
-        true,
-
-      position:
-        "top-end",
-
-      icon:
-        "success",
-
-      title:
-        "Gasto agregado",
-
-      showConfirmButton:
-        false,
-
-      timer:
-        1400
-    });
-
-    clearForm();
-
-    /*
-     * NO se ejecuta ninguna consulta adicional.
-     *
-     * El onSnapshot de gastos actualizará:
-     * - expensesCache
-     * - tabla
-     * - resumen
-     */
-  } catch (error) {
-    console.error(
-      "Error agregando gasto:",
-      error
-    );
-
-    await Swal.fire(
-      "Error",
-      error.message ||
-        "No se pudo guardar el gasto.",
-      "error"
-    );
-  } finally {
-    isAddingExpense =
-      false;
-
-    setExpenseButtonsDisabled(
-      false
-    );
-  }
-}
-
-/*
- * ============================================================
- * ELIMINAR GASTO
- * ============================================================
- */
-
-async function deleteExpense(
-  id
-) {
-  if (
-    isDeletingExpense
-  ) {
-    return;
-  }
-
-  if (
-    !canManageExpenses(
-      currentUserInfo.role
-    )
-  ) {
-    await Swal.fire(
-      "No tienes permisos",
-      "No tienes permisos para eliminar gastos.",
-      "error"
-    );
-
-    return;
-  }
-
-  const target =
-    expensesCache.find(
-      item =>
-        item.id ===
-        id
-    );
-
-  if (!target) {
-    await Swal.fire(
-      "Error",
-      "No se encontró el gasto.",
-      "error"
-    );
-
-    return;
-  }
-
-  const currentRole =
-    currentUserInfo.role ||
-    "";
-
-  const isAdmin =
-    isAdministratorRole(
-      currentRole
-    );
-
-  const isOwner =
-    target.userId &&
-    currentUserInfo.uid &&
-    String(
-      target.userId
-    ) ===
-      String(
-        currentUserInfo.uid
-      );
-
-  if (
-    !isAdmin &&
-    !isOwner
-  ) {
-    await Swal.fire(
-      "No tienes permisos",
-      "Solo el creador o el administrador pueden eliminar este gasto.",
-      "error"
-    );
-
-    return;
-  }
-
-  const currentLocalId =
-    getCurrentContextLocalId();
-
-  const expenseLocalId =
-    getDocumentLocalId(
-      target
-    );
-
-  /*
-   * Este control adicional aplica a usuarios
-   * que no sean administradores.
-   */
-  if (
-    !isAdmin &&
-    currentLocalId &&
-    expenseLocalId &&
-    currentLocalId !==
-      expenseLocalId
-  ) {
-    await Swal.fire(
-      "No tienes permisos",
-      "Este gasto pertenece a otro local.",
-      "error"
-    );
-
-    return;
-  }
-
-  const result =
-    await Swal.fire({
-      title:
-        "Eliminar gasto",
-
-      text:
-        "Esta acción no se puede deshacer.",
-
-      icon:
-        "warning",
-
-      showCancelButton:
-        true,
-
-      confirmButtonText:
-        "Eliminar",
-
-      cancelButtonText:
-        "Cancelar"
-    });
-
-  if (
-    !result.isConfirmed
-  ) {
-    return;
-  }
-
-  isDeletingExpense =
-    true;
-
-  try {
-    await db
-      .collection(
-        "gastos"
-      )
-      .doc(id)
-      .delete();
-
-    await Swal.fire({
-      toast:
-        true,
-
-      position:
-        "top-end",
-
-      icon:
-        "success",
-
-      title:
-        "Gasto eliminado",
-
-      showConfirmButton:
-        false,
-
-      timer:
-        1400
-    });
-
-    /*
-     * No se consulta nuevamente Firestore.
-     * El onSnapshot actualizará automáticamente
-     * la tabla y el resumen.
-     */
-  } catch (error) {
-    console.error(
-      "Error eliminando gasto:",
-      error
-    );
-
-    await Swal.fire(
-      "Error",
-      error.message ||
-        "No se pudo eliminar el gasto.",
-      "error"
-    );
-  } finally {
-    isDeletingExpense =
-      false;
-  }
-}
-
-/*
- * ============================================================
- * CONTEXTO DE USUARIO
- * ============================================================
- */
-
-async function initializeExpenseContext(
-  user
-) {
-  if (
-    currentContextLoaded &&
-    currentUserInfo.uid ===
-      user.uid
-  ) {
-    return;
-  }
-
-  /*
-   * Utilizar el contexto central de app.js.
-   * Esto evita otra consulta a empleados/local.
-   */
-  if (
-    typeof window
-      .getCurrentUserContext !==
-    "function"
-  ) {
-    throw new Error(
-      "app.js no tiene disponible getCurrentUserContext()."
-    );
-  }
-
-  const context =
-    await window.getCurrentUserContext(
-      user
-    );
-
-  if (!context) {
-    throw new Error(
-      "No se pudo resolver el contexto del usuario."
-    );
-  }
-
-  currentUserInfo = {
-    uid:
-      context.uid ||
-      user.uid,
-
-    employeeId:
-      context.employeeId ||
-      "",
-
-    name:
-      context.name ||
-      user.email ||
-      "Usuario",
-
-    role:
-      context.role ||
-      "",
-
-    id_local:
-      String(
-        context.id_local ||
-          ""
-      ).trim()
-  };
-
-  currentContextLoaded =
-    true;
-
-  /*
-   * Actualizar saludo.
-   */
-  const greetingEls =
-    document.querySelectorAll(
-      ".userGreeting"
-    );
-
-  greetingEls.forEach(
-    element => {
-      element.textContent =
-        `Hola, ${currentUserInfo.name} (${currentUserInfo.role || "Usuario"})`;
-    }
-  );
-
-  /*
-   * La navegación también se resuelve
-   * utilizando el rol ya cargado.
-   */
-  if (
-    typeof renderNavigationForRole ===
-    "function"
-  ) {
-    renderNavigationForRole(
-      currentUserInfo.role
-    );
-  }
-}
-
-/*
- * ============================================================
- * AUTH
- * ============================================================
- */
-
-auth.onAuthStateChanged(
-  async user => {
-    if (!user) {
-      currentContextLoaded =
-        false;
-
-      currentUserInfo = {
-        uid:
-          null,
-
-        employeeId:
-          "",
-
-        name:
-          "Usuario",
-
-        role:
-          "",
-
-        id_local:
-          ""
       };
 
+      const documentReference =
+        await window.db
+          .collection(
+            EXPENSES_COLLECTION
+          )
+          .add(
+            expenseData
+          );
+
+      /*
+       * serverTimestamp() no está resuelto dentro del
+       * objeto que conservamos localmente.
+       *
+       * Para la caché usamos el instante en el que se
+       * registró correctamente la operación.
+       */
+      const cacheData = {
+        ...expenseData,
+
+        createdAt:
+          createdAtMillis
+      };
+
+      /*
+       * Actualizar caché central de app.js.
+       *
+       * NO hacemos .get() después del .add().
+       */
       if (
-        typeof unsubscribeSales ===
+        typeof window.upsertSessionDocument !==
         "function"
       ) {
-        unsubscribeSales();
+        throw new Error(
+          "app.js no expuso upsertSessionDocument()."
+        );
       }
 
-      if (
-        typeof unsubscribeExpenses ===
-        "function"
-      ) {
-        unsubscribeExpenses();
-      }
+      window.upsertSessionDocument(
+        EXPENSES_COLLECTION,
+        documentReference.id,
+        cacheData
+      );
 
-      unsubscribeSales =
-        null;
+      /*
+       * Actualizar caché local del módulo.
+       */
+      expensesCache.push({
+        id:
+          documentReference.id,
 
-      unsubscribeExpenses =
-        null;
+        ...cacheData
+      });
 
-      salesCache =
-        [];
+      expensesCache.sort(
+        (
+          a,
+          b
+        ) =>
+          getTimestampMs(
+            b.createdAt
+          ) -
+          getTimestampMs(
+            a.createdAt
+          )
+      );
 
-      expensesCache =
-        [];
+      renderExpenses(
+        expensesCache.filter(
+          item =>
+            isToday(
+              item.createdAt
+            )
+        )
+      );
 
-      window.location.href =
-        "index.html";
+      rebuildDailyCaches();
+
+      renderExpenses(
+        expensesCache
+      );
+
+      updateDailySummary();
+
+      await Swal.fire({
+        toast:
+          true,
+
+        position:
+          "top-end",
+
+        icon:
+          "success",
+
+        title:
+          "Gasto agregado",
+
+        showConfirmButton:
+          false,
+
+        timer:
+          1400
+      });
+
+      clearForm();
+
+    } catch (
+      error
+    ) {
+      console.error(
+        "Error agregando gasto:",
+        error
+      );
+
+      await Swal.fire(
+        "Error",
+        error.message ||
+          "No se pudo guardar el gasto.",
+        "error"
+      );
+    } finally {
+      isAddingExpense =
+        false;
+
+      setExpenseButtonsDisabled(
+        false
+      );
+    }
+  }
+
+  /*
+   * ==========================================================
+   * ELIMINAR GASTO
+   * ==========================================================
+   */
+
+  async function deleteExpense(
+    id
+  ) {
+    if (
+      isDeletingExpense
+    ) {
+      return;
+    }
+
+    if (
+      !canManageExpenses(
+        currentUserInfo.role
+      )
+    ) {
+      await Swal.fire(
+        "No tienes permisos",
+        "No tienes permisos para eliminar gastos.",
+        "error"
+      );
 
       return;
     }
 
-    try {
-      await initializeExpenseContext(
-        user
+    const target =
+      expensesCache.find(
+        item =>
+          String(
+            item.id
+          ) ===
+          String(
+            id
+          )
       );
 
-      if (
-        !canManageExpenses(
-          currentUserInfo.role
+    if (
+      !target
+    ) {
+      await Swal.fire(
+        "Error",
+        "No se encontró el gasto.",
+        "error"
+      );
+
+      return;
+    }
+
+    const currentRole =
+      currentUserInfo.role ||
+      "";
+
+    const isAdmin =
+      isAdministratorRole(
+        currentRole
+      );
+
+    const isOwner =
+      target.userId &&
+      currentUserInfo.uid &&
+      String(
+        target.userId
+      ) ===
+        String(
+          currentUserInfo.uid
+        );
+
+    if (
+      !isAdmin &&
+      !isOwner
+    ) {
+      await Swal.fire(
+        "No tienes permisos",
+        "Solo el creador o el administrador pueden eliminar este gasto.",
+        "error"
+      );
+
+      return;
+    }
+
+    const currentLocalId =
+      getCurrentContextLocalId();
+
+    const expenseLocalId =
+      getDocumentLocalId(
+        target
+      );
+
+    if (
+      !isAdmin &&
+      currentLocalId &&
+      expenseLocalId &&
+      currentLocalId !==
+        expenseLocalId
+    ) {
+      await Swal.fire(
+        "No tienes permisos",
+        "Este gasto pertenece a otro local.",
+        "error"
+      );
+
+      return;
+    }
+
+    const result =
+      await Swal.fire({
+        title:
+          "Eliminar gasto",
+
+        text:
+          "Esta acción no se puede deshacer.",
+
+        icon:
+          "warning",
+
+        showCancelButton:
+          true,
+
+        confirmButtonText:
+          "Eliminar",
+
+        cancelButtonText:
+          "Cancelar"
+      });
+
+    if (
+      !result.isConfirmed
+    ) {
+      return;
+    }
+
+    isDeletingExpense =
+      true;
+
+    try {
+      /*
+       * Escritura únicamente.
+       */
+      await window.db
+        .collection(
+          EXPENSES_COLLECTION
         )
-      ) {
-        await Swal.fire({
-          icon:
-            "error",
+        .doc(
+          id
+        )
+        .delete();
 
-          title:
-            "Acceso denegado",
-
-          text:
-            "No tienes permisos para administrar gastos."
-        });
-
-        window.location.href =
-          "dashboard.html";
-
-        return;
-      }
-
+      /*
+       * Eliminar de la caché central.
+       *
+       * NO hacemos .get() después del .delete().
+       */
       if (
-        !currentUserInfo.id_local
+        typeof window.removeSessionDocument !==
+        "function"
       ) {
-        await Swal.fire({
-          icon:
-            "error",
-
-          title:
-            "Local no asignado",
-
-          text:
-            "Tu usuario no tiene un local asociado. No puedes administrar gastos hasta que se le asigne uno."
-        });
-
-        window.location.href =
-          "dashboard.html";
-
-        return;
+        throw new Error(
+          "app.js no expuso removeSessionDocument()."
+        );
       }
 
-      if (
-        !expensesListenersStarted
-      ) {
-        expensesListenersStarted =
-          true;
+      window.removeSessionDocument(
+        EXPENSES_COLLECTION,
+        id
+      );
 
-        /*
-         * EXACTAMENTE dos listeners de datos:
-         *
-         * 1. ventas del día
-         * 2. gastos del día
-         *
-         * No se ejecuta ninguna consulta adicional
-         * para construir el resumen.
-         */
-        startSalesListener();
+      /*
+       * Eliminar del caché local.
+       */
+      expensesCache =
+        expensesCache.filter(
+          item =>
+            String(
+              item.id
+            ) !==
+            String(
+              id
+            )
+        );
 
-        startExpensesListener();
-      }
+      /*
+       * Recalcular desde la caché.
+       */
+      rebuildDailyCaches();
+
+      renderExpenses(
+        expensesCache
+      );
 
       updateDailySummary();
 
-    } catch (error) {
+      await Swal.fire({
+        toast:
+          true,
+
+        position:
+          "top-end",
+
+        icon:
+          "success",
+
+        title:
+          "Gasto eliminado",
+
+        showConfirmButton:
+          false,
+
+        timer:
+          1400
+      });
+
+    } catch (
+      error
+    ) {
       console.error(
-        "Error inicializando gastos:",
+        "Error eliminando gasto:",
         error
       );
 
-      await Swal.fire({
-        icon:
-          "error",
-
-        title:
-          "No se pudo cargar Gastos",
-
-        text:
-          error.message ||
-          "No se pudo resolver el usuario y su local."
-      });
-
-      window.location.href =
-        "dashboard.html";
+      await Swal.fire(
+        "Error",
+        error.message ||
+          "No se pudo eliminar el gasto.",
+        "error"
+      );
+    } finally {
+      isDeletingExpense =
+        false;
     }
   }
-);
 
-/*
- * ============================================================
- * DOM
- * ============================================================
- */
+  /*
+   * ==========================================================
+   * CONTEXTO DE USUARIO
+   * ==========================================================
+   */
 
-document.addEventListener(
-  "DOMContentLoaded",
-  () => {
+  async function initializeExpenseContext(
+    user
+  ) {
     if (
-      btnAddExpense
+      !user
     ) {
-      btnAddExpense.addEventListener(
-        "click",
-        event => {
-          event.preventDefault();
-
-          addExpense();
-        }
+      throw new Error(
+        "No existe usuario autenticado."
       );
     }
 
     if (
-      btnClearExpenseForm
+      currentContextLoaded &&
+      currentUserInfo.uid ===
+        user.uid
     ) {
-      btnClearExpenseForm.addEventListener(
-        "click",
-        event => {
-          event.preventDefault();
+      /*
+       * Verificar que la caché central exista.
+       */
+      if (
+        typeof window.ensureSessionDataLoaded ===
+        "function"
+      ) {
+        await window.ensureSessionDataLoaded(
+          user
+        );
+      }
 
-          clearForm();
-        }
+      return;
+    }
+
+    /*
+     * app.js es la fuente central del contexto.
+     */
+    if (
+      typeof window.getCurrentUserContext !==
+      "function"
+    ) {
+      throw new Error(
+        "app.js no tiene disponible getCurrentUserContext()."
+      );
+    }
+
+    const context =
+      await window.getCurrentUserContext(
+        user
+      );
+
+    if (
+      !context
+    ) {
+      throw new Error(
+        "No se pudo resolver el contexto del usuario."
       );
     }
 
     /*
-     * app.js ya registra estos botones.
-     *
-     * No añadimos listeners duplicados aquí.
+     * Garantizar la caché de la sesión.
      */
+    if (
+      typeof window.ensureSessionDataLoaded !==
+      "function"
+    ) {
+      throw new Error(
+        "app.js no expuso ensureSessionDataLoaded()."
+      );
+    }
 
-    window.addEventListener(
-      "beforeunload",
-      () => {
-        if (
-          typeof unsubscribeSales ===
-          "function"
-        ) {
-          unsubscribeSales();
-        }
+    await window.ensureSessionDataLoaded(
+      user
+    );
 
-        if (
-          typeof unsubscribeExpenses ===
-          "function"
-        ) {
-          unsubscribeExpenses();
-        }
+    currentUserInfo = {
+      uid:
+        context.uid ||
+        user.uid,
 
-        unsubscribeSales =
-          null;
+      employeeId:
+        context.employeeId ||
+        "",
 
-        unsubscribeExpenses =
-          null;
+      name:
+        context.name ||
+        user.email ||
+        "Usuario",
 
-        expensesListenersStarted =
-          false;
+      role:
+        context.role ||
+        "",
+
+      id_local:
+        String(
+          context.id_local ||
+            ""
+        ).trim()
+    };
+
+    if (
+      !currentUserInfo.id_local
+    ) {
+      throw new Error(
+        "El usuario autenticado no tiene un id_local asignado."
+      );
+    }
+
+    currentContextLoaded =
+      true;
+
+    /*
+     * Saludo.
+     */
+    const greetingEls =
+      document.querySelectorAll(
+        ".userGreeting"
+      );
+
+    greetingEls.forEach(
+      element => {
+        element.textContent =
+          `Hola, ${currentUserInfo.name} (${currentUserInfo.role || "Usuario"})`;
+      }
+    );
+
+    /*
+     * Navegación.
+     */
+    if (
+      typeof window.renderNavigationForRole ===
+      "function"
+    ) {
+      window.renderNavigationForRole(
+        currentUserInfo.role
+      );
+    }
+  }
+
+  /*
+   * ==========================================================
+   * CARGA INICIAL DESDE CACHE
+   * ==========================================================
+   */
+
+  async function initializeExpenseData() {
+    if (
+      !window.auth ||
+      !window.auth.currentUser
+    ) {
+      throw new Error(
+        "No existe una sesión autenticada."
+      );
+    }
+
+    if (
+      typeof window.ensureSessionDataLoaded !==
+      "function"
+    ) {
+      throw new Error(
+        "app.js no expuso ensureSessionDataLoaded()."
+      );
+    }
+
+    /*
+     * Si la caché ya fue precargada durante el login,
+     * esta operación solamente la recupera/reutiliza.
+     */
+    await window.ensureSessionDataLoaded(
+      window.auth.currentUser
+    );
+
+    rebuildDailyCaches();
+
+    dataLoadedFromSession =
+      true;
+
+    renderExpenses(
+      expensesCache
+    );
+
+    updateDailySummary();
+
+    console.log(
+      "[Gastos] Datos cargados desde la caché de sesión:",
+      {
+        ventasDelDia:
+          salesCache.length,
+
+        gastosDelDia:
+          expensesCache.length,
+
+        id_local:
+          currentUserInfo.id_local
       }
     );
   }
-);
+
+  /*
+   * ==========================================================
+   * ACTUALIZACIÓN DE VISTA
+   * ==========================================================
+   *
+   * No realiza ninguna lectura a Firestore.
+   */
+
+  function refreshExpenseViewFromSession() {
+    if (
+      !dataLoadedFromSession
+    ) {
+      return;
+    }
+
+    rebuildDailyCaches();
+
+    renderExpenses(
+      expensesCache
+    );
+
+    updateDailySummary();
+  }
+
+  /*
+   * ==========================================================
+   * EXPONER SOLO LO NECESARIO
+   * ==========================================================
+   */
+
+  window.refreshExpenseViewFromSession =
+    refreshExpenseViewFromSession;
+
+  /*
+   * ==========================================================
+   * AUTH
+   * ==========================================================
+   */
+
+  if (
+    !window.auth ||
+    typeof window.auth.onAuthStateChanged !==
+      "function"
+  ) {
+    console.error(
+      "[Gastos] app.js/auth no está disponible."
+    );
+
+    return;
+  }
+
+  window.auth.onAuthStateChanged(
+    async user => {
+      if (
+        !user
+      ) {
+        currentContextLoaded =
+          false;
+
+        dataLoadedFromSession =
+          false;
+
+        currentUserInfo = {
+          uid:
+            null,
+
+          employeeId:
+            "",
+
+          name:
+            "Usuario",
+
+          role:
+            "",
+
+          id_local:
+            ""
+        };
+
+        expensesCache =
+          [];
+
+        salesCache =
+          [];
+
+        /*
+         * app.js también limpia esta caché durante
+         * el cierre de sesión.
+         */
+        if (
+          typeof window.clearSessionDataCache ===
+          "function"
+        ) {
+          window.clearSessionDataCache();
+        }
+
+        window.location.href =
+          "index.html";
+
+        return;
+      }
+
+      try {
+        await initializeExpenseContext(
+          user
+        );
+
+        if (
+          !canManageExpenses(
+            currentUserInfo.role
+          )
+        ) {
+          await Swal.fire({
+            icon:
+              "error",
+
+            title:
+              "Acceso denegado",
+
+            text:
+              "No tienes permisos para administrar gastos."
+          });
+
+          window.location.href =
+            "dashboard.html";
+
+          return;
+        }
+
+        if (
+          !currentUserInfo.id_local
+        ) {
+          await Swal.fire({
+            icon:
+              "error",
+
+            title:
+              "Local no asignado",
+
+            text:
+              "Tu usuario no tiene un local asociado. No puedes administrar gastos hasta que se le asigne uno."
+          });
+
+          window.location.href =
+            "dashboard.html";
+
+          return;
+        }
+
+        /*
+         * Toda la lectura sale de app.js.
+         */
+        await initializeExpenseData();
+
+      } catch (
+        error
+      ) {
+        console.error(
+          "Error inicializando gastos:",
+          error
+        );
+
+        await Swal.fire({
+          icon:
+            "error",
+
+          title:
+            "No se pudo cargar Gastos",
+
+          text:
+            error.message ||
+            "No se pudo resolver el usuario, su local o la caché de sesión."
+        });
+
+        window.location.href =
+          "dashboard.html";
+      }
+    }
+  );
+
+  /*
+   * ==========================================================
+   * DOM
+   * ==========================================================
+   */
+
+  document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+      if (
+        btnAddExpense
+      ) {
+        btnAddExpense.addEventListener(
+          "click",
+          event => {
+            event.preventDefault();
+
+            addExpense();
+          }
+        );
+      }
+
+      if (
+        btnClearExpenseForm
+      ) {
+        btnClearExpenseForm.addEventListener(
+          "click",
+          event => {
+            event.preventDefault();
+
+            clearForm();
+          }
+        );
+      }
+    }
+  );
+})();

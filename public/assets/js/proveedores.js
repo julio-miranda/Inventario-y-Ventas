@@ -15,8 +15,9 @@
 // - Administrador/Bodega pueden crear y editar.
 // - Solo Administrador puede eliminar.
 // - No se utilizan onSnapshot().
-// - La lectura de proveedores se realiza una vez y queda
-//   en caché para reutilizarla desde inventario.
+// - Las lecturas se realizan desde la caché central de app.js.
+// - La caché pertenece a la sesión actual.
+// - El inventario puede reutilizar los mismos proveedores.
 // - El inventario almacena proveedorId y proveedorNombre.
 //
 // Compatibilidad:
@@ -26,6 +27,18 @@
 // Este archivo puede utilizarse tanto en:
 // - proveedores.html
 // - inventory.html
+//
+// IMPORTANTE:
+//
+// Lecturas:
+//     app.js -> sessionStorage / memoria
+//
+// Escrituras:
+//     proveedores.js -> Firestore
+//                    -> actualización de caché app.js
+//
+// No se realizan lecturas normales de Firestore desde este módulo.
+//
 
 (function () {
   "use strict";
@@ -44,28 +57,44 @@
     window.db ||
     firebase.firestore();
 
+  const auth =
+    window.auth ||
+    firebase.auth();
+
   const SUPPLIER_COLLECTION =
     window.SUPPLIER_COLLECTION_NAME ||
     "proveedores";
 
-  let providersCache = [];
+  const PRODUCTS_COLLECTION =
+    window.PRODUCTS_COLLECTION_NAME ||
+    "productos";
+
+  /*
+   * ============================================================
+   * ESTADO LOCAL DEL MÓDULO
+   * ============================================================
+   *
+   * Ya NO se utiliza una caché independiente para los
+   * proveedores. La fuente de lectura es app.js.
+   */
 
   let providersLoadPromise =
     null;
 
-  let providersCacheLocalId =
-    "";
-
   let providersInitialized =
     false;
 
-  let currentRole = "";
+  let currentRole =
+    "";
 
-  let currentLocalId = "";
+  let currentLocalId =
+    "";
 
-  let currentContext = null;
+  let currentContext =
+    null;
 
-  let providersDT = null;
+  let providersDT =
+    null;
 
   /*
    * ============================================================
@@ -224,13 +253,163 @@
 
   /*
    * ============================================================
+   * ACCESO A CACHE CENTRAL DE APP.JS
+   * ============================================================
+   */
+
+  function getSessionProviders() {
+    if (
+      typeof window.getSessionCollection !==
+      "function"
+    ) {
+      throw new Error(
+        "app.js no expuso getSessionCollection()."
+      );
+    }
+
+    const documents =
+      window.getSessionCollection(
+        SUPPLIER_COLLECTION
+      );
+
+    if (
+      !Array.isArray(
+        documents
+      )
+    ) {
+      return [];
+    }
+
+    return documents
+      .map(
+        ({
+          id,
+          data
+        }) => ({
+          id:
+            String(
+              id ||
+                ""
+            ).trim(),
+
+          ...data,
+
+          nombre:
+            getProviderName(
+              data
+            ),
+
+          razonSocialDenominacion:
+            getProviderBusinessName(
+              data
+            ),
+
+          nacionalidad:
+            getProviderNationality(
+              data
+            ),
+
+          nit:
+            getProviderNIT(
+              data
+            ),
+
+          nrc:
+            getProviderNRC(
+              data
+            ),
+
+          ubicacion:
+            getProviderLocation(
+              data
+            ),
+
+          id_local:
+            data.id_local ||
+            currentLocalId
+        })
+      )
+      .filter(
+        provider =>
+          String(
+            provider.id_local ||
+              ""
+          ).trim() ===
+          String(
+            currentLocalId ||
+              ""
+          ).trim()
+      )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          getProviderName(
+            a
+          ).localeCompare(
+            getProviderName(
+              b
+            ),
+            "es",
+            {
+              sensitivity:
+                "base"
+            }
+          )
+      );
+  }
+
+  function getSessionProducts() {
+    if (
+      typeof window.getSessionCollection !==
+      "function"
+    ) {
+      throw new Error(
+        "app.js no expuso getSessionCollection()."
+      );
+    }
+
+    const documents =
+      window.getSessionCollection(
+        PRODUCTS_COLLECTION
+      );
+
+    if (
+      !Array.isArray(
+        documents
+      )
+    ) {
+      return [];
+    }
+
+    return documents.filter(
+      ({
+        data
+      }) =>
+        String(
+          data?.id_local ||
+            data?.idLocal ||
+            data?.localId ||
+            data?.idlocal ||
+            ""
+        ).trim() ===
+        String(
+          currentLocalId ||
+            ""
+        ).trim()
+    );
+  }
+
+  /*
+   * ============================================================
    * CONTEXTO
    * ============================================================
    */
 
   async function resolveContext() {
     const user =
-      window.auth?.currentUser ||
+      auth?.currentUser ||
       firebase.auth().currentUser;
 
     if (!user) {
@@ -248,6 +427,9 @@
       );
     }
 
+    /*
+     * Contexto proviene de app.js.
+     */
     const context =
       await window.getCurrentUserContext(
         user
@@ -259,12 +441,28 @@
       );
     }
 
+    /*
+     * Garantizar que la caché central exista.
+     *
+     * Si app.js ya la preparó durante el login,
+     * esto no provoca nuevas lecturas.
+     */
+    if (
+      typeof window.ensureSessionDataLoaded ===
+      "function"
+    ) {
+      await window.ensureSessionDataLoaded(
+        user
+      );
+    }
+
     currentContext =
       context;
 
     currentRole =
       String(
         context.role ||
+          context.position ||
           ""
       )
         .trim()
@@ -284,7 +482,11 @@
    * CARGA DE PROVEEDORES
    * ============================================================
    *
-   * Una sola lectura por local durante la sesión.
+   * NO hace:
+   *
+   * db.collection("proveedores").where(...).get()
+   *
+   * Lee exclusivamente de app.js.
    */
 
   async function loadProviders(
@@ -300,25 +502,21 @@
       );
     }
 
+    /*
+     * forceRefresh se conserva para mantener compatibilidad
+     * con llamadas existentes desde otros módulos.
+     *
+     * No provoca una lectura Firestore.
+     *
+     * Para mantener la arquitectura de sesión centralizada,
+     * una actualización forzada significa volver a leer
+     * desde la caché central.
+     */
     if (
-      !forceRefresh &&
-      providersCacheLocalId ===
-        currentLocalId &&
-      providersCache.length > 0
+      forceRefresh
     ) {
-      return [
-        ...providersCache
-      ];
-    }
-
-    if (
-      !forceRefresh &&
-      providersCacheLocalId ===
-        currentLocalId &&
-      providersCache.length === 0 &&
-      providersLoadPromise === null
-    ) {
-      return [];
+      providersLoadPromise =
+        null;
     }
 
     if (
@@ -328,99 +526,9 @@
     }
 
     providersLoadPromise =
-      (async () => {
-        const snapshot =
-          await db
-            .collection(
-              SUPPLIER_COLLECTION
-            )
-            .where(
-              "id_local",
-              "==",
-              currentLocalId
-            )
-            .get();
-
-        const list = [];
-
-        snapshot.forEach(
-          doc => {
-            const data =
-              doc.data() ||
-              {};
-
-            list.push({
-              id:
-                doc.id,
-
-              ...data,
-
-              nombre:
-                getProviderName(
-                  data
-                ),
-
-              razonSocialDenominacion:
-                getProviderBusinessName(
-                  data
-                ),
-
-              nacionalidad:
-                getProviderNationality(
-                  data
-                ),
-
-              nit:
-                getProviderNIT(
-                  data
-                ),
-
-              nrc:
-                getProviderNRC(
-                  data
-                ),
-
-              ubicacion:
-                getProviderLocation(
-                  data
-                ),
-
-              id_local:
-                data.id_local ||
-                currentLocalId
-            });
-          }
-        );
-
-        list.sort(
-          (
-            a,
-            b
-          ) =>
-            getProviderName(
-              a
-            ).localeCompare(
-              getProviderName(
-                b
-              ),
-              "es",
-              {
-                sensitivity:
-                  "base"
-              }
-            )
-        );
-
-        providersCache =
-          list;
-
-        providersCacheLocalId =
-          currentLocalId;
-
-        return [
-          ...providersCache
-        ];
-      })();
+      Promise.resolve(
+        getSessionProviders()
+      );
 
     try {
       return await providersLoadPromise;
@@ -455,12 +563,16 @@
       return null;
     }
 
+    const providers =
+      getSessionProviders();
+
     return (
-      providersCache.find(
+      providers.find(
         provider =>
           String(
             provider.id
-          ) === target
+          ).trim() ===
+          target
       ) ||
       null
     );
@@ -483,6 +595,12 @@
           ""
       ).trim();
 
+    /*
+     * Siempre toma la lista actual desde app.js.
+     */
+    const providers =
+      getSessionProviders();
+
     const html = [];
 
     if (
@@ -495,7 +613,7 @@
       `);
     }
 
-    providersCache.forEach(
+    providers.forEach(
       provider => {
         const id =
           String(
@@ -549,19 +667,23 @@
    * ============================================================
    * CACHE
    * ============================================================
+   *
+   * Estos métodos actualizan la caché central de app.js.
    */
 
   function getProvidersCache() {
-    return [
-      ...providersCache
-    ];
+    return getSessionProviders();
   }
 
-  function upsertProviderCache(
+  function normalizeProviderForCache(
     provider
   ) {
-    const normalizedProvider = {
+    return {
       ...provider,
+
+      id_local:
+        provider.id_local ||
+        currentLocalId,
 
       nombre:
         getProviderName(
@@ -593,68 +715,62 @@
           provider
         )
     };
+  }
 
-    const index =
-      providersCache.findIndex(
-        item =>
-          String(
-            item.id
-          ) ===
-          String(
-            normalizedProvider.id
-          )
+  function upsertProviderCache(
+    provider
+  ) {
+    const normalizedProvider =
+      normalizeProviderForCache(
+        provider
       );
 
     if (
-      index >= 0
+      !normalizedProvider.id
     ) {
-      providersCache[
-        index
-      ] = {
-        ...providersCache[
-          index
-        ],
-        ...normalizedProvider
-      };
-    } else {
-      providersCache.push(
-        normalizedProvider
-      );
+      return;
     }
 
-    providersCache.sort(
-      (
-        a,
-        b
-      ) =>
-        getProviderName(
-          a
-        ).localeCompare(
-          getProviderName(
-            b
-          ),
-          "es",
-          {
-            sensitivity:
-              "base"
-          }
-        )
+    if (
+      typeof window.upsertSessionDocument !==
+      "function"
+    ) {
+      console.warn(
+        "app.js no expuso upsertSessionDocument()."
+      );
+
+      return;
+    }
+
+    window.upsertSessionDocument(
+      SUPPLIER_COLLECTION,
+      normalizedProvider.id,
+      normalizedProvider
     );
+
+    refreshProvidersTable();
   }
 
   function removeProviderFromCache(
     providerId
   ) {
-    providersCache =
-      providersCache.filter(
-        provider =>
-          String(
-            provider.id
-          ) !==
-          String(
-            providerId
-          )
+    if (
+      typeof window.removeSessionDocument !==
+      "function"
+    ) {
+      console.warn(
+        "app.js no expuso removeSessionDocument()."
       );
+
+      return;
+    }
+
+    window.removeSessionDocument(
+      SUPPLIER_COLLECTION,
+      providerId
+    );
+
+    refreshProvidersTable();
   }
 
   /*
@@ -684,20 +800,14 @@
     }
 
     /*
-     * NIT, NRC y ubicación son opcionales.
-     *
-     * Esto permite registrar:
-     * - proveedores que no poseen NRC;
-     * - proveedores que operan sin NIT registrado;
-     * - proveedores cuyo domicilio no se desea registrar.
-     *
-     * Si posteriormente se requiere hacer alguno de estos
-     * campos obligatorio, la validación puede agregarse aquí
-     * sin modificar el resto del módulo.
+     * NIT, NRC y ubicación continúan siendo opcionales.
      */
 
+    const providers =
+      getSessionProviders();
+
     const duplicate =
-      providersCache.find(
+      providers.find(
         provider => {
           if (
             String(
@@ -712,7 +822,9 @@
 
           const sameName =
             normalizeText(
-              provider.nombre
+              getProviderName(
+                provider
+              )
             ) ===
             normalizeText(
               values.nombre
@@ -720,7 +832,9 @@
 
           const sameBusinessName =
             normalizeText(
-              provider.razonSocialDenominacion
+              getProviderBusinessName(
+                provider
+              )
             ) ===
             normalizeText(
               values.razonSocialDenominacion
@@ -759,6 +873,12 @@
       throw new Error(
         "No tienes permisos para registrar proveedores."
       );
+    }
+
+    if (
+      !currentLocalId
+    ) {
+      await resolveContext();
     }
 
     const validation =
@@ -812,6 +932,9 @@
         ).trim()
     };
 
+    /*
+     * Escritura: Firestore.
+     */
     const ref =
       await db
         .collection(
@@ -839,11 +962,6 @@
           id_local:
             currentLocalId,
 
-          /*
-           * Datos del local actual.
-           * Se mantienen para conservar la trazabilidad
-           * de los registros existentes.
-           */
           localNombre:
             currentContext?.localNombre ||
             "",
@@ -909,11 +1027,15 @@
         currentLocalId
     };
 
+    /*
+     * Actualizar caché central de app.js.
+     *
+     * Así inventory.js y proveedores.js ven inmediatamente
+     * el proveedor nuevo sin consultar Firestore.
+     */
     upsertProviderCache(
       provider
     );
-
-    refreshProvidersTable();
 
     return provider;
   }
@@ -943,7 +1065,7 @@
 
     if (!provider) {
       throw new Error(
-        "El proveedor no existe."
+        "El proveedor no existe en la sesión actual."
       );
     }
 
@@ -999,6 +1121,9 @@
         ).trim()
     };
 
+    /*
+     * Escritura: Firestore.
+     */
     await db
       .collection(
         SUPPLIER_COLLECTION
@@ -1031,6 +1156,9 @@
             .serverTimestamp()
       });
 
+    /*
+     * Actualizar caché central.
+     */
     upsertProviderCache({
       ...provider,
 
@@ -1050,10 +1178,11 @@
         normalizedValues.nrc,
 
       ubicacion:
-        normalizedValues.ubicacion
-    });
+        normalizedValues.ubicacion,
 
-    refreshProvidersTable();
+      id_local:
+        currentLocalId
+    });
   }
 
   /*
@@ -1061,10 +1190,11 @@
    * ELIMINAR
    * ============================================================
    *
-   * Antes de eliminar se verifica si el proveedor está
-   * siendo utilizado por productos del mismo local.
+   * La comprobación de productos ya NO hace:
    *
-   * Esta lectura solo ocurre al intentar eliminar.
+   * db.collection("productos").where(...).get()
+   *
+   * porque productos también se encuentra en la caché central.
    */
 
   async function deleteProvider(
@@ -1085,45 +1215,32 @@
 
     if (!provider) {
       throw new Error(
-        "El proveedor no existe."
+        "El proveedor no existe en la sesión actual."
       );
     }
 
-    const productsSnapshot =
-      await db
-        .collection(
-          "productos"
-        )
-        .where(
-          "id_local",
-          "==",
-          currentLocalId
-        )
-        .get();
+    /*
+     * Leer productos desde app.js.
+     *
+     * No genera operación de lectura Firestore.
+     */
+    const products =
+      getSessionProducts();
 
-    let usedByProduct =
-      false;
-
-    productsSnapshot.forEach(
-      doc => {
-        const product =
-          doc.data() ||
-          {};
-
-        if (
+    const usedByProduct =
+      products.some(
+        ({
+          data
+        }) =>
           String(
-            product.proveedorId ||
+            data?.proveedorId ||
               ""
-          ) ===
+          ).trim() ===
           String(
-            providerId
-          )
-        ) {
-          usedByProduct =
-            true;
-        }
-      }
-    );
+            providerId ||
+              ""
+          ).trim()
+      );
 
     if (
       usedByProduct
@@ -1133,6 +1250,9 @@
       );
     }
 
+    /*
+     * Escritura: Firestore.
+     */
     await db
       .collection(
         SUPPLIER_COLLECTION
@@ -1142,11 +1262,12 @@
       )
       .delete();
 
+    /*
+     * Actualización de la caché central.
+     */
     removeProviderFromCache(
       providerId
     );
-
-    refreshProvidersTable();
   }
 
   /*
@@ -1533,7 +1654,7 @@
     if (!provider) {
       await Swal.fire(
         "No encontrado",
-        "El proveedor no existe.",
+        "El proveedor no existe en la sesión actual.",
         "warning"
       );
 
@@ -2049,12 +2170,18 @@
     const dt =
       ensureProvidersDataTable();
 
+    /*
+     * Siempre reconstruir la vista desde app.js.
+     */
+    const providers =
+      getSessionProviders();
+
     if (
       totalProvidersCard
     ) {
       totalProvidersCard.textContent =
         String(
-          providersCache.length
+          providers.length
         );
     }
 
@@ -2067,14 +2194,18 @@
       dt.clear();
 
       dt.rows.add(
-        providersCache
+        providers
       );
 
       dt.draw(false);
 
-      dt.search(
+      if (
         currentSearch
-      ).draw(false);
+      ) {
+        dt.search(
+          currentSearch
+        ).draw(false);
+      }
 
       return;
     }
@@ -2093,7 +2224,7 @@
     }
 
     tbody.innerHTML =
-      providersCache
+      providers
         .map(
           provider => `
             <tr>
@@ -2231,11 +2362,18 @@
 
       ensureProvidersDataTable();
 
+      /*
+       * Lectura desde app.js.
+       *
+       * No consulta Firestore.
+       */
       await loadProviders();
 
       refreshProvidersTable();
 
-      if (btnAdd) {
+      if (
+        btnAdd
+      ) {
         btnAdd.style.display =
           canManageProviders()
             ? ""
@@ -2327,6 +2465,14 @@
           .pop()
           .toLowerCase();
 
+      /*
+       * proveedores.js también puede cargarse desde
+       * inventory.html para que inventoryAPI/proveedoresAPI
+       * estén disponibles.
+       *
+       * Por ello solo inicializa la tabla visual cuando
+       * realmente estamos en proveedores.html.
+       */
       if (
         currentPage ===
         "proveedores.html"
@@ -2334,21 +2480,36 @@
         initializeProvidersModule(
           user
         );
+      } else if (
+        currentPage ===
+        "inventory.html"
+      ) {
+        /*
+         * En inventario no se necesita construir la tabla
+         * de proveedores. Solo se prepara el contexto para
+         * que proveedoresAPI pueda utilizar app.js.
+         */
+        resolveContext().catch(
+          error => {
+            console.error(
+              "No se pudo preparar el contexto de proveedores para inventario:",
+              error
+            );
+          }
+        );
       }
     };
 
   if (
-    firebase.auth().currentUser
+    auth.currentUser
   ) {
     initFromAuth(
-      firebase.auth().currentUser
+      auth.currentUser
     );
   } else {
-    firebase
-      .auth()
-      .onAuthStateChanged(
-        initFromAuth
-      );
+    auth.onAuthStateChanged(
+      initFromAuth
+    );
   }
 
   /*
@@ -2359,11 +2520,17 @@
 
   window.proveedoresAPI = {
     loadProviders,
+
     getProvidersForInventory,
+
     getProvidersCache,
+
     getProviderById,
+
     getProviderOptionsHtml,
+
     upsertProviderCache,
+
     removeProviderFromCache
   };
 })();

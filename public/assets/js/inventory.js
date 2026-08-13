@@ -41,6 +41,9 @@
 // - No vuelve a leer productos después de guardar.
 // - Mantiene los datos actualizados en memoria.
 //
+// - Las lecturas normales utilizan la caché de sesión
+//   administrada por app.js.
+//
 // - Al registrar productos se genera automáticamente
 //   un gasto en la colección "gastos" con el costo total
 //   de las cantidades pagadas.
@@ -171,7 +174,10 @@
     false;
 
   /*
-   * Caché de movimientos.
+   * Caché local de movimientos.
+   *
+   * Estos datos se obtienen de app.js y ya no desde
+   * db.collection("stock_movimientos") directamente.
    */
   const productStockMovementsCache =
     new Map();
@@ -367,6 +373,173 @@
 
   /*
    * ============================================================
+   * CACHÉ DE SESIÓN - APP.JS
+   * ============================================================
+   */
+
+  function getSessionCollection(
+    collectionName
+  ) {
+    if (
+      typeof window.getSessionCollection !==
+      "function"
+    ) {
+      throw new Error(
+        "app.js no expuso getSessionCollection()."
+      );
+    }
+
+    const documents =
+      window.getSessionCollection(
+        collectionName
+      );
+
+    return Array.isArray(
+      documents
+    )
+      ? documents
+      : [];
+  }
+
+  function upsertSessionDocument(
+    collectionName,
+    documentId,
+    data = {}
+  ) {
+    if (
+      typeof window.upsertSessionDocument !==
+      "function"
+    ) {
+      console.warn(
+        "app.js no expuso upsertSessionDocument()."
+      );
+
+      return;
+    }
+
+    window.upsertSessionDocument(
+      collectionName,
+      documentId,
+      data
+    );
+  }
+
+  function removeSessionDocument(
+    collectionName,
+    documentId
+  ) {
+    if (
+      typeof window.removeSessionDocument !==
+      "function"
+    ) {
+      console.warn(
+        "app.js no expuso removeSessionDocument()."
+      );
+
+      return;
+    }
+
+    window.removeSessionDocument(
+      collectionName,
+      documentId
+    );
+  }
+
+  async function ensureInventorySessionData(
+    user
+  ) {
+    if (
+      !user
+    ) {
+      throw new Error(
+        "No existe un usuario autenticado."
+      );
+    }
+
+    if (
+      typeof window.ensureSessionDataLoaded !==
+      "function"
+    ) {
+      throw new Error(
+        "app.js no expuso ensureSessionDataLoaded()."
+      );
+    }
+
+    await window.ensureSessionDataLoaded(
+      user
+    );
+  }
+
+  /*
+   * ============================================================
+   * FECHAS / TIMESTAMPS
+   * ============================================================
+   */
+
+  function getTimestampMs(
+    value
+  ) {
+    if (
+      value ===
+        null ||
+      value ===
+        undefined
+    ) {
+      return 0;
+    }
+
+    if (
+      typeof value.toMillis ===
+      "function"
+    ) {
+      return value.toMillis();
+    }
+
+    if (
+      typeof value.toDate ===
+      "function"
+    ) {
+      const date =
+        value.toDate();
+
+      return isNaN(
+        date.getTime()
+      )
+        ? 0
+        : date.getTime();
+    }
+
+    if (
+      typeof value.seconds ===
+      "number"
+    ) {
+      return (
+        value.seconds *
+        1000
+      );
+    }
+
+    if (
+      value instanceof
+      Date
+    ) {
+      return value.getTime();
+    }
+
+    const date =
+      new Date(
+        value
+      );
+
+    return isNaN(
+      date.getTime()
+    )
+      ? 0
+      : date.getTime();
+  }
+
+  /*
+   * ============================================================
    * CONTEXTO
    * ============================================================
    */
@@ -388,6 +561,18 @@
         "app.js no expuso getCurrentUserContext()."
       );
     }
+
+    /*
+     * Garantizar que la caché esté preparada.
+     *
+     * En una sesión nueva app.js precargará la información.
+     *
+     * En una navegación posterior simplemente restaurará
+     * sessionStorage.
+     */
+    await ensureInventorySessionData(
+      user
+    );
 
     const context =
       await window.getCurrentUserContext(
@@ -525,6 +710,12 @@
    * ============================================================
    * PROVEEDORES
    * ============================================================
+   *
+   * Ya NO se realiza:
+   *
+   * db.collection("proveedores").where(...).get()
+   *
+   * La información proviene exclusivamente de app.js.
    */
 
   function normalizeProviderObject(
@@ -571,93 +762,44 @@
   }
 
   async function loadInventoryProviders() {
+    /*
+     * Primero se intenta garantizar que la sesión exista.
+     * No se genera una nueva lectura si app.js ya la tiene.
+     */
+    await ensureInventorySessionData(
+      auth.currentUser
+    );
+
     currentProvidersList =
       [];
 
-    /*
-     * Primera opción:
-     * utilizar la API existente de proveedores.
-     */
-    if (
-      window.proveedoresAPI &&
-      typeof window.proveedoresAPI
-        .getProvidersForInventory ===
-      "function"
-    ) {
-      try {
-        const providers =
-          await window.proveedoresAPI
-            .getProvidersForInventory();
-
-        currentProvidersList =
-          Array.isArray(
-            providers
-          )
-            ? providers
-                .map(
-                  provider =>
-                    normalizeProviderObject(
-                      provider
-                    )
-                )
-                .filter(
-                  Boolean
-                )
-            : [];
-
-        if (
-          currentProvidersList.length
-        ) {
-          return currentProvidersList;
-        }
-      } catch (
-        error
-      ) {
-        console.warn(
-          "No se pudo cargar proveedores mediante proveedoresAPI:",
-          error
-        );
-      }
-    }
-
-    /*
-     * Fallback:
-     * consulta directa de proveedores del local.
-     *
-     * Esta lectura se realiza una sola vez al cargar inventario.
-     */
     try {
-      if (
-        !currentLocalId
-      ) {
-        return [];
-      }
-
-      const snapshot =
-        await db
-          .collection(
-            PROVIDERS_COLLECTION
-          )
-          .where(
-            "id_local",
-            "==",
-            currentLocalId
-          )
-          .get();
+      const providerDocs =
+        getSessionCollection(
+          PROVIDERS_COLLECTION
+        );
 
       const providers =
         [];
 
-      snapshot.forEach(
-        doc => {
+      providerDocs.forEach(
+        ({
+          id,
+          data
+        }) => {
+          if (
+            !matchesCurrentLocal(
+              data
+            )
+          ) {
+            return;
+          }
+
           const provider =
             normalizeProviderObject(
               {
-                id:
-                  doc.id,
-
-                ...(doc.data() ||
-                  {})
+                id,
+                ...(data || {})
               }
             );
 
@@ -689,12 +831,12 @@
       currentProvidersList =
         providers;
 
-      return providers;
+      return currentProvidersList;
     } catch (
       error
     ) {
       console.warn(
-        "No se pudieron cargar proveedores:",
+        "No se pudieron cargar proveedores desde la caché de sesión:",
         error
       );
 
@@ -793,7 +935,7 @@
       <input
         id="${inputId}"
         type="text"
-        class="inv-combobox"
+        class="inv-combobox batch-provider"
         list="${listId}"
         value="${escapeHtml(
           value
@@ -970,16 +1112,6 @@
    * ============================================================
    * COSTO DE LA ENTRADA
    * ============================================================
-   *
-   * Solo las cantidades PAGADAS generan costo.
-   *
-   * Costo:
-   *
-   *   cajas pagadas * costo por caja
-   *   +
-   *   unidades pagadas * costo por unidad
-   *
-   * Las cajas bono y unidades bono NO generan costo.
    */
 
   function getEffectiveCostPerBoxForLine(
@@ -991,11 +1123,6 @@
         line?.lastCostPerBox
       );
 
-    /*
-     * Para productos existentes, si el usuario
-     * deja el costo en cero, reutilizamos el
-     * último costo guardado del producto.
-     */
     if (
       costPerBox <=
         0 &&
@@ -1233,10 +1360,6 @@
         )
       );
 
-    /*
-     * Si el costo total es cero no tiene sentido
-     * crear un gasto de $0.00.
-     */
     if (
       amount <=
       0
@@ -1379,11 +1502,6 @@
           new Date()
         ),
 
-      createdAt:
-        firebase.firestore
-          .FieldValue
-          .serverTimestamp(),
-
       userId:
         user
           ? user.uid
@@ -1440,8 +1558,32 @@
         totalUnits
     };
 
-    await expenseRef.set(
-      expenseData
+    /*
+     * La escritura sí continúa en Firestore.
+     */
+    await expenseRef.set({
+      ...expenseData,
+
+      createdAt:
+        firebase.firestore
+          .FieldValue
+          .serverTimestamp()
+    });
+
+    /*
+     * La caché recibe una representación localizable.
+     * No se introduce FieldValue.serverTimestamp()
+     * en sessionStorage.
+     */
+    upsertSessionDocument(
+      EXPENSES_COLLECTION,
+      expenseRef.id,
+      {
+        ...expenseData,
+
+        createdAt:
+          Date.now()
+      }
     );
 
     return {
@@ -1496,22 +1638,16 @@
    * ============================================================
    * VENTAS
    * ============================================================
+   *
+   * Ahora recibe documentos de la caché:
+   *
+   * [
+   *   { id, data }
+   * ]
    */
 
-  function getSaleProductId(
-    product
-  ) {
-    return String(
-      product?.productId ||
-        product?.productID ||
-        product?.product_id ||
-        product?.id ||
-        ""
-    ).trim();
-  }
-
   function aggregateMonthlySales(
-    snapshot
+    documents
   ) {
     const unitsMap =
       {};
@@ -1519,16 +1655,69 @@
     const boxesMap =
       {};
 
-    snapshot.forEach(
-      doc => {
+    const now =
+      new Date();
+
+    const monthStart =
+      new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        1,
+        0,
+        0,
+        0,
+        0
+      );
+
+    const nextMonthStart =
+      new Date(
+        now.getFullYear(),
+        now.getMonth() +
+          1,
+        1,
+        0,
+        0,
+        0,
+        0
+      );
+
+    documents.forEach(
+      document => {
         const sale =
-          doc.data() ||
+          document?.data ||
           {};
 
         if (
           !matchesCurrentLocal(
             sale
           )
+        ) {
+          return;
+        }
+
+        const createdAtMs =
+          getTimestampMs(
+            sale.createdAt
+          );
+
+        if (
+          createdAtMs &&
+          (
+            createdAtMs <
+              monthStart.getTime() ||
+            createdAtMs >=
+              nextMonthStart.getTime()
+          )
+        ) {
+          return;
+        }
+
+        /*
+         * Si una venta antigua no tiene createdAt
+         * no se incluye en la métrica mensual.
+         */
+        if (
+          !createdAtMs
         ) {
           return;
         }
@@ -1674,6 +1863,18 @@
       unitsMap,
       boxesMap
     };
+  }
+
+  function getSaleProductId(
+    product
+  ) {
+    return String(
+      product?.productId ||
+        product?.productID ||
+        product?.product_id ||
+        product?.id ||
+        ""
+    ).trim();
   }
 
   /*
@@ -2760,7 +2961,7 @@
 
   /*
    * ============================================================
-   * CARGA DEL INVENTARIO
+   * CARGA DEL INVENTARIO DESDE APP.JS
    * ============================================================
    */
 
@@ -2790,85 +2991,26 @@
           return;
         }
 
-        const now =
-          new Date();
-
-        const monthStart =
-          new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            1,
-            0,
-            0,
-            0,
-            0
+        /*
+         * ======================================================
+         * PRODUCTOS
+         * ======================================================
+         *
+         * No se consulta Firestore.
+         */
+        const productDocuments =
+          getSessionCollection(
+            PRODUCTS_COLLECTION
           );
-
-        const nextMonthStart =
-          new Date(
-            now.getFullYear(),
-            now.getMonth() +
-              1,
-            1,
-            0,
-            0,
-            0,
-            0
-          );
-
-        const [
-          productsSnap,
-          salesSnap
-        ] =
-          await Promise.all([
-            db
-              .collection(
-                PRODUCTS_COLLECTION
-              )
-              .where(
-                "id_local",
-                "==",
-                currentLocalId
-              )
-              .get(),
-
-            db
-              .collection(
-                SALES_COLLECTION
-              )
-              .where(
-                "createdAt",
-                ">=",
-                monthStart
-              )
-              .where(
-                "createdAt",
-                "<",
-                nextMonthStart
-              )
-              .get()
-          ]);
-
-        const sales =
-          aggregateMonthlySales(
-            salesSnap
-          );
-
-        currentMonthlySalesMap =
-          sales.unitsMap;
-
-        currentMonthlyBoxesMap =
-          sales.boxesMap;
 
         const products =
           [];
 
-        productsSnap.forEach(
-          doc => {
-            const data =
-              doc.data() ||
-              {};
-
+        productDocuments.forEach(
+          ({
+            id,
+            data
+          }) => {
             if (
               !matchesCurrentLocal(
                 data
@@ -2915,8 +3057,7 @@
               );
 
             products.push({
-              id:
-                doc.id,
+              id,
 
               ...data,
 
@@ -3001,7 +3142,44 @@
         currentProductsList =
           products;
 
+        /*
+         * ======================================================
+         * VENTAS
+         * ======================================================
+         *
+         * No se consulta Firestore.
+         */
+        const salesDocuments =
+          getSessionCollection(
+            SALES_COLLECTION
+          );
+
+        const sales =
+          aggregateMonthlySales(
+            salesDocuments
+          );
+
+        currentMonthlySalesMap =
+          sales.unitsMap;
+
+        currentMonthlyBoxesMap =
+          sales.boxesMap;
+
         refreshInventoryView();
+
+        console.log(
+          "[Inventario] Datos cargados desde caché:",
+          {
+            productos:
+              currentProductsList.length,
+
+            ventas:
+              salesDocuments.length,
+
+            proveedores:
+              currentProvidersList.length
+          }
+        );
       })();
 
     try {
@@ -3016,6 +3194,10 @@
    * ============================================================
    * MOVIMIENTOS
    * ============================================================
+   *
+   * Ya no se consulta Firestore para leer movimientos.
+   *
+   * La escritura permanece en Firestore.
    */
 
   function invalidateProductStockMovementsCache(
@@ -3078,43 +3260,44 @@
     const promise =
       (async () => {
         try {
-          let query =
-            db
-              .collection(
-                MOVEMENTS_COLLECTION
-              )
-              .where(
-                "productId",
-                "==",
-                target
-              );
-
-          if (
-            currentLocalId
-          ) {
-            query =
-              query.where(
-                "id_local",
-                "==",
-                currentLocalId
-              );
-          }
-
-          const snapshot =
-            await query.get();
+          const movementDocuments =
+            getSessionCollection(
+              MOVEMENTS_COLLECTION
+            );
 
           const movements =
             [];
 
-          snapshot.forEach(
-            doc => {
-              const data =
-                doc.data() ||
-                {};
+          movementDocuments.forEach(
+            ({
+              id,
+              data
+            }) => {
+              if (
+                !matchesCurrentLocal(
+                  data
+                )
+              ) {
+                return;
+              }
+
+              const movementProductId =
+                String(
+                  data.productId ||
+                    data.productID ||
+                    data.product_id ||
+                    ""
+                ).trim();
+
+              if (
+                movementProductId !==
+                target
+              ) {
+                return;
+              }
 
               movements.push({
-                id:
-                  doc.id,
+                id,
 
                 referenciaLibro:
                   String(
@@ -3138,11 +3321,9 @@
                   ).trim(),
 
                 createdAtMs:
-                  data.createdAt &&
-                  typeof data.createdAt.toMillis ===
-                    "function"
-                    ? data.createdAt.toMillis()
-                    : 0
+                  getTimestampMs(
+                    data.createdAt
+                  )
               });
             }
           );
@@ -3170,7 +3351,7 @@
           error
         ) {
           console.error(
-            "Error leyendo movimientos:",
+            "Error leyendo movimientos desde la caché:",
             error
           );
 
@@ -3360,12 +3541,7 @@
       userName:
         context.name ||
         user?.email ||
-        "",
-
-      createdAt:
-        firebase.firestore
-          .FieldValue
-          .serverTimestamp()
+        ""
     };
   }
 
@@ -3451,183 +3627,7 @@
           unitsPerBox
         : 0;
 
-    const batch =
-      db.batch();
-
-    batch.set(
-      productRef,
-      {
-        name:
-          line.name,
-
-        codigoProducto:
-          line.codigoProducto ||
-          "",
-
-        productCode:
-          line.codigoProducto ||
-          "",
-
-        proveedorId:
-          line.proveedorId ||
-          null,
-
-        proveedorNombre:
-          line.proveedorNombre ||
-          "",
-
-        quantity:
-          totalUnits,
-
-        stockCurrentUnits:
-          totalUnits,
-
-        stockBaseUnits:
-          totalUnits,
-
-        boxes:
-          Math.floor(
-            totalUnits /
-              unitsPerBox
-          ),
-
-        unitsPerBox:
-          unitsPerBox,
-
-        lastCostPerBox:
-          lastCostPerBox,
-
-        lastCostPerUnit:
-          lastCostPerUnit,
-
-        price:
-          Math.max(
-            0,
-            numberOrZero(
-              line.price
-            )
-          ),
-
-        id_local:
-          currentLocalId,
-
-        localNombre:
-          currentLocalInfo.nombre ||
-          "",
-
-        localNumeroDocumento:
-          currentLocalInfo.numeroDocumento ||
-          "",
-
-        localUbicacion:
-          currentLocalInfo.ubicacion ||
-          "",
-
-        localContribuyente:
-          currentLocalInfo.contribuyente ||
-          "",
-
-        localTipoDocumento:
-          currentLocalInfo.tipoDocumento ||
-          "",
-
-        localNIT:
-          currentLocalInfo.nit ||
-          "",
-
-        localNRC:
-          currentLocalInfo.nrc ||
-          "",
-
-        referenciaLibro:
-          line.referenciaLibro ||
-          "Inventario inicial",
-
-        referenceBook:
-          line.referenciaLibro ||
-          "Inventario inicial",
-
-        numeroDocumento:
-          line.numeroDocumento ||
-          "",
-
-        createdAt:
-          firebase.firestore
-            .FieldValue
-            .serverTimestamp(),
-
-        updatedAt:
-          firebase.firestore
-            .FieldValue
-            .serverTimestamp()
-      }
-    );
-
-    const movementRef =
-      db
-        .collection(
-          MOVEMENTS_COLLECTION
-        )
-        .doc();
-
-    batch.set(
-      movementRef,
-      buildMovementData({
-        productId:
-          productRef.id,
-
-        productName:
-          line.name,
-
-        codigoProducto:
-          line.codigoProducto,
-
-        tipoMovimiento:
-          "entrada",
-
-        referenciaLibro:
-          line.referenciaLibro ||
-          "Inventario inicial",
-
-        numeroDocumento:
-          line.numeroDocumento ||
-          productRef.id,
-
-        entrada:
-          totalUnits,
-
-        salida:
-          0,
-
-        saldoAnterior:
-          0,
-
-        saldoActual:
-          totalUnits,
-
-        detalle:
-          [
-            `Cajas: ${paidBoxes}`,
-
-            `Cajas bono: ${bonusBoxes}`,
-
-            `Unidades: ${paidUnits}`,
-
-            `Unidades bono: ${bonusUnits}`
-          ].join(
-            " | "
-          ),
-
-        user
-      })
-    );
-
-    await batch.commit();
-
-    currentProductsList.push({
-      id:
-        productRef.id,
-
+    const productData = {
       name:
         line.name,
 
@@ -3683,25 +3683,176 @@
         currentLocalId,
 
       localNombre:
-        currentLocalInfo.nombre,
+        currentLocalInfo.nombre ||
+        "",
 
       localNumeroDocumento:
-        currentLocalInfo.numeroDocumento,
+        currentLocalInfo.numeroDocumento ||
+        "",
 
       localUbicacion:
-        currentLocalInfo.ubicacion,
+        currentLocalInfo.ubicacion ||
+        "",
 
       localContribuyente:
-        currentLocalInfo.contribuyente,
+        currentLocalInfo.contribuyente ||
+        "",
 
       localTipoDocumento:
-        currentLocalInfo.tipoDocumento,
+        currentLocalInfo.tipoDocumento ||
+        "",
 
       localNIT:
-        currentLocalInfo.nit,
+        currentLocalInfo.nit ||
+        "",
 
       localNRC:
-        currentLocalInfo.nrc
+        currentLocalInfo.nrc ||
+        "",
+
+      referenciaLibro:
+        line.referenciaLibro ||
+        "Inventario inicial",
+
+      referenceBook:
+        line.referenciaLibro ||
+        "Inventario inicial",
+
+      numeroDocumento:
+        line.numeroDocumento ||
+        ""
+    };
+
+    const movementRef =
+      db
+        .collection(
+          MOVEMENTS_COLLECTION
+        )
+        .doc();
+
+    const movementData =
+      buildMovementData({
+        productId:
+          productRef.id,
+
+        productName:
+          line.name,
+
+        codigoProducto:
+          line.codigoProducto,
+
+        tipoMovimiento:
+          "entrada",
+
+        referenciaLibro:
+          line.referenciaLibro ||
+          "Inventario inicial",
+
+        numeroDocumento:
+          line.numeroDocumento ||
+          productRef.id,
+
+        entrada:
+          totalUnits,
+
+        salida:
+          0,
+
+        saldoAnterior:
+          0,
+
+        saldoActual:
+          totalUnits,
+
+        detalle:
+          [
+            `Cajas: ${paidBoxes}`,
+
+            `Cajas bono: ${bonusBoxes}`,
+
+            `Unidades: ${paidUnits}`,
+
+            `Unidades bono: ${bonusUnits}`
+          ].join(
+            " | "
+          ),
+
+        user
+      });
+
+    /*
+     * Guardar producto + movimiento en una sola operación.
+     */
+    const batch =
+      db.batch();
+
+    batch.set(
+      productRef,
+      {
+        ...productData,
+
+        createdAt:
+          firebase.firestore
+            .FieldValue
+            .serverTimestamp(),
+
+        updatedAt:
+          firebase.firestore
+            .FieldValue
+            .serverTimestamp()
+      }
+    );
+
+    batch.set(
+      movementRef,
+      {
+        ...movementData,
+
+        createdAt:
+          firebase.firestore
+            .FieldValue
+            .serverTimestamp()
+      }
+    );
+
+    await batch.commit();
+
+    /*
+     * ==========================================================
+     * SINCRONIZACIÓN DE CACHÉ
+     * ==========================================================
+     */
+
+    upsertSessionDocument(
+      PRODUCTS_COLLECTION,
+      productRef.id,
+      {
+        ...productData,
+
+        createdAt:
+          Date.now(),
+
+        updatedAt:
+          Date.now()
+      }
+    );
+
+    upsertSessionDocument(
+      MOVEMENTS_COLLECTION,
+      movementRef.id,
+      {
+        ...movementData,
+
+        createdAt:
+          Date.now()
+      }
+    );
+
+    currentProductsList.push({
+      id:
+        productRef.id,
+
+      ...productData
     });
 
     return {
@@ -3801,9 +3952,24 @@
     let nextProviderName =
       "";
 
+    let movementData =
+      null;
+
     const transactionResult =
       await db.runTransaction(
         async transaction => {
+          /*
+           * ======================================================
+           * ESTA LECTURA ES INTENCIONAL
+           * ======================================================
+           *
+           * Se conserva únicamente en la transacción porque
+           * necesitamos el valor más reciente de Firestore para
+           * evitar perder actualizaciones concurrentes.
+           *
+           * Las lecturas normales del inventario ya no utilizan
+           * Firestore.
+           */
           const snap =
             await transaction.get(
               productRef
@@ -3872,19 +4038,6 @@
                   data.price
                 );
 
-          /*
-           * El proveedor es opcional.
-           *
-           * Si el usuario eligió uno:
-           *   se actualiza.
-           *
-           * Si dejó el combobox vacío:
-           *   se conserva el actual.
-           *
-           * Esto evita borrar accidentalmente
-           * el proveedor de un producto existente.
-           */
-
           if (
             line.proveedorId
           ) {
@@ -3912,6 +4065,62 @@
                 MOVEMENTS_COLLECTION
               )
               .doc();
+
+          movementData =
+            buildMovementData({
+              productId:
+                product.id,
+
+              productName:
+                line.name ||
+                data.name ||
+                "",
+
+              codigoProducto:
+                line.codigoProducto ||
+                getProductCode(
+                  data
+                ) ||
+                "",
+
+              tipoMovimiento:
+                "entrada",
+
+              referenciaLibro:
+                line.referenciaLibro ||
+                "Compra",
+
+              numeroDocumento:
+                line.numeroDocumento ||
+                "",
+
+              entrada:
+                totalUnits,
+
+              salida:
+                0,
+
+              saldoAnterior:
+                previousStock,
+
+              saldoActual:
+                nextStock,
+
+              detalle:
+                [
+                  `Cajas: ${paidBoxes}`,
+
+                  `Cajas bono: ${bonusBoxes}`,
+
+                  `Unidades: ${paidUnits}`,
+
+                  `Unidades bono: ${bonusUnits}`
+                ].join(
+                  " | "
+                ),
+
+              user
+            });
 
           transaction.update(
             productRef,
@@ -3991,60 +4200,14 @@
 
           transaction.set(
             movementRef,
-            buildMovementData({
-              productId:
-                product.id,
+            {
+              ...movementData,
 
-              productName:
-                line.name ||
-                data.name ||
-                "",
-
-              codigoProducto:
-                line.codigoProducto ||
-                getProductCode(
-                  data
-                ) ||
-                "",
-
-              tipoMovimiento:
-                "entrada",
-
-              referenciaLibro:
-                line.referenciaLibro ||
-                "Compra",
-
-              numeroDocumento:
-                line.numeroDocumento ||
-                "",
-
-              entrada:
-                totalUnits,
-
-              salida:
-                0,
-
-              saldoAnterior:
-                previousStock,
-
-              saldoActual:
-                nextStock,
-
-              detalle:
-                [
-                  `Cajas: ${paidBoxes}`,
-
-                  `Cajas bono: ${bonusBoxes}`,
-
-                  `Unidades: ${paidUnits}`,
-
-                  `Unidades bono: ${bonusUnits}`
-                ].join(
-                  " | "
-                ),
-
-              user
-            })
+              createdAt:
+                firebase.firestore
+                  .FieldValue
+                  .serverTimestamp()
+            }
           );
 
           return {
@@ -4054,75 +4217,161 @@
         }
       );
 
+    /*
+     * ==========================================================
+     * ACTUALIZAR CACHÉ DE PRODUCTO
+     * ==========================================================
+     */
+
     const localProduct =
       findProductById(
         product.id
       );
+
+    const updatedProductData = {
+      name:
+        localProduct?.name ||
+        product.name ||
+        line.name ||
+        "",
+
+      codigoProducto:
+        line.codigoProducto ||
+        getProductCode(
+          localProduct ||
+            product
+        ) ||
+        "",
+
+      productCode:
+        line.codigoProducto ||
+        getProductCode(
+          localProduct ||
+            product
+        ) ||
+        "",
+
+      proveedorId:
+        nextProviderId,
+
+      proveedorNombre:
+        nextProviderName,
+
+      quantity:
+        nextStock,
+
+      stockCurrentUnits:
+        nextStock,
+
+      stockBaseUnits:
+        numberOrZero(
+          localProduct?.stockBaseUnits ||
+            product.stockBaseUnits
+        ) ||
+        previousStock,
+
+      boxes:
+        Math.floor(
+          nextStock /
+            unitsPerBox
+        ),
+
+      unitsPerBox:
+        unitsPerBox,
+
+      lastCostPerBox:
+        nextCostPerBox,
+
+      lastCostPerUnit:
+        nextCostPerUnit,
+
+      price:
+        nextPrice,
+
+      referenciaLibro:
+        line.referenciaLibro ||
+        localProduct?.referenciaLibro ||
+        product.referenciaLibro ||
+        "",
+
+      referenceBook:
+        line.referenciaLibro ||
+        localProduct?.referenceBook ||
+        product.referenceBook ||
+        "",
+
+      numeroDocumento:
+        line.numeroDocumento ||
+        localProduct?.numeroDocumento ||
+        product.numeroDocumento ||
+        "",
+
+      id_local:
+        currentLocalId,
+
+      localNombre:
+        currentLocalInfo.nombre,
+
+      localNumeroDocumento:
+        currentLocalInfo.numeroDocumento,
+
+      localUbicacion:
+        currentLocalInfo.ubicacion,
+
+      localContribuyente:
+        currentLocalInfo.contribuyente,
+
+      localTipoDocumento:
+        currentLocalInfo.tipoDocumento,
+
+      localNIT:
+        currentLocalInfo.nit,
+
+      localNRC:
+        currentLocalInfo.nrc,
+
+      updatedAt:
+        Date.now()
+    };
+
+    upsertSessionDocument(
+      PRODUCTS_COLLECTION,
+      product.id,
+      updatedProductData
+    );
 
     if (
       localProduct
     ) {
       Object.assign(
         localProduct,
+        updatedProductData
+      );
+    }
+
+    /*
+     * ==========================================================
+     * ACTUALIZAR CACHÉ DEL MOVIMIENTO
+     * ==========================================================
+     */
+
+    const movementId =
+      transactionResult
+        ?.movementId ||
+      "";
+
+    if (
+      movementId &&
+      movementData
+    ) {
+      upsertSessionDocument(
+        MOVEMENTS_COLLECTION,
+        movementId,
         {
-          codigoProducto:
-            line.codigoProducto ||
-            getProductCode(
-              localProduct
-            ) ||
-            "",
+          ...movementData,
 
-          productCode:
-            line.codigoProducto ||
-            getProductCode(
-              localProduct
-            ) ||
-            "",
-
-          proveedorId:
-            nextProviderId,
-
-          proveedorNombre:
-            nextProviderName,
-
-          quantity:
-            nextStock,
-
-          stockCurrentUnits:
-            nextStock,
-
-          boxes:
-            Math.floor(
-              nextStock /
-                unitsPerBox
-            ),
-
-          unitsPerBox:
-            unitsPerBox,
-
-          lastCostPerBox:
-            nextCostPerBox,
-
-          lastCostPerUnit:
-            nextCostPerUnit,
-
-          price:
-            nextPrice,
-
-          referenciaLibro:
-            line.referenciaLibro ||
-            localProduct.referenciaLibro ||
-            "",
-
-          referenceBook:
-            line.referenciaLibro ||
-            localProduct.referenceBook ||
-            "",
-
-          numeroDocumento:
-            line.numeroDocumento ||
-            localProduct.numeroDocumento ||
-            ""
+          createdAt:
+            Date.now()
         }
       );
     }
@@ -4144,10 +4393,7 @@
 
       nextStock,
 
-      movementId:
-        transactionResult
-          ?.movementId ||
-        ""
+      movementId
     };
   }
 
@@ -4632,44 +4878,14 @@
           ""
       ).trim();
 
-    const providerText =
-      String(
-        row.querySelector(
-          ".inv-combobox"
-        )?.value ||
-          ""
-      ).trim();
-
-    /*
-     * El primer .inv-combobox de la fila es el producto,
-     * por eso el proveedor se obtiene de forma específica.
-     */
-    const providerInput =
+    const providerElement =
       row.querySelector(
-        ".batch-product-field"
-      )
-        ? row
-            .querySelector(
-              `.batch-provider`
-            )
-        : null;
-
-    let providerElement =
-      providerInput;
-
-    if (
-      !providerElement
-    ) {
-      providerElement =
-        row.querySelector(
-          'input[id^="batch-provider-"]'
-        );
-    }
+        ".batch-provider"
+      );
 
     const providerValue =
       String(
         providerElement?.value ||
-          providerText ||
           ""
       ).trim();
 
@@ -4857,7 +5073,7 @@
 
     const providerInput =
       row.querySelector(
-        'input[id^="batch-provider-"]'
+        ".batch-provider"
       );
 
     const status =
@@ -5036,12 +5252,8 @@
             "";
         }
 
-        if (
-          !row.dataset.providerAutofilled
-        ) {
-          row.dataset.providerAutofilled =
-            "1";
-        }
+        row.dataset.providerAutofilled =
+          "1";
       } else {
         if (
           status
@@ -5423,15 +5635,6 @@
     const results =
       [];
 
-    /*
-     * Procesamos secuencialmente para que:
-     *
-     * 1. Los errores sean identificables.
-     * 2. No haya varias operaciones simultáneas
-     *    sobre el mismo producto.
-     * 3. El cache local se actualice inmediatamente.
-     */
-
     for (
       let index =
         0;
@@ -5738,35 +5941,28 @@
       return;
     }
 
-    let progressAlert =
-      null;
-
     try {
-      progressAlert =
-        Swal.fire({
-          title:
-            "Procesando productos",
+      Swal.fire({
+        title:
+          "Procesando productos",
 
-          html:
-            `Preparando ${
-              lines.length
-            } producto(s)...`,
+        html:
+          `Preparando ${
+            lines.length
+          } producto(s)...`,
 
-          allowOutsideClick:
-            false,
+        allowOutsideClick:
+          false,
 
-          allowEscapeKey:
-            false,
+        allowEscapeKey:
+          false,
 
-          didOpen:
-            () => {
-              Swal.showLoading();
-            }
-        });
+        didOpen:
+          () => {
+            Swal.showLoading();
+          }
+      });
 
-      /*
-       * Primero se guarda el inventario.
-       */
       const results =
         await processBatchLines(
           lines
@@ -5801,19 +5997,10 @@
 
       /*
        * ========================================================
-       * CALCULAR COSTO TOTAL DE LA OPERACIÓN
+       * COSTO TOTAL
        * ========================================================
-       *
-       * Importante:
-       *
-       * - Las cajas pagadas tienen costo.
-       * - Las unidades pagadas tienen costo proporcional.
-       * - Las cajas bono no tienen costo.
-       * - Las unidades bono no tienen costo.
-       *
-       * En productos existentes, si el costo de la línea
-       * queda en cero, se utiliza lastCostPerBox del producto.
        */
+
       const totalPurchaseCost =
         lines.reduce(
           (
@@ -5831,14 +6018,10 @@
 
       /*
        * ========================================================
-       * REGISTRAR GASTO AUTOMÁTICO
+       * GASTO AUTOMÁTICO
        * ========================================================
-       *
-       * Se registra después de guardar el inventario.
-       *
-       * Esto evita generar un gasto de una compra que
-       * finalmente no logró ingresar al inventario.
        */
+
       let expenseResult =
         null;
 
@@ -5865,19 +6048,9 @@
         );
       }
 
-      if (
-        progressAlert
-      ) {
-        Swal.close();
-      }
+      Swal.close();
 
       refreshInventoryView();
-
-      /*
-       * ========================================================
-       * RESULTADO
-       * ========================================================
-       */
 
       const expenseStatus =
         expenseError
@@ -5984,11 +6157,7 @@
     } catch (
       error
     ) {
-      if (
-        progressAlert
-      ) {
-        Swal.close();
-      }
+      Swal.close();
 
       console.error(
         "Error procesando carga múltiple:",
@@ -6230,6 +6399,9 @@
       return;
     }
 
+    /*
+     * Los movimientos salen de app.js.
+     */
     const movements =
       await loadProductStockMovements(
         productId
@@ -6467,6 +6639,12 @@
       values.totalUnits;
 
     try {
+      /*
+       * ========================================================
+       * ESCRITURA FIRESTORE
+       * ========================================================
+       */
+
       await db
         .collection(
           PRODUCTS_COLLECTION
@@ -6538,6 +6716,12 @@
         newStock -
         oldStock;
 
+      let movementId =
+        "";
+
+      let movementData =
+        null;
+
       if (
         difference !==
         0
@@ -6553,7 +6737,10 @@
             )
             .doc();
 
-        await movementRef.set(
+        movementId =
+          movementRef.id;
+
+        movementData =
           buildMovementData({
             productId,
 
@@ -6598,61 +6785,140 @@
               "Ajuste manual de inventario",
 
             user
-          })
-        );
+          });
+
+        await movementRef.set({
+          ...movementData,
+
+          createdAt:
+            firebase.firestore
+              .FieldValue
+              .serverTimestamp()
+        });
       }
+
+      /*
+       * ========================================================
+       * SINCRONIZAR CACHÉ DE PRODUCTO
+       * ========================================================
+       */
+
+      const updatedProductData = {
+        ...product,
+
+        name:
+          values.name,
+
+        codigoProducto:
+          values.codigoProducto,
+
+        productCode:
+          values.codigoProducto,
+
+        proveedorId:
+          values.proveedorId ||
+          null,
+
+        proveedorNombre:
+          values.proveedorNombre ||
+          "",
+
+        quantity:
+          newStock,
+
+        stockCurrentUnits:
+          newStock,
+
+        stockBaseUnits:
+          numberOrZero(
+            product.stockBaseUnits
+          ) ||
+          oldStock,
+
+        boxes:
+          values.boxes,
+
+        unitsPerBox:
+          values.unitsPerBox,
+
+        lastCostPerBox:
+          values.lastCostPerBox,
+
+        lastCostPerUnit:
+          values.lastCostPerUnit,
+
+        price:
+          values.price,
+
+        referenciaLibro:
+          values.referenciaLibro,
+
+        referenceBook:
+          values.referenciaLibro,
+
+        numeroDocumento:
+          values.numeroDocumento,
+
+        id_local:
+          currentLocalId,
+
+        localNombre:
+          currentLocalInfo.nombre,
+
+        localNumeroDocumento:
+          currentLocalInfo.numeroDocumento,
+
+        localUbicacion:
+          currentLocalInfo.ubicacion,
+
+        localContribuyente:
+          currentLocalInfo.contribuyente,
+
+        localTipoDocumento:
+          currentLocalInfo.tipoDocumento,
+
+        localNIT:
+          currentLocalInfo.nit,
+
+        localNRC:
+          currentLocalInfo.nrc,
+
+        updatedAt:
+          Date.now()
+      };
+
+      upsertSessionDocument(
+        PRODUCTS_COLLECTION,
+        productId,
+        updatedProductData
+      );
 
       Object.assign(
         product,
-        {
-          name:
-            values.name,
-
-          codigoProducto:
-            values.codigoProducto,
-
-          productCode:
-            values.codigoProducto,
-
-          proveedorId:
-            values.proveedorId ||
-            null,
-
-          proveedorNombre:
-            values.proveedorNombre ||
-            "",
-
-          quantity:
-            newStock,
-
-          stockCurrentUnits:
-            newStock,
-
-          boxes:
-            values.boxes,
-
-          unitsPerBox:
-            values.unitsPerBox,
-
-          lastCostPerBox:
-            values.lastCostPerBox,
-
-          lastCostPerUnit:
-            values.lastCostPerUnit,
-
-          price:
-            values.price,
-
-          referenciaLibro:
-            values.referenciaLibro,
-
-          referenceBook:
-            values.referenciaLibro,
-
-          numeroDocumento:
-            values.numeroDocumento
-        }
+        updatedProductData
       );
+
+      /*
+       * ========================================================
+       * SINCRONIZAR MOVIMIENTO
+       * ========================================================
+       */
+
+      if (
+        movementId &&
+        movementData
+      ) {
+        upsertSessionDocument(
+          MOVEMENTS_COLLECTION,
+          movementId,
+          {
+            ...movementData,
+
+            createdAt:
+              Date.now()
+          }
+        );
+      }
 
       invalidateProductStockMovementsCache(
         productId
@@ -6759,6 +7025,14 @@
           productId
         )
         .delete();
+
+      /*
+       * Actualizar cache primero.
+       */
+      removeSessionDocument(
+        PRODUCTS_COLLECTION,
+        productId
+      );
 
       currentProductsList =
         currentProductsList.filter(
@@ -7068,6 +7342,10 @@
     try {
       injectInventoryStyles();
 
+      /*
+       * app.js se encarga de garantizar que la sesión
+       * y su caché estén disponibles.
+       */
       await resolveInventoryContext(
         user
       );
@@ -7093,13 +7371,14 @@
       ensureInventoryDataTable();
 
       /*
-       * Proveedores se cargan una sola vez.
-       * Si fallan, el proveedor seguirá siendo opcional.
+       * Proveedores:
+       * exclusivamente desde app.js.
        */
       await loadInventoryProviders();
 
       /*
-       * Productos y ventas se cargan una sola vez.
+       * Productos + ventas:
+       * exclusivamente desde app.js.
        */
       await loadInventoryData();
     } catch (

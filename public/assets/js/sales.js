@@ -2,6 +2,10 @@
 //
 // Ventas.
 //
+// assets/js/sales.js
+//
+// Ventas.
+//
 // Reglas:
 // - stock actual = stockCurrentUnits / quantity.
 // - Al registrar una venta se descuenta inventario.
@@ -16,16 +20,32 @@
 // - La edición de ventas también modifica esa fecha/hora.
 //
 // Optimización:
-// - NO usa onSnapshot() para productos.
-// - NO usa onSnapshot() para ventas.
-// - Productos se cargan una sola vez con get().
-// - Ventas se cargan una sola vez con get().
+//
+// - La lectura inicial de productos NO consulta Firestore.
+// - La lectura inicial de ventas NO consulta Firestore.
+// - app.js prepara la caché de sesión al iniciar sesión.
+// - Este módulo reutiliza:
+//      window.getSessionCollection()
+//      window.ensureSessionDataLoaded()
+//      window.upsertSessionDocument()
+//      window.removeSessionDocument()
 // - Las ventas del mes se calculan desde SALES_CACHE.
 // - No existe una segunda consulta para las métricas mensuales.
 // - Después de crear/editar/eliminar una venta se actualizan las
-//   cachés locales sin volver a leer Firestore.
+//   cachés locales y la caché compartida de app.js.
 // - Se evita consultar empleados/local directamente.
 // - El contexto se reutiliza desde app.js.
+//
+// IMPORTANTE SOBRE LAS TRANSACCIONES:
+//
+// Firestore sigue siendo consultado dentro de las transacciones
+// que modifican inventario.
+//
+// Esto NO es una lectura normal del módulo.
+//
+// Es intencional y necesario para comprobar el stock real en
+// Firestore justo antes de escribir, evitando que dos ventas
+// concurrentes provoquen stock negativo o inconsistente.
 //
 // Edición:
 // - Solo Administrador.
@@ -40,6 +60,24 @@
 
 (function () {
   "use strict";
+
+  /*
+   * ============================================================
+   * CONSTANTES
+   * ============================================================
+   */
+
+  const PRODUCTS_COLLECTION_NAME =
+    "productos";
+
+  const SALES_COLLECTION_NAME =
+    "ventas";
+
+  const STOCK_MOVEMENTS_COLLECTION_NAME =
+    "stock_movimientos";
+
+  const DRAFT_SALES_COLLECTION_NAME =
+    "ventas_borrador";
 
   /*
    * ============================================================
@@ -145,6 +183,10 @@
   let salesDataTable =
     null;
 
+  /*
+   * Cachés locales derivadas de la caché compartida
+   * de app.js.
+   */
   let PRODUCTS_CACHE =
     {};
 
@@ -238,7 +280,9 @@
     value
   ) {
     const n =
-      Number(value);
+      Number(
+        value
+      );
 
     return Number.isFinite(
       n
@@ -297,14 +341,26 @@
     }
 
     const d =
-      value.seconds
-        ? new Date(
-          value.seconds *
-          1000
-        )
-        : new Date(
-          value
-        );
+      value &&
+        typeof value.toDate ===
+        "function"
+        ? value.toDate()
+        : value &&
+            typeof value.toMillis ===
+            "function"
+          ? new Date(
+            value.toMillis()
+          )
+          : value &&
+              typeof value.seconds ===
+              "number"
+            ? new Date(
+              value.seconds *
+              1000
+            )
+            : new Date(
+              value
+            );
 
     if (
       isNaN(
@@ -325,14 +381,26 @@
     }
 
     const d =
-      value.seconds
-        ? new Date(
-          value.seconds *
-          1000
-        )
-        : new Date(
-          value
-        );
+      value &&
+        typeof value.toDate ===
+        "function"
+        ? value.toDate()
+        : value &&
+            typeof value.toMillis ===
+            "function"
+          ? new Date(
+            value.toMillis()
+          )
+          : value &&
+              typeof value.seconds ===
+              "number"
+            ? new Date(
+              value.seconds *
+              1000
+            )
+            : new Date(
+              value
+            );
 
     if (
       isNaN(
@@ -362,14 +430,26 @@
     }
 
     const d =
-      value.seconds
-        ? new Date(
-          value.seconds *
-          1000
-        )
-        : new Date(
-          value
-        );
+      value &&
+        typeof value.toDate ===
+        "function"
+        ? value.toDate()
+        : value &&
+            typeof value.toMillis ===
+            "function"
+          ? new Date(
+            value.toMillis()
+          )
+          : value &&
+              typeof value.seconds ===
+              "number"
+            ? new Date(
+              value.seconds *
+              1000
+            )
+            : new Date(
+              value
+            );
 
     if (
       isNaN(
@@ -410,14 +490,26 @@
     }
 
     const d =
-      value.seconds
-        ? new Date(
-          value.seconds *
-          1000
-        )
-        : new Date(
-          value
-        );
+      value &&
+        typeof value.toDate ===
+        "function"
+        ? value.toDate()
+        : value &&
+            typeof value.toMillis ===
+            "function"
+          ? new Date(
+            value.toMillis()
+          )
+          : value &&
+              typeof value.seconds ===
+              "number"
+            ? new Date(
+              value.seconds *
+              1000
+            )
+            : new Date(
+              value
+            );
 
     if (
       isNaN(
@@ -570,15 +662,37 @@
       return null;
     }
 
-    const d =
-      value.seconds
-        ? new Date(
+    let d = null;
+
+    if (
+      typeof value.toDate ===
+      "function"
+    ) {
+      d =
+        value.toDate();
+    } else if (
+      typeof value.toMillis ===
+      "function"
+    ) {
+      d =
+        new Date(
+          value.toMillis()
+        );
+    } else if (
+      typeof value.seconds ===
+      "number"
+    ) {
+      d =
+        new Date(
           value.seconds *
           1000
-        )
-        : new Date(
+        );
+    } else {
+      d =
+        new Date(
           value
         );
+    }
 
     const time =
       d.getTime();
@@ -590,9 +704,6 @@
       : null;
   }
 
-  /*
-   * Obtiene la fecha/hora actual local para los campos del carrito.
-   */
   function setCartSaleDateTime(
     date = new Date()
   ) {
@@ -615,9 +726,6 @@
     }
   }
 
-  /*
-   * Lee y valida la fecha/hora seleccionada en el carrito.
-   */
   function getCartSaleDateTime() {
     const date =
       cartSaleDateInput
@@ -701,7 +809,7 @@
 
   /*
    * ============================================================
-   * CONTEXTO CENTRAL
+   * CONTEXTO CENTRAL DE APP.JS
    * ============================================================
    */
 
@@ -772,7 +880,7 @@
 
     const canonical =
       typeof window.getCanonicalRole ===
-        "function"
+      "function"
         ? window.getCanonicalRole(
           role
         )
@@ -1110,6 +1218,131 @@
 
   /*
    * ============================================================
+   * CACHE DE APP.JS
+   * ============================================================
+   */
+
+  async function ensureSalesSessionCache(
+    user
+  ) {
+    if (
+      !user
+    ) {
+      throw new Error(
+        "No hay un usuario autenticado."
+      );
+    }
+
+    if (
+      typeof window.ensureSessionDataLoaded !==
+      "function"
+    ) {
+      throw new Error(
+        "app.js no expuso ensureSessionDataLoaded()."
+      );
+    }
+
+    await window.ensureSessionDataLoaded(
+      user
+    );
+  }
+
+  function readSessionCollection(
+    collectionName
+  ) {
+    if (
+      typeof window.getSessionCollection !==
+      "function"
+    ) {
+      throw new Error(
+        "app.js no expuso getSessionCollection()."
+      );
+    }
+
+    const documents =
+      window.getSessionCollection(
+        collectionName
+      );
+
+    return Array.isArray(
+      documents
+    )
+      ? documents
+      : [];
+  }
+
+  function updateSharedProductCache(
+    productId,
+    patch
+  ) {
+    if (
+      typeof window.upsertSessionDocument !==
+      "function"
+    ) {
+      return;
+    }
+
+    window.upsertSessionDocument(
+      PRODUCTS_COLLECTION_NAME,
+      productId,
+      patch
+    );
+  }
+
+  function updateSharedSaleCache(
+    saleId,
+    data
+  ) {
+    if (
+      typeof window.upsertSessionDocument !==
+      "function"
+    ) {
+      return;
+    }
+
+    window.upsertSessionDocument(
+      SALES_COLLECTION_NAME,
+      saleId,
+      data
+    );
+  }
+
+  function removeSharedSaleCache(
+    saleId
+  ) {
+    if (
+      typeof window.removeSessionDocument !==
+      "function"
+    ) {
+      return;
+    }
+
+    window.removeSessionDocument(
+      SALES_COLLECTION_NAME,
+      saleId
+    );
+  }
+
+  function updateSharedMovementCache(
+    movementId,
+    data
+  ) {
+    if (
+      typeof window.upsertSessionDocument !==
+      "function"
+    ) {
+      return;
+    }
+
+    window.upsertSessionDocument(
+      STOCK_MOVEMENTS_COLLECTION_NAME,
+      movementId,
+      data
+    );
+  }
+
+  /*
+   * ============================================================
    * PRODUCTOS
    * ============================================================
    */
@@ -1273,10 +1506,6 @@
       return 0;
     }
 
-    /*
-     * Prioridad para costos unitarios almacenados
-     * directamente en el producto.
-     */
     const directCosts = [
       product.unitCost,
       product.costoUnitario,
@@ -1307,10 +1536,6 @@
       }
     }
 
-    /*
-     * Si solamente existe costo por caja,
-     * se convierte a costo unitario.
-     */
     const unitsPerBox =
       normalizeUnitsPerBox(
         product
@@ -1555,33 +1780,38 @@
 
   /*
    * ============================================================
-   * CARGA INICIAL SIN REALTIME
+   * CARGA INICIAL DESDE APP.JS
    * ============================================================
    */
 
   async function loadProductsOnce() {
-    const snapshot =
-      await db
-        .collection(
-          "productos"
-        )
-        .where(
-          "id_local",
-          "==",
-          currentLocalId
-        )
-        .get();
+    /*
+     * NO consulta Firestore.
+     *
+     * app.js ya cargó productos durante el inicio de sesión.
+     */
+    const documents =
+      readSessionCollection(
+        PRODUCTS_COLLECTION_NAME
+      );
 
     const products =
       {};
 
-    snapshot.forEach(
-      doc => {
+    documents.forEach(
+      document => {
+        const docId =
+          String(
+            document?.id ||
+              ""
+          ).trim();
+
         const data =
-          doc.data() ||
+          document?.data ||
           {};
 
         if (
+          !docId ||
           !matchesCurrentLocal(
             data
           )
@@ -1626,10 +1856,10 @@
                 : 0;
 
         products[
-          doc.id
+          docId
         ] = {
           id:
-            doc.id,
+            docId,
 
           ...data,
 
@@ -1662,28 +1892,33 @@
   }
 
   async function loadSalesOnce() {
-    const snapshot =
-      await db
-        .collection(
-          "ventas"
-        )
-        .where(
-          "id_local",
-          "==",
-          currentLocalId
-        )
-        .get();
+    /*
+     * NO consulta Firestore.
+     *
+     * app.js ya cargó ventas durante el inicio de sesión.
+     */
+    const documents =
+      readSessionCollection(
+        SALES_COLLECTION_NAME
+      );
 
     const sales =
       {};
 
-    snapshot.forEach(
-      doc => {
+    documents.forEach(
+      document => {
+        const docId =
+          String(
+            document?.id ||
+              ""
+          ).trim();
+
         const data =
-          doc.data() ||
+          document?.data ||
           {};
 
         if (
+          !docId ||
           !matchesCurrentLocal(
             data
           )
@@ -1692,10 +1927,10 @@
         }
 
         sales[
-          doc.id
+          docId
         ] = {
           id:
-            doc.id,
+            docId,
 
           ...data
         };
@@ -1725,6 +1960,16 @@
             "No se pudo determinar el local actual."
           );
         }
+
+        /*
+         * Garantizar que la caché compartida esté cargada.
+         *
+         * Normalmente no provoca nuevas lecturas porque
+         * app.js ya la prepara durante el login.
+         */
+        await ensureSalesSessionCache(
+          auth.currentUser
+        );
 
         await Promise.all([
           loadProductsOnce(),
@@ -1788,7 +2033,7 @@
           0
       });
     } catch (
-    err
+      err
     ) {
       console.warn(
         "No se pudo inicializar Select2:",
@@ -1838,6 +2083,16 @@
       productSelect.appendChild(
         option
       );
+
+      if (
+        window.jQuery &&
+        typeof $.fn.select2 ===
+        "function"
+      ) {
+        $("#productSelect").trigger(
+          "change.select2"
+        );
+      }
 
       return;
     }
@@ -2300,10 +2555,6 @@
         });
       }
 
-      /*
-       * Garantizar que la fecha/hora tengan un valor
-       * aunque el usuario haya tardado en empezar la venta.
-       */
       if (
         !cartSaleDateInput?.value ||
         !cartSaleTimeInput?.value
@@ -2392,15 +2643,23 @@
         0
       );
 
-    cartSubtotalEl.textContent =
-      currency(
-        subtotal
-      );
+    if (
+      cartSubtotalEl
+    ) {
+      cartSubtotalEl.textContent =
+        currency(
+          subtotal
+        );
+    }
 
-    btnFinalize.disabled =
-      CART.length ===
-      0 ||
-      isFinalizingSale;
+    if (
+      btnFinalize
+    ) {
+      btnFinalize.disabled =
+        CART.length ===
+        0 ||
+        isFinalizingSale;
+    }
 
     return subtotal;
   }
@@ -2480,13 +2739,21 @@
           </tr>
         `;
 
-      cartSubtotalEl.textContent =
-        currency(
-          0
-        );
+      if (
+        cartSubtotalEl
+      ) {
+        cartSubtotalEl.textContent =
+          currency(
+            0
+          );
+      }
 
-      btnFinalize.disabled =
-        true;
+      if (
+        btnFinalize
+      ) {
+        btnFinalize.disabled =
+          true;
+      }
 
       return;
     }
@@ -2976,7 +3243,8 @@
     detalle,
     userName,
     userId,
-    costoUnitario
+    costoUnitario,
+    createdAt
   }) {
     const normalizedUnitCost =
       numberOrZero(
@@ -3028,10 +3296,6 @@
           saldoActual
         ),
 
-      /*
-       * Costo histórico del producto en el momento
-       * en que se creó este movimiento.
-       */
       costoUnitario:
         normalizedUnitCost,
 
@@ -3054,9 +3318,8 @@
         null,
 
       createdAt:
-        firebase.firestore
-          .FieldValue
-          .serverTimestamp(),
+        createdAt ??
+        Date.now(),
 
       ...getMovementLocalPayload()
     };
@@ -3099,9 +3362,6 @@
       return;
     }
 
-    /*
-     * Validar la fecha/hora ANTES de abrir la confirmación.
-     */
     const saleDateTimeValidation =
       validateCartSaleDateTime();
 
@@ -3207,7 +3467,7 @@
       const ventaRef =
         db
           .collection(
-            "ventas"
+            SALES_COLLECTION_NAME
           )
           .doc();
 
@@ -3224,14 +3484,13 @@
           0
         );
 
-      /*
-       * Firestore Timestamp basado en la fecha/hora
-       * seleccionada por el usuario.
-       */
       const selectedSaleTimestamp =
         firebase.firestore.Timestamp.fromDate(
           saleDateTime
         );
+
+      const localCreatedAtMillis =
+        saleDateTime.getTime();
 
       const summaryHtml =
         CART
@@ -3388,10 +3647,6 @@
         return;
       }
 
-      /*
-       * Agrupar por producto para no leer
-       * el mismo documento dos veces.
-       */
       const unitsByProduct =
         {};
 
@@ -3426,20 +3681,43 @@
         serializeCart();
 
       /*
-       * Mantener exactamente el valor seleccionado
-       * para actualizar la caché local.
+       * Se generan los IDs de los movimientos antes de la
+       * transacción para poder reflejarlos en la caché después
+       * de que la transacción termine correctamente.
        */
-      const localCreatedTimestamp =
-        selectedSaleTimestamp;
+      const movementRefsByProduct =
+        {};
 
+      productIds.forEach(
+        productId => {
+          movementRefsByProduct[
+            productId
+          ] =
+            db
+              .collection(
+                STOCK_MOVEMENTS_COLLECTION_NAME
+              )
+              .doc();
+        }
+      );
+
+      /*
+       * Payloads que se almacenarán después en la caché.
+       */
+      const movementCachePayloads =
+        {};
+
+      /*
+       * ========================================================
+       * TRANSACCIÓN
+       * ========================================================
+       *
+       * Estas lecturas son deliberadamente directas sobre
+       * Firestore porque deben representar el estado real del
+       * inventario en el instante de escritura.
+       */
       await db.runTransaction(
         async transaction => {
-          /*
-           * ==================================================
-           * LECTURAS
-           * ==================================================
-           */
-
           const productSnapshots =
             {};
 
@@ -3450,7 +3728,7 @@
             const productRef =
               db
                 .collection(
-                  "productos"
+                  PRODUCTS_COLLECTION_NAME
                 )
                 .doc(
                   productId
@@ -3494,12 +3772,6 @@
               data
             };
           }
-
-          /*
-           * ==================================================
-           * ESCRITURAS DE INVENTARIO
-           * ==================================================
-           */
 
           productIds.forEach(
             productId => {
@@ -3598,19 +3870,16 @@
               );
 
               const movementRef =
-                db
-                  .collection(
-                    "stock_movimientos"
-                  )
-                  .doc();
+                movementRefsByProduct[
+                  productId
+                ];
 
               const costoUnitario =
                 getProductUnitCost(
                   data
                 );
 
-              transaction.set(
-                movementRef,
+              const movementPayload =
                 createMovementObject({
                   productId,
 
@@ -3638,10 +3907,6 @@
                   saldoActual:
                     remainingUnits,
 
-                  /*
-                   * Se guarda el costo que tenía el producto
-                   * exactamente al momento de registrar la venta.
-                   */
                   costoUnitario,
 
                   detalle:
@@ -3650,17 +3915,35 @@
                   userName:
                     storedUserName,
 
-                  userId
-                })
+                  userId,
+
+                  /*
+                   * Para la caché utilizamos el instante local
+                   * en que se confirmó la operación.
+                   */
+                  createdAt:
+                    Date.now()
+                });
+
+              movementCachePayloads[
+                productId
+              ] = {
+                ...movementPayload
+              };
+
+              transaction.set(
+                movementRef,
+                {
+                  ...movementPayload,
+
+                  createdAt:
+                    firebase.firestore
+                      .FieldValue
+                      .serverTimestamp()
+                }
               );
             }
           );
-
-          /*
-           * ==================================================
-           * ESCRITURA DE LA VENTA
-           * ==================================================
-           */
 
           transaction.set(
             ventaRef,
@@ -3675,10 +3958,6 @@
 
               referenciaLibro,
 
-              /*
-               * Ahora representa la FECHA Y HORA DE LA VENTA
-               * seleccionada por el usuario.
-               */
               createdAt:
                 selectedSaleTimestamp,
 
@@ -3696,7 +3975,7 @@
 
       /*
        * ========================================================
-       * ACTUALIZAR CACHÉS LOCALES
+       * ACTUALIZAR CACHÉ LOCAL DE PRODUCTOS
        * ========================================================
        */
 
@@ -3746,12 +4025,39 @@
               nextUnits /
               unitsPerBox
             );
+
+          /*
+           * Actualizar la caché global de app.js.
+           */
+          updateSharedProductCache(
+            productId,
+            {
+              quantity:
+                nextUnits,
+
+              stockCurrentUnits:
+                nextUnits,
+
+              boxes:
+                Math.floor(
+                  nextUnits /
+                  unitsPerBox
+                ),
+
+              updatedAt:
+                Date.now()
+            }
+          );
         }
       );
 
-      SALES_CACHE[
-        ventaRef.id
-      ] = {
+      /*
+       * ========================================================
+       * ACTUALIZAR CACHÉ DE VENTA
+       * ========================================================
+       */
+
+      const saleCacheData = {
         id:
           ventaRef.id,
 
@@ -3766,7 +4072,7 @@
         referenciaLibro,
 
         createdAt:
-          localCreatedTimestamp,
+          localCreatedAtMillis,
 
         userId,
 
@@ -3776,6 +4082,56 @@
 
         ...localPayload
       };
+
+      SALES_CACHE[
+        ventaRef.id
+      ] =
+        saleCacheData;
+
+      updateSharedSaleCache(
+        ventaRef.id,
+        saleCacheData
+      );
+
+      /*
+       * ========================================================
+       * ACTUALIZAR CACHÉ DE MOVIMIENTOS
+       * ========================================================
+       */
+
+      productIds.forEach(
+        productId => {
+          const movementRef =
+            movementRefsByProduct[
+              productId
+            ];
+
+          const movementPayload =
+            movementCachePayloads[
+              productId
+            ];
+
+          if (
+            !movementRef ||
+            !movementPayload
+          ) {
+            return;
+          }
+
+          updateSharedMovementCache(
+            movementRef.id,
+            {
+              ...movementPayload,
+
+              id:
+                movementRef.id,
+
+              createdAt:
+                Date.now()
+            }
+          );
+        }
+      );
 
       MONTHLY_SOLD_UNITS =
         aggregateMonthlySalesFromCache();
@@ -3796,11 +4152,6 @@
           "";
       }
 
-      /*
-       * Después de guardar una venta se vuelve a colocar
-       * la fecha y hora actuales como valor predeterminado
-       * para la próxima venta.
-       */
       setCartSaleDateTime(
         new Date()
       );
@@ -3827,7 +4178,7 @@
           1500
       });
     } catch (
-    err
+      err
     ) {
       console.error(
         "Error finalizando venta:",
@@ -3844,18 +4195,34 @@
       isFinalizingSale =
         false;
 
-      btnFinalize.disabled =
-        CART.length ===
-        0;
+      if (
+        btnFinalize
+      ) {
+        btnFinalize.disabled =
+          CART.length ===
+          0;
+      }
 
-      btnSaveDraft.disabled =
-        false;
+      if (
+        btnSaveDraft
+      ) {
+        btnSaveDraft.disabled =
+          false;
+      }
 
-      btnAddToCart.disabled =
-        false;
+      if (
+        btnAddToCart
+      ) {
+        btnAddToCart.disabled =
+          false;
+      }
 
-      btnClearCart.disabled =
-        false;
+      if (
+        btnClearCart
+      ) {
+        btnClearCart.disabled =
+          false;
+      }
 
       if (
         productSelect
@@ -3968,8 +4335,12 @@
     isSavingDraft =
       true;
 
-    btnSaveDraft.disabled =
-      true;
+    if (
+      btnSaveDraft
+    ) {
+      btnSaveDraft.disabled =
+        true;
+    }
 
     try {
       const storedUserName =
@@ -4005,10 +4376,6 @@
 
         referenciaLibro,
 
-        /*
-         * El borrador también conserva la fecha/hora
-         * que el usuario haya seleccionado.
-         */
         createdAt:
           firebase.firestore.Timestamp.fromDate(
             saleDateTime
@@ -4026,9 +4393,13 @@
         ...localPayload
       };
 
+      /*
+       * Es una escritura.
+       * No existe una lectura de borradores en este módulo.
+       */
       await db
         .collection(
-          "ventas_borrador"
+          DRAFT_SALES_COLLECTION_NAME
         )
         .add(
           draft
@@ -4054,7 +4425,7 @@
           1400
       });
     } catch (
-    err
+      err
     ) {
       console.error(
         "Error guardando borrador:",
@@ -4070,8 +4441,12 @@
       isSavingDraft =
         false;
 
-      btnSaveDraft.disabled =
-        false;
+      if (
+        btnSaveDraft
+      ) {
+        btnSaveDraft.disabled =
+          false;
+      }
     }
   }
 
@@ -4969,7 +5344,7 @@
     ) {
       clearTimeout(
         saleSaveTimers[
-        saleId
+          saleId
         ]
       );
     }
@@ -5045,7 +5420,7 @@
               ) {
                 clearTimeout(
                   saleSaveTimers[
-                  saleId
+                    saleId
                   ]
                 );
 
@@ -5125,7 +5500,7 @@
 
     const sale =
       SALES_CACHE[
-      saleId
+        saleId
       ];
 
     if (!sale) {
@@ -5146,25 +5521,34 @@
       return;
     }
 
+    const escapedSaleId =
+      typeof CSS !==
+        "undefined" &&
+      typeof CSS.escape ===
+        "function"
+        ? CSS.escape(
+          saleId
+        )
+        : String(
+          saleId
+        ).replace(
+          /"/g,
+          '\\"'
+        );
+
     const referenceInput =
       document.querySelector(
-        `.inline-sale-reference[data-sale-id="${CSS.escape(
-          saleId
-        )}"]`
+        `.inline-sale-reference[data-sale-id="${escapedSaleId}"]`
       );
 
     const dateInput =
       document.querySelector(
-        `.inline-sale-date[data-sale-id="${CSS.escape(
-          saleId
-        )}"]`
+        `.inline-sale-date[data-sale-id="${escapedSaleId}"]`
       );
 
     const timeInput =
       document.querySelector(
-        `.inline-sale-time[data-sale-id="${CSS.escape(
-          saleId
-        )}"]`
+        `.inline-sale-time[data-sale-id="${escapedSaleId}"]`
       );
 
     const newReference =
@@ -5261,12 +5645,28 @@
       const saleRef =
         db
           .collection(
-            "ventas"
+            SALES_COLLECTION_NAME
           )
           .doc(
             saleId
           );
 
+      let finalReference =
+        newReference;
+
+      let finalCreatedAtMillis =
+        newCreatedAtMillis;
+
+      let finalCreatedAtValue =
+        firebase.firestore.Timestamp.fromDate(
+          newCreatedAt
+        );
+
+      /*
+       * Esta lectura ocurre dentro de una transacción para
+       * impedir actualizar una venta que pudo cambiar después
+       * de que fue cargada en la caché de sesión.
+       */
       await db.runTransaction(
         async transaction => {
           const latestSaleSnapshot =
@@ -5302,20 +5702,29 @@
               "venta"
             ).trim();
 
-          const finalReference =
+          finalReference =
             referenceChanged
               ? newReference
               : latestReference;
 
-          const finalCreatedAt =
+          const latestCreatedAt =
+            latestSale.createdAt ||
+            firebase.firestore.Timestamp.fromDate(
+              new Date()
+            );
+
+          finalCreatedAtValue =
             dateTimeChanged
-              ? newCreatedAt
-              : (
-                latestSale.createdAt ||
-                firebase.firestore.Timestamp.fromDate(
-                  new Date()
-                )
-              );
+              ? firebase.firestore.Timestamp.fromDate(
+                newCreatedAt
+              )
+              : latestCreatedAt;
+
+          finalCreatedAtMillis =
+            getDateTimeMillis(
+              finalCreatedAtValue
+            ) ||
+            newCreatedAtMillis;
 
           transaction.update(
             saleRef,
@@ -5324,7 +5733,7 @@
                 finalReference,
 
               createdAt:
-                finalCreatedAt,
+                finalCreatedAtValue,
 
               editedAt:
                 firebase.firestore
@@ -5344,13 +5753,55 @@
         }
       );
 
+      /*
+       * Actualización local.
+       */
       sale.referenciaLibro =
-        newReference;
+        finalReference;
 
       sale.createdAt =
-        firebase.firestore.Timestamp.fromDate(
-          newCreatedAt
-        );
+        finalCreatedAtMillis;
+
+      sale.editedAt =
+        Date.now();
+
+      sale.editedBy =
+        editorUserId;
+
+      sale.editedByName =
+        editorUserName ||
+        null;
+
+      Object.assign(
+        sale,
+        getMovementLocalPayload()
+      );
+
+      /*
+       * Actualizar caché compartida de app.js.
+       */
+      updateSharedSaleCache(
+        saleId,
+        {
+          referenciaLibro:
+            finalReference,
+
+          createdAt:
+            finalCreatedAtMillis,
+
+          editedAt:
+            Date.now(),
+
+          editedBy:
+            editorUserId,
+
+          editedByName:
+            editorUserName ||
+            null,
+
+          ...getMovementLocalPayload()
+        }
+      );
 
       MONTHLY_SOLD_UNITS =
         aggregateMonthlySalesFromCache();
@@ -5377,7 +5828,7 @@
           1200
       });
     } catch (
-    error
+      error
     ) {
       console.error(
         "Error actualizando venta:",
@@ -5428,12 +5879,12 @@
 
     if (
       saleSaveTimers[
-      saleId
+        saleId
       ]
     ) {
       clearTimeout(
         saleSaveTimers[
-        saleId
+          saleId
         ]
       );
 
@@ -5444,7 +5895,7 @@
 
     const sale =
       SALES_CACHE[
-      saleId
+        saleId
       ];
 
     if (!sale) {
@@ -5534,7 +5985,7 @@
       const saleRef =
         db
           .collection(
-            "ventas"
+            SALES_COLLECTION_NAME
           )
           .doc(
             saleId
@@ -5560,8 +6011,62 @@
         );
       }
 
+      /*
+       * Precrear referencias para poder agregar después
+       * los movimientos creados a la caché compartida.
+       */
+      const movementRefsByProduct =
+        {};
+
+      productIds.forEach(
+        productId => {
+          movementRefsByProduct[
+            productId
+          ] =
+            db
+              .collection(
+                STOCK_MOVEMENTS_COLLECTION_NAME
+              )
+              .doc();
+        }
+      );
+
+      const movementCachePayloads =
+        {};
+
+      /*
+       * Lecturas directas solamente dentro de la transacción,
+       * para recuperar el stock real antes de devolver unidades.
+       */
       await db.runTransaction(
         async transaction => {
+          const latestSaleSnapshot =
+            await transaction.get(
+              saleRef
+            );
+
+          if (
+            !latestSaleSnapshot.exists
+          ) {
+            throw new Error(
+              "La venta ya no existe."
+            );
+          }
+
+          const latestSale =
+            latestSaleSnapshot.data() ||
+            {};
+
+          if (
+            !matchesCurrentLocal(
+              latestSale
+            )
+          ) {
+            throw new Error(
+              "La venta no pertenece al local actual."
+            );
+          }
+
           const productSnapshots =
             {};
 
@@ -5572,7 +6077,7 @@
             const productRef =
               db
                 .collection(
-                  "productos"
+                  PRODUCTS_COLLECTION_NAME
                 )
                 .doc(
                   productId
@@ -5713,20 +6218,17 @@
               );
 
               const movementRef =
-                db
-                  .collection(
-                    "stock_movimientos"
-                  )
-                  .doc();
+                movementRefsByProduct[
+                  productId
+                ];
 
               const costoUnitario =
                 getProductUnitCost(
                   data
                 );
 
-              transaction.set(
-                movementRef,
-                {
+              const movementPayload =
+                createMovementObject({
                   productId,
 
                   productName:
@@ -5736,11 +6238,8 @@
                   tipoMovimiento:
                     "eliminacion_venta",
 
-                  movimiento:
-                    "entrada",
-
                   referenciaLibro:
-                    sale.referenciaLibro ||
+                    latestSale.referenciaLibro ||
                     "venta",
 
                   numeroDocumento:
@@ -5758,36 +6257,34 @@
                   saldoActual:
                     resultingStock,
 
-                  diferencia:
-                    unitsToReturn,
-
-                  /*
-                   * Costo del producto vigente al crear
-                   * el movimiento de devolución.
-                   */
                   costoUnitario,
-
-                  unitCost:
-                    costoUnitario,
-
-                  costoPorUnidad:
-                    costoUnitario,
 
                   detalle:
                     `Devolución de ${unitsToReturn} unidades por eliminación de venta ${saleId}.`,
 
                   userId,
 
-                  userName:
-                    userName ||
-                    null,
+                  userName,
+
+                  createdAt:
+                    Date.now()
+                });
+
+              movementCachePayloads[
+                productId
+              ] = {
+                ...movementPayload
+              };
+
+              transaction.set(
+                movementRef,
+                {
+                  ...movementPayload,
 
                   createdAt:
                     firebase.firestore
                       .FieldValue
-                      .serverTimestamp(),
-
-                  ...getMovementLocalPayload()
+                      .serverTimestamp()
                 }
               );
             }
@@ -5799,11 +6296,17 @@
         }
       );
 
+      /*
+       * ========================================================
+       * ACTUALIZAR CACHÉ DE PRODUCTOS
+       * ========================================================
+       */
+
       productIds.forEach(
         productId => {
           const product =
             PRODUCTS_CACHE[
-            productId
+              productId
             ];
 
           if (
@@ -5815,7 +6318,7 @@
           const unitsToReturn =
             numberOrZero(
               unitsByProduct[
-              productId
+                productId
               ]
             );
 
@@ -5844,12 +6347,82 @@
               resultingStock /
               unitsPerBox
             );
+
+          updateSharedProductCache(
+            productId,
+            {
+              quantity:
+                resultingStock,
+
+              stockCurrentUnits:
+                resultingStock,
+
+              boxes:
+                Math.floor(
+                  resultingStock /
+                  unitsPerBox
+                ),
+
+              updatedAt:
+                Date.now()
+            }
+          );
         }
       );
+
+      /*
+       * ========================================================
+       * ELIMINAR LA VENTA DE LA CACHÉ
+       * ========================================================
+       */
 
       delete SALES_CACHE[
         saleId
       ];
+
+      removeSharedSaleCache(
+        saleId
+      );
+
+      /*
+       * ========================================================
+       * AGREGAR MOVIMIENTOS A LA CACHÉ
+       * ========================================================
+       */
+
+      productIds.forEach(
+        productId => {
+          const movementRef =
+            movementRefsByProduct[
+              productId
+            ];
+
+          const movementPayload =
+            movementCachePayloads[
+              productId
+            ];
+
+          if (
+            !movementRef ||
+            !movementPayload
+          ) {
+            return;
+          }
+
+          updateSharedMovementCache(
+            movementRef.id,
+            {
+              ...movementPayload,
+
+              id:
+                movementRef.id,
+
+              createdAt:
+                Date.now()
+            }
+          );
+        }
+      );
 
       MONTHLY_SOLD_UNITS =
         aggregateMonthlySalesFromCache();
@@ -5883,7 +6456,7 @@
           1600
       });
     } catch (
-    error
+      error
     ) {
       console.error(
         "Error eliminando venta:",
@@ -5922,6 +6495,9 @@
       true;
 
     try {
+      /*
+       * Resolver contexto desde app.js.
+       */
       await resolveSalesContext(
         user
       );
@@ -5958,9 +6534,15 @@
         new Date()
       );
 
+      /*
+       * Este punto ya no lee productos ni ventas desde Firestore.
+       *
+       * Se utilizan los datos que app.js preparó al iniciar
+       * sesión.
+       */
       await loadInitialSalesData();
     } catch (
-    error
+      error
     ) {
       salesInitialized =
         false;
@@ -6029,10 +6611,6 @@
 
       initSelect2();
 
-      /*
-       * Inicializar fecha/hora antes de que el usuario
-       * interactúe con el carrito.
-       */
       setCartSaleDateTime(
         new Date()
       );

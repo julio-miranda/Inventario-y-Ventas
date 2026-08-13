@@ -3,22 +3,29 @@
 // Gestión de empleados.
 //
 // Optimización:
+//
 // - app.js resuelve el contexto del usuario.
-// - employees.js reutiliza getCurrentUserContext().
-// - No se vuelve a consultar empleados/{uid}.
-// - No se vuelve a consultar local/{id_local}.
-// - Solo se mantiene el listener del listado de empleados
-//   pertenecientes al local actual.
+// - app.js precarga "empleados" dentro de la caché de sesión.
+// - employees.js lee el listado exclusivamente desde esa caché.
+// - No se utiliza onSnapshot().
+// - No se consulta nuevamente empleados/{uid}.
+// - No se consulta nuevamente local/{id_local}.
+// - Los filtros trabajan completamente en memoria.
+// - Las altas, ediciones y eliminaciones escriben en Firestore
+//   y actualizan inmediatamente la caché de sesión.
 //
 // Permisos:
+//
 // - Solo Administrador puede crear empleados.
 // - Solo Administrador puede eliminar empleados.
 // - Solo Administrador puede editar empleados.
 //
 // Seguridad lógica:
+//
 // - Los empleados mostrados pertenecen únicamente al local actual.
 // - Los empleados creados reciben el id_local actual.
 // - El local de un empleado no puede cambiarse desde este módulo.
+//
 
 const tableBody =
     document.querySelector(
@@ -90,11 +97,11 @@ let currentLocalInfo = {
 let currentEmployeeContext =
     null;
 
-let unsubscribeEmployees =
-    null;
-
-let employeesLoadStarted =
+let employeesLoaded =
     false;
+
+let employeesLoadingPromise =
+    null;
 
 let isCreatingEmployee =
     false;
@@ -203,6 +210,15 @@ function buildPositionOptions(
         .join("");
 }
 
+function getSafeString(
+    value = ""
+) {
+    return String(
+        value ||
+            ""
+    ).trim();
+}
+
 /*
  * ============================================================
  * CONTEXTO DEL USUARIO
@@ -229,8 +245,9 @@ async function resolveEmployeeContext(
     }
 
     /*
-     * Esta llamada reutiliza la caché de app.js.
-     * No ejecuta consultas nuevas si el contexto ya existe.
+     * app.js reutiliza el contexto de sesión.
+     * No se consulta nuevamente empleados/{uid}
+     * ni local/{id_local} si ya existe la caché.
      */
     const context =
         await window.getCurrentUserContext(
@@ -248,6 +265,7 @@ async function resolveEmployeeContext(
 
     currentRole =
         context.role ||
+        context.position ||
         "";
 
     currentLocalId =
@@ -306,8 +324,7 @@ async function resolveEmployeeContext(
     renderGreeting(
         context.name ||
             "Usuario",
-        context.role ||
-            ""
+        currentRole
     );
 
     return context;
@@ -354,11 +371,9 @@ function getCurrentLocalId() {
     }
 
     /*
-     * Fallback únicamente de memoria local.
-     * NO llama a window.getCurrentLocalId().
+     * Fallback de memoria persistente.
      *
-     * Esto evita crear otra cadena de llamadas
-     * entre módulos.
+     * No realiza ninguna lectura a Firestore.
      */
     try {
         const stored =
@@ -491,6 +506,202 @@ function matchesCurrentLocal(
         docLocalId ===
         target
     );
+}
+
+/*
+ * ============================================================
+ * CACHE DE SESIÓN
+ * ============================================================
+ *
+ * Toda lectura del listado de empleados pasa por app.js.
+ *
+ * No se usa:
+ *
+ * db.collection("empleados")...
+ *
+ * para obtener el listado.
+ */
+
+function getEmployeesFromSessionCache() {
+    if (
+        typeof window.getSessionCollection !==
+        "function"
+    ) {
+        throw new Error(
+            "app.js no expuso getSessionCollection()."
+        );
+    }
+
+    const documents =
+        window.getSessionCollection(
+            EMPLOYEE_COLLECTION
+        );
+
+    if (
+        !Array.isArray(
+            documents
+        )
+    ) {
+        return [];
+    }
+
+    const localId =
+        getCurrentLocalId();
+
+    return documents
+        .filter(
+            ({
+                data
+            }) =>
+                matchesCurrentLocal(
+                    data
+                )
+        )
+        .map(
+            ({
+                id,
+                data
+            }) => ({
+                id,
+
+                ...data,
+
+                id_local:
+                    localId,
+
+                localId:
+                    localId,
+
+                localNombre:
+                    data.localNombre ||
+                    currentLocalInfo.nombre ||
+                    "",
+
+                localNumeroDocumento:
+                    data.localNumeroDocumento ||
+                    currentLocalInfo.numeroDocumento ||
+                    "",
+
+                localUbicacion:
+                    data.localUbicacion ||
+                    currentLocalInfo.ubicacion ||
+                    "",
+
+                localContribuyente:
+                    data.localNombreContribuyente ||
+                    data.localContribuyente ||
+                    currentLocalInfo.contribuyente ||
+                    "",
+
+                localTipoDocumento:
+                    data.localTipoDocumento ||
+                    currentLocalInfo.tipoDocumento ||
+                    "",
+
+                localNIT:
+                    data.localNIT ||
+                    currentLocalInfo.nit ||
+                    "",
+
+                localNRC:
+                    data.localNRC ||
+                    currentLocalInfo.nrc ||
+                    ""
+            })
+        );
+}
+
+async function ensureEmployeesSessionCache() {
+    if (
+        employeesLoaded
+    ) {
+        return employees;
+    }
+
+    if (
+        employeesLoadingPromise
+    ) {
+        return employeesLoadingPromise;
+    }
+
+    const user =
+        auth.currentUser;
+
+    if (!user) {
+        throw new Error(
+            "No hay un usuario autenticado."
+        );
+    }
+
+    employeesLoadingPromise =
+        (async () => {
+            /*
+             * app.js ya debe haber precargado la caché
+             * durante el login.
+             *
+             * Esta llamada solo restaura la caché si
+             * la página fue recargada.
+             */
+            if (
+                typeof window.ensureSessionDataLoaded ===
+                "function"
+            ) {
+                await window.ensureSessionDataLoaded(
+                    user
+                );
+            }
+
+            employees =
+                getEmployeesFromSessionCache();
+
+            sortEmployees();
+
+            employeesLoaded =
+                true;
+
+            renderFilteredEmployees();
+
+            return employees;
+        })()
+            .finally(
+                () => {
+                    employeesLoadingPromise =
+                        null;
+                }
+            );
+
+    return employeesLoadingPromise;
+}
+
+function sortEmployees() {
+    employees.sort(
+        (
+            a,
+            b
+        ) =>
+            String(
+                a.name ||
+                    ""
+            ).localeCompare(
+                String(
+                    b.name ||
+                        ""
+                ),
+                "es"
+            )
+    );
+}
+
+function syncEmployeesFromSessionCache() {
+    employees =
+        getEmployeesFromSessionCache();
+
+    sortEmployees();
+
+    employeesLoaded =
+        true;
+
+    renderFilteredEmployees();
 }
 
 /*
@@ -730,204 +941,6 @@ function renderFilteredEmployees() {
 
 /*
  * ============================================================
- * LISTENER DE EMPLEADOS
- * ============================================================
- */
-
-function stopEmployeesListener() {
-    if (
-        typeof unsubscribeEmployees ===
-        "function"
-    ) {
-        unsubscribeEmployees();
-
-        unsubscribeEmployees =
-            null;
-    }
-
-    employeesLoadStarted =
-        false;
-}
-
-function loadEmployees() {
-    const localId =
-        getCurrentLocalId();
-
-    if (
-        !localId
-    ) {
-        employees =
-            [];
-
-        renderEmployees(
-            []
-        );
-
-        renderLocalWarning();
-
-        return null;
-    }
-
-    /*
-     * Evita registrar dos listeners para el mismo módulo.
-     */
-    if (
-        employeesLoadStarted &&
-        unsubscribeEmployees
-    ) {
-        return unsubscribeEmployees;
-    }
-
-    employeesLoadStarted =
-        true;
-
-    /*
-     * Si por algún motivo existiera un listener anterior,
-     * se cancela antes de crear otro.
-     */
-    if (
-        typeof unsubscribeEmployees ===
-        "function"
-    ) {
-        unsubscribeEmployees();
-    }
-
-    unsubscribeEmployees =
-        db
-            .collection(
-                EMPLOYEE_COLLECTION
-            )
-            .where(
-                "id_local",
-                "==",
-                localId
-            )
-            .onSnapshot(
-                snapshot => {
-                    employees =
-                        [];
-
-                    const localInfo =
-                        getCurrentLocalInfo();
-
-                    snapshot.forEach(
-                        doc => {
-                            const data =
-                                doc.data() ||
-                                {};
-
-                            /*
-                             * Protección adicional.
-                             */
-                            if (
-                                String(
-                                    data.id_local ||
-                                        data.idLocal ||
-                                        data.localId ||
-                                        data.idlocal ||
-                                        ""
-                                ).trim() !==
-                                localId
-                            ) {
-                                return;
-                            }
-
-                            employees.push({
-                                id:
-                                    doc.id,
-
-                                ...data,
-
-                                localId:
-                                    localId,
-
-                                localNombre:
-                                    data.localNombre ||
-                                    localInfo.nombre ||
-                                    "",
-
-                                localNumeroDocumento:
-                                    data.localNumeroDocumento ||
-                                    localInfo.numeroDocumento ||
-                                    "",
-
-                                localUbicacion:
-                                    data.localUbicacion ||
-                                    localInfo.ubicacion ||
-                                    "",
-
-                                localContribuyente:
-                                    data.localNombreContribuyente ||
-                                    localInfo.contribuyente ||
-                                    "",
-
-                                localTipoDocumento:
-                                    data.localTipoDocumento ||
-                                    localInfo.tipoDocumento ||
-                                    "",
-
-                                localNIT:
-                                    data.localNIT ||
-                                    localInfo.nit ||
-                                    "",
-
-                                localNRC:
-                                    data.localNRC ||
-                                    localInfo.nrc ||
-                                    ""
-                            });
-                        }
-                    );
-
-                    employees.sort(
-                        (
-                            a,
-                            b
-                        ) =>
-                            String(
-                                a.name ||
-                                    ""
-                            ).localeCompare(
-                                String(
-                                    b.name ||
-                                        ""
-                                ),
-                                "es"
-                            )
-                    );
-
-                    renderFilteredEmployees();
-                },
-
-                err => {
-                    console.error(
-                        "Error cargando empleados:",
-                        err
-                    );
-
-                    employees =
-                        [];
-
-                    if (
-                        tableBody
-                    ) {
-                        tableBody.innerHTML =
-                            `
-                                <tr>
-                                    <td colspan="5">
-                                        Error cargando empleados
-                                    </td>
-                                </tr>
-                            `;
-                    }
-                }
-            );
-
-    return unsubscribeEmployees;
-}
-
-/*
- * ============================================================
  * FIREBASE AUTH REST
  * ============================================================
  */
@@ -1060,7 +1073,7 @@ async function createEmployeeInAuthAndFirestore(
         getCurrentLocalInfo();
 
     /*
-     * Authentication.
+     * Crear cuenta de Authentication.
      */
     const authUser =
         await createAuthUserWithEmailPassword(
@@ -1080,94 +1093,144 @@ async function createEmployeeInAuthAndFirestore(
     }
 
     /*
-     * Firestore.
+     * Preparar el documento del empleado.
      */
-    await db
-        .collection(
-            EMPLOYEE_COLLECTION
-        )
-        .doc(
-            uid
-        )
-        .set({
+    const employeeData = {
+        uid,
+
+        name:
+            employee.name,
+
+        email:
+            employee.email,
+
+        position:
+            employee.position,
+
+        phone:
+            employee.phone,
+
+        id_local:
+            localId,
+
+        localNombre:
+            localInfo.nombre ||
+            "",
+
+        localNumeroDocumento:
+            localInfo.numeroDocumento ||
+            "",
+
+        localUbicacion:
+            localInfo.ubicacion ||
+            "",
+
+        localNombreContribuyente:
+            localInfo.contribuyente ||
+            "",
+
+        localContribuyente:
+            localInfo.contribuyente ||
+            "",
+
+        localTipoDocumento:
+            localInfo.tipoDocumento ||
+            "",
+
+        localNIT:
+            localInfo.nit ||
+            "",
+
+        localNRC:
+            localInfo.nrc ||
+            "",
+
+        active:
+            true,
+
+        blocked:
+            false,
+
+        failedLoginAttempts:
+            0,
+
+        lastLoginAt:
+            null,
+
+        lastAccessAt:
+            null,
+
+        lastFailedAt:
+            null,
+
+        createdBy:
+            auth.currentUser
+                ? auth.currentUser.uid
+                : null,
+
+        createdAt:
+            Date.now(),
+
+        updatedAt:
+            Date.now()
+    };
+
+    /*
+     * Guardar en Firestore.
+     */
+    try {
+        await db
+            .collection(
+                EMPLOYEE_COLLECTION
+            )
+            .doc(
+                uid
+            )
+            .set({
+                ...employeeData,
+
+                createdAt:
+                    firebase.firestore
+                        .FieldValue
+                        .serverTimestamp(),
+
+                updatedAt:
+                    firebase.firestore
+                        .FieldValue
+                        .serverTimestamp()
+            });
+    } catch (
+        error
+    ) {
+        /*
+         * Authentication ya fue creada.
+         *
+         * Se informa claramente del estado para no afirmar
+         * que la operación completa fue revertida.
+         */
+        throw new Error(
+            `La cuenta de Authentication fue creada, pero no se pudo guardar el perfil de Firestore: ${
+                error.message ||
+                error
+            }`
+        );
+    }
+
+    /*
+     * Actualizar inmediatamente la caché.
+     *
+     * No se necesita leer nuevamente empleados.
+     */
+    if (
+        typeof window.upsertSessionDocument ===
+        "function"
+    ) {
+        window.upsertSessionDocument(
+            EMPLOYEE_COLLECTION,
             uid,
-
-            name:
-                employee.name,
-
-            email:
-                employee.email,
-
-            position:
-                employee.position,
-
-            phone:
-                employee.phone,
-
-            id_local:
-                localId,
-
-            localNombre:
-                localInfo.nombre ||
-                "",
-
-            localNumeroDocumento:
-                localInfo.numeroDocumento ||
-                "",
-
-            localUbicacion:
-                localInfo.ubicacion ||
-                "",
-
-            localNombreContribuyente:
-                localInfo.contribuyente ||
-                "",
-
-            localTipoDocumento:
-                localInfo.tipoDocumento ||
-                "",
-
-            localNIT:
-                localInfo.nit ||
-                "",
-
-            localNRC:
-                localInfo.nrc ||
-                "",
-
-            active:
-                true,
-
-            blocked:
-                false,
-
-            failedLoginAttempts:
-                0,
-
-            lastLoginAt:
-                null,
-
-            lastAccessAt:
-                null,
-
-            lastFailedAt:
-                null,
-
-            createdBy:
-                auth.currentUser
-                    ? auth.currentUser.uid
-                    : null,
-
-            createdAt:
-                firebase.firestore
-                    .FieldValue
-                    .serverTimestamp(),
-
-            updatedAt:
-                firebase.firestore
-                    .FieldValue
-                    .serverTimestamp()
-        });
+            employeeData
+        );
+    }
 
     return uid;
 }
@@ -1457,7 +1520,8 @@ async function handleCreateEmployee() {
 
                     return {
                         name,
-                        email,
+                        email:
+                            email.toLowerCase(),
                         password,
                         position,
                         phone
@@ -1483,30 +1547,32 @@ async function handleCreateEmployee() {
 
     try {
         /*
-         * Una sola consulta para comprobar duplicado.
+         * Ya no se consulta Firestore para comprobar duplicados.
+         *
+         * Se revisa la caché de sesión.
          */
-        const exists =
-            await db
-                .collection(
-                    EMPLOYEE_COLLECTION
-                )
-                .where(
-                    "email",
-                    "==",
-                    result.value.email
-                )
-                .where(
-                    "id_local",
-                    "==",
-                    localId
-                )
-                .limit(
-                    1
-                )
-                .get();
+        const normalizedEmail =
+            getSafeString(
+                result.value.email
+            ).toLowerCase();
+
+        const duplicate =
+            employees.some(
+                employee =>
+                    String(
+                        employee.email ||
+                            ""
+                    )
+                        .trim()
+                        .toLowerCase() ===
+                    normalizedEmail &&
+                    matchesCurrentLocal(
+                        employee
+                    )
+            );
 
         if (
-            !exists.empty
+            duplicate
         ) {
             await Swal.fire(
                 "Validación",
@@ -1521,12 +1587,21 @@ async function handleCreateEmployee() {
             result.value
         );
 
+        /*
+         * Refrescar desde la caché.
+         *
+         * No genera una lectura de Firestore.
+         */
+        syncEmployeesFromSessionCache();
+
         await Swal.fire(
             "Empleado guardado",
-            "La cuenta también fue creada en Authentication.",
+            "La cuenta fue creada en Authentication y el perfil fue guardado en Firestore.",
             "success"
         );
-    } catch (err) {
+    } catch (
+        err
+    ) {
         console.error(
             "Error creando empleado:",
             err
@@ -1659,12 +1734,31 @@ async function deleteEmployee(
             )
             .delete();
 
+        /*
+         * Eliminar el documento de la caché.
+         *
+         * No se vuelve a consultar empleados.
+         */
+        if (
+            typeof window.removeSessionDocument ===
+            "function"
+        ) {
+            window.removeSessionDocument(
+                EMPLOYEE_COLLECTION,
+                id
+            );
+        }
+
+        syncEmployeesFromSessionCache();
+
         await Swal.fire(
             "Empleado eliminado",
             "El perfil del empleado fue eliminado de Firestore.",
             "success"
         );
-    } catch (err) {
+    } catch (
+        err
+    ) {
         console.error(
             "Error eliminando empleado:",
             err
@@ -1964,6 +2058,22 @@ async function editEmployee(
     );
 
     try {
+        /*
+         * No se hace employeeRef.get().
+         *
+         * El empleado ya está en la caché de sesión y se
+         * validó que pertenece al local actual.
+         */
+        if (
+            !matchesCurrentLocal(
+                employee
+            )
+        ) {
+            throw new Error(
+                "El empleado no pertenece al local actual."
+            );
+        }
+
         const localInfo =
             getCurrentLocalInfo();
 
@@ -1976,37 +2086,7 @@ async function editEmployee(
                     id
                 );
 
-        /*
-         * Esta lectura sí es necesaria:
-         * confirma que el empleado no cambió
-         * de local desde que se cargó la tabla.
-         */
-        const latestSnap =
-            await employeeRef.get();
-
-        if (
-            !latestSnap.exists
-        ) {
-            throw new Error(
-                "El empleado ya no existe."
-            );
-        }
-
-        const latest =
-            latestSnap.data() ||
-            {};
-
-        if (
-            !matchesCurrentLocal(
-                latest
-            )
-        ) {
-            throw new Error(
-                "El empleado no pertenece al local actual."
-            );
-        }
-
-        await employeeRef.update({
+        const updatedEmployee = {
             name:
                 result.value.name,
 
@@ -2038,6 +2118,10 @@ async function editEmployee(
                 localInfo.contribuyente ||
                 "",
 
+            localContribuyente:
+                localInfo.contribuyente ||
+                "",
+
             localTipoDocumento:
                 localInfo.tipoDocumento ||
                 "",
@@ -2050,90 +2134,52 @@ async function editEmployee(
                 localInfo.nrc ||
                 "",
 
-            updatedAt:
-                firebase.firestore
-                    .FieldValue
-                    .serverTimestamp(),
-
             updatedBy:
                 auth.currentUser
                     ? auth.currentUser.uid
-                    : null
+                    : null,
+
+            updatedAt:
+                Date.now()
+        };
+
+        await employeeRef.update({
+            ...updatedEmployee,
+
+            updatedAt:
+                firebase.firestore
+                    .FieldValue
+                    .serverTimestamp()
         });
 
-        const index =
-            employees.findIndex(
-                emp =>
-                    String(
-                        emp.id
-                    ) ===
-                    String(id)
-            );
-
+        /*
+         * Actualizar caché.
+         */
         if (
-            index >=
-            0
+            typeof window.upsertSessionDocument ===
+            "function"
         ) {
-            employees[
-                index
-            ] = {
-                ...employees[
-                    index
-                ],
-
-                name:
-                    result.value.name,
-
-                email:
-                    result.value.email,
-
-                position:
-                    result.value.position,
-
-                phone:
-                    result.value.phone,
-
-                id_local:
-                    currentLocalId,
-
-                localNombre:
-                    localInfo.nombre ||
-                    "",
-
-                localNumeroDocumento:
-                    localInfo.numeroDocumento ||
-                    "",
-
-                localUbicacion:
-                    localInfo.ubicacion ||
-                    "",
-
-                localNombreContribuyente:
-                    localInfo.contribuyente ||
-                    "",
-
-                localTipoDocumento:
-                    localInfo.tipoDocumento ||
-                    "",
-
-                localNIT:
-                    localInfo.nit ||
-                    "",
-
-                localNRC:
-                    localInfo.nrc ||
-                    ""
-            };
+            window.upsertSessionDocument(
+                EMPLOYEE_COLLECTION,
+                id,
+                updatedEmployee
+            );
         }
 
-        renderFilteredEmployees();
+        /*
+         * Actualizar la referencia local del módulo
+         * sin volver a consultar Firestore.
+         */
+        syncEmployeesFromSessionCache();
 
         await Swal.fire(
             "Empleado actualizado",
             "",
             "success"
         );
-    } catch (err) {
+    } catch (
+        err
+    ) {
         console.error(
             "Error actualizando empleado:",
             err
@@ -2185,8 +2231,6 @@ if (
 auth.onAuthStateChanged(
     async user => {
         if (!user) {
-            stopEmployeesListener();
-
             window.location.href =
                 "index.html";
 
@@ -2242,8 +2286,14 @@ auth.onAuthStateChanged(
                 );
             }
 
-            loadEmployees();
-        } catch (err) {
+            /*
+             * Leer empleados exclusivamente desde la caché.
+             */
+            await ensureEmployeesSessionCache();
+
+        } catch (
+            err
+        ) {
             console.error(
                 "Error inicializando empleados:",
                 err
@@ -2256,7 +2306,7 @@ auth.onAuthStateChanged(
                     `
                         <tr>
                             <td colspan="5">
-                                No se pudo cargar el contexto del usuario.
+                                No se pudo cargar el contexto o la caché de empleados.
                             </td>
                         </tr>
                     `;
@@ -2271,22 +2321,9 @@ auth.onAuthStateChanged(
 
                 text:
                     err.message ||
-                    "No se pudo resolver el usuario o local actual."
+                    "No se pudo resolver el usuario, el local o la caché de sesión."
             });
         }
-    }
-);
-
-/*
- * ============================================================
- * LIMPIEZA
- * ============================================================
- */
-
-window.addEventListener(
-    "beforeunload",
-    () => {
-        stopEmployeesListener();
     }
 );
 

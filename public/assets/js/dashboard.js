@@ -4,38 +4,26 @@
 //
 // Arquitectura:
 //
-// - No usa onSnapshot() de Firestore.
-// - No usa listeners realtime sobre colecciones.
-// - El contexto de usuario/local proviene exclusivamente de app.js.
-// - La información del dashboard se carga una sola vez por página.
-// - Se realizan cuatro lecturas iniciales:
-//      1. ventas
-//      2. gastos
-//      3. stock_movimientos
-//      4. productos
-// - Las consultas se filtran por id_local.
-// - No se utiliza orderBy().
-// - El rango, la búsqueda y las exportaciones trabajan sobre
-//   los datos que ya están en memoria.
-// - No se vuelve a consultar Firestore al cambiar el rango.
-// - El cierre de caja reutiliza rawSalesDocs.
-// - Crear o modificar datos desde otros módulos no actualiza
-//   automáticamente esta página porque no hay listeners realtime.
-//   Para obtener datos nuevos se debe recargar el dashboard.
+// - No usa onSnapshot().
+// - No usa listeners realtime.
+// - No consulta Firestore para leer ventas.
+// - No consulta Firestore para leer gastos.
+// - No consulta Firestore para leer stock_movimientos.
+// - No consulta Firestore para leer productos.
 //
-// MOVIMIENTOS EXCEL:
+// Los datos se obtienen de la caché de sesión creada por app.js.
 //
-// - Se agrega correlativo No.
-// - Se agrega Proveedor.
-// - Se elimina Hora del Excel.
-// - Se elimina Detalle del Excel.
-// - Los encabezados del Excel se simplifican.
-// - Los movimientos exportados se ordenan por fecha ascendente.
-// - No se realiza una lectura adicional de "proveedores".
-// - El proveedor se obtiene del propio documento de movimiento
-//   y de estructuras anidadas compatibles.
+// La primera vez que se inicia la sesión:
 //
-// ============================================================
+//     app.js -> Firestore -> sessionStorage
+//
+// Después:
+//
+//     dashboard.js -> sessionStorage
+//
+// Los filtros, búsquedas, estadísticas y exportaciones
+// funcionan completamente en memoria.
+//
 
 document.addEventListener(
   "DOMContentLoaded",
@@ -702,7 +690,9 @@ document.addEventListener(
     async function resolveDashboardContext(
       user
     ) {
-      if (!user) {
+      if (
+        !user
+      ) {
         throw new Error(
           "No existe un usuario autenticado."
         );
@@ -727,6 +717,19 @@ document.addEventListener(
       ) {
         throw new Error(
           "No se pudo resolver el contexto del usuario."
+        );
+      }
+
+      /*
+       * Garantizar que la caché exista antes de
+       * intentar leer sus colecciones.
+       */
+      if (
+        typeof window.ensureSessionDataLoaded ===
+        "function"
+      ) {
+        await window.ensureSessionDataLoaded(
+          user
         );
       }
 
@@ -900,8 +903,8 @@ document.addEventListener(
         </p>
 
         <p class="hero-subtitle">
-          Los datos se cargan una vez y los filtros
-          posteriores funcionan en memoria.
+          Los datos de esta sesión se cargaron una sola vez.
+          Los filtros y búsquedas trabajan en memoria.
         </p>
       `;
     }
@@ -1634,32 +1637,6 @@ document.addEventListener(
         "—";
     }
 
-    /*
-     * ==========================================================
-     * PROVEEDOR DEL MOVIMIENTO
-     * ==========================================================
-     *
-     * El proveedor es opcional.
-     *
-     * Se intenta localizar el nombre directamente dentro
-     * del movimiento para no generar una lectura adicional
-     * de la colección "proveedores".
-     *
-     * Se contemplan nombres comunes:
-     *
-     * proveedorNombre
-     * nombreProveedor
-     * supplierName
-     * proveedor.nombre
-     * proveedor.name
-     * supplier.nombre
-     * supplier.name
-     * nombre
-     *
-     * También se permite recuperar el nombre dentro de
-     * estructuras anidadas del movimiento.
-     */
-
     function getMovementSupplierName(
       movement
     ) {
@@ -1812,13 +1789,6 @@ document.addEventListener(
       movement,
       product
     ) {
-      /*
-       * ==========================================================
-       * 1. COSTO HISTÓRICO DEL MOVIMIENTO
-       * ==========================================================
-       *
-       * Tiene prioridad absoluta.
-       */
       const movementCosts = [
         movement?.costoUnitario,
         movement?.unitCost,
@@ -1845,14 +1815,6 @@ document.addEventListener(
         }
       }
 
-      /*
-       * ==========================================================
-       * 2. FALLBACK AL PRODUCTO ACTUAL
-       * ==========================================================
-       *
-       * Esto se utiliza únicamente para movimientos antiguos
-       * que no tenían costo almacenado.
-       */
       if (
         product
       ) {
@@ -2048,65 +2010,65 @@ document.addEventListener(
 
     /*
      * ==========================================================
-     * LECTURAS FIRESTORE
+     * LECTURAS DE SESIÓN
      * ==========================================================
      */
 
-    async function loadCollectionByLocal(
+    function loadCollectionFromSession(
       collectionName
     ) {
-      const snapshot =
-        await db
-          .collection(
-            collectionName
-          )
-          .where(
-            "id_local",
-            "==",
-            currentLocalId
-          )
-          .get();
+      if (
+        typeof window.getSessionCollection !==
+        "function"
+      ) {
+        throw new Error(
+          "app.js no expuso getSessionCollection()."
+        );
+      }
 
       const documents =
-        [];
+        window.getSessionCollection(
+          collectionName
+        );
 
-      snapshot.forEach(
-        doc => {
-          const data =
-            doc.data() ||
-            {};
+      if (
+        !Array.isArray(
+          documents
+        )
+      ) {
+        return [];
+      }
 
-          if (
-            !matchesCurrentLocal(
+      return documents
+        .filter(
+          ({
+            data
+          }) =>
+            matchesCurrentLocal(
               data
             )
-          ) {
-            return;
-          }
-
-          documents.push({
-            id:
-              doc.id,
-
+        )
+        .map(
+          ({
+            id,
             data
-          });
-        }
-      );
-
-      documents.sort(
-        (
-          a,
-          b
-        ) =>
-          getTimestampMs(
-            b.data.createdAt
-          ) -
-          getTimestampMs(
-            a.data.createdAt
-          )
-      );
-
-      return documents;
+          }) => ({
+            id,
+            data
+          })
+        )
+        .sort(
+          (
+            a,
+            b
+          ) =>
+            getTimestampMs(
+              b.data.createdAt
+            ) -
+            getTimestampMs(
+              a.data.createdAt
+            )
+        );
     }
 
     async function loadDashboardDataOnce() {
@@ -2131,67 +2093,71 @@ document.addEventListener(
       }
 
       dashboardLoadingPromise =
-        Promise.all([
-          loadCollectionByLocal(
-            SALES_COLLECTION_NAME
-          ),
+        (async () => {
+          /*
+           * Garantizar que la caché esté disponible.
+           *
+           * Normalmente esta función no genera lecturas porque
+           * app.js ya preparó la sesión al iniciar sesión.
+           */
+          if (
+            typeof window.ensureSessionDataLoaded ===
+            "function"
+          ) {
+            await window.ensureSessionDataLoaded(
+              auth.currentUser
+            );
+          }
 
-          loadCollectionByLocal(
-            EXPENSES_COLLECTION_NAME
-          ),
+          rawSalesDocs =
+            loadCollectionFromSession(
+              SALES_COLLECTION_NAME
+            );
 
-          loadCollectionByLocal(
-            MOVEMENTS_COLLECTION_NAME
-          ),
+          rawExpensesDocs =
+            loadCollectionFromSession(
+              EXPENSES_COLLECTION_NAME
+            );
 
-          loadCollectionByLocal(
-            PRODUCTS_COLLECTION_NAME
-          )
-        ])
-          .then(
-            results => {
-              rawSalesDocs =
-                results[0];
+          rawMovementsDocs =
+            loadCollectionFromSession(
+              MOVEMENTS_COLLECTION_NAME
+            );
 
-              rawExpensesDocs =
-                results[1];
+          rawProductsDocs =
+            loadCollectionFromSession(
+              PRODUCTS_COLLECTION_NAME
+            );
 
-              rawMovementsDocs =
-                results[2];
+          rebuildProductsMap();
 
-              rawProductsDocs =
-                results[3];
+          dashboardDataLoaded =
+            true;
 
-              rebuildProductsMap();
+          debugLog(
+            "Carga desde caché de sesión completada:",
+            {
+              ventas:
+                rawSalesDocs.length,
 
-              dashboardDataLoaded =
-                true;
+              gastos:
+                rawExpensesDocs.length,
 
-              debugLog(
-                "Carga puntual completada:",
-                {
-                  ventas:
-                    rawSalesDocs.length,
+              movimientos:
+                rawMovementsDocs.length,
 
-                  gastos:
-                    rawExpensesDocs.length,
-
-                  movimientos:
-                    rawMovementsDocs.length,
-
-                  productos:
-                    rawProductsDocs.length
-                }
-              );
+              productos:
+                rawProductsDocs.length
             }
-          )
+          );
+        })()
           .catch(
             error => {
               dashboardDataLoaded =
                 false;
 
               debugError(
-                "Error cargando datos del dashboard:",
+                "Error leyendo la caché del dashboard:",
                 error
               );
 
@@ -2578,13 +2544,6 @@ document.addEventListener(
               };
             }
           )
-
-          /*
-           * IMPORTANTE:
-           * Los movimientos se ordenan de forma ascendente
-           * por fecha, desde el registro más antiguo
-           * hasta el más reciente.
-           */
           .sort(
             (
               a,
@@ -3997,34 +3956,6 @@ document.addEventListener(
         const period =
           formatPeriodForExcel();
 
-        /*
-         * ======================================================
-         * ENCABEZADOS SIMPLIFICADOS
-         * ======================================================
-         *
-         * A No.
-         * B Fecha
-         * C Producto
-         * D Código
-         * E Documento
-         * F Libro
-         * G Proveedor
-         * H Costo
-         * I Valor
-         * J Entrada
-         * K Salida
-         * L Saldo ant.
-         * M Saldo actual
-         *
-         * Se eliminan:
-         * - Hora
-         * - Detalle
-         *
-         * Se agrega:
-         * - No.
-         * - Proveedor
-         */
-
         const headers = [
           "No.",
           "Fecha",
@@ -4040,15 +3971,6 @@ document.addEventListener(
           "Saldo ant.",
           "Saldo actual"
         ];
-
-        /*
-         * ======================================================
-         * FILAS
-         * ======================================================
-         *
-         * El correlativo es independiente del ID de Firestore.
-         * Siempre inicia en 1 y aumenta secuencialmente.
-         */
 
         const rows =
           source.map(
@@ -4157,12 +4079,6 @@ document.addEventListener(
             sheetData
           );
 
-        /*
-         * ======================================================
-         * ANCHO DE COLUMNAS
-         * ======================================================
-         */
-
         worksheet["!cols"] = [
           {
             wch:
@@ -4252,15 +4168,6 @@ document.addEventListener(
               24
           }
         ];
-
-        /*
-         * ======================================================
-         * COMBINACIONES
-         * ======================================================
-         *
-         * Se mantienen las combinaciones del encabezado,
-         * ajustadas a las mismas 13 columnas A:M.
-         */
 
         worksheet["!merges"] = [
           {
@@ -4408,17 +4315,6 @@ document.addEventListener(
           }
         ];
 
-        /*
-         * ======================================================
-         * FORMATO MONETARIO
-         * ======================================================
-         *
-         * H = Costo
-         * I = Valor
-         *
-         * Los datos empiezan en la fila 9.
-         */
-
         const firstDataRow =
           9;
 
@@ -4456,12 +4352,6 @@ document.addEventListener(
               "$#,##0.00";
           }
         }
-
-        /*
-         * ======================================================
-         * ÁREA DE IMPRESIÓN
-         * ======================================================
-         */
 
         worksheet[
           "!printArea"
@@ -4505,12 +4395,6 @@ document.addEventListener(
           footer:
             0.15
         };
-
-        /*
-         * ======================================================
-         * LIBRO
-         * ======================================================
-         */
 
         const workbook =
           XLSX.utils.book_new();
@@ -4573,7 +4457,7 @@ document.addEventListener(
           "success"
         );
       } catch (
-      error
+        error
       ) {
         debugError(
           "Error exportando movimientos a Excel:",
@@ -4593,6 +4477,9 @@ document.addEventListener(
      * ==========================================================
      * CIERRE DE CAJA
      * ==========================================================
+     *
+     * Esto sigue siendo una escritura en Firestore.
+     * La lectura de ventas se realiza desde la caché.
      */
 
     async function closeDay() {
@@ -4690,62 +4577,87 @@ document.addEventListener(
           }
         );
 
-        await db
-          .collection(
-            "cierres_caja"
-          )
-          .add({
-            date:
-              firebase.firestore
-                .FieldValue
-                .serverTimestamp(),
+        const payload = {
+          date:
+            firebase.firestore
+              .FieldValue
+              .serverTimestamp(),
 
-            dateString:
-              toLocalInputDate(
-                start
-              ),
+          dateString:
+            toLocalInputDate(
+              start
+            ),
 
-            total,
+          total,
 
-            createdBy:
-              auth.currentUser
-                ? auth.currentUser.uid
-                : null,
+          createdBy:
+            auth.currentUser
+              ? auth.currentUser.uid
+              : null,
 
-            type:
-              "ventas",
+          type:
+            "ventas",
 
-            id_local:
-              currentLocalId,
+          id_local:
+            currentLocalId,
 
-            localNombre:
-              currentLocalInfo.nombre ||
-              "",
+          localNombre:
+            currentLocalInfo.nombre ||
+            "",
 
-            localNumeroDocumento:
-              currentLocalInfo.numeroDocumento ||
-              "",
+          localNumeroDocumento:
+            currentLocalInfo.numeroDocumento ||
+            "",
 
-            localUbicacion:
-              currentLocalInfo.ubicacion ||
-              "",
+          localUbicacion:
+            currentLocalInfo.ubicacion ||
+            "",
 
-            localContribuyente:
-              currentLocalInfo.contribuyente ||
-              "",
+          localContribuyente:
+            currentLocalInfo.contribuyente ||
+            "",
 
-            localTipoDocumento:
-              currentLocalInfo.tipoDocumento ||
-              "",
+          localTipoDocumento:
+            currentLocalInfo.tipoDocumento ||
+            "",
 
-            localNIT:
-              currentLocalInfo.nit ||
-              "",
+          localNIT:
+            currentLocalInfo.nit ||
+            "",
 
-            localNRC:
-              currentLocalInfo.nrc ||
-              ""
-          });
+          localNRC:
+            currentLocalInfo.nrc ||
+            ""
+        };
+
+        const ref =
+          await db
+            .collection(
+              "cierres_caja"
+            )
+            .add(
+              payload
+            );
+
+        /*
+         * Mantener la colección de cierres de caja consistente
+         * dentro de la caché durante esta sesión.
+         */
+        if (
+          typeof window.upsertSessionDocument ===
+          "function"
+        ) {
+          window.upsertSessionDocument(
+            "cierres_caja",
+            ref.id,
+            {
+              ...payload,
+
+              date:
+                Date.now()
+            }
+          );
+        }
 
         await Swal.fire({
           icon:
@@ -4760,7 +4672,7 @@ document.addEventListener(
             )}`
         });
       } catch (
-      error
+        error
       ) {
         debugError(
           "Error en cierre de caja:",
@@ -4824,7 +4736,7 @@ document.addEventListener(
       try {
         await loadDashboardForRange();
       } catch (
-      error
+        error
       ) {
         debugError(
           "Error aplicando rango:",
@@ -4853,7 +4765,7 @@ document.addEventListener(
       try {
         await loadDashboardForRange();
       } catch (
-      error
+        error
       ) {
         debugError(
           "Error restaurando rango:",
@@ -4896,7 +4808,7 @@ document.addEventListener(
 
         await loadDashboardForRange();
       } catch (
-      error
+        error
       ) {
         initialized =
           false;
@@ -4931,6 +4843,13 @@ document.addEventListener(
         if (
           !user
         ) {
+          if (
+            typeof window.clearSessionDataCache ===
+            "function"
+          ) {
+            window.clearSessionDataCache();
+          }
+
           window.location.href =
             "index.html";
 
