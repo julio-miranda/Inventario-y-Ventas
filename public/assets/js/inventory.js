@@ -50,6 +50,11 @@
 // - Las cantidades bono no generan costo.
 // - Una carga múltiple genera un solo gasto consolidado.
 //
+// - Los movimientos de inventario guardan:
+//      costoUnitario
+//   correspondiente al costo por unidad vigente
+//   en el momento de la operación.
+//
 
 (function () {
   "use strict";
@@ -562,14 +567,6 @@
       );
     }
 
-    /*
-     * Garantizar que la caché esté preparada.
-     *
-     * En una sesión nueva app.js precargará la información.
-     *
-     * En una navegación posterior simplemente restaurará
-     * sessionStorage.
-     */
     await ensureInventorySessionData(
       user
     );
@@ -710,12 +707,6 @@
    * ============================================================
    * PROVEEDORES
    * ============================================================
-   *
-   * Ya NO se realiza:
-   *
-   * db.collection("proveedores").where(...).get()
-   *
-   * La información proviene exclusivamente de app.js.
    */
 
   function normalizeProviderObject(
@@ -762,10 +753,6 @@
   }
 
   async function loadInventoryProviders() {
-    /*
-     * Primero se intenta garantizar que la sesión exista.
-     * No se genera una nueva lectura si app.js ya la tiene.
-     */
     await ensureInventorySessionData(
       auth.currentUser
     );
@@ -1558,9 +1545,6 @@
         totalUnits
     };
 
-    /*
-     * La escritura sí continúa en Firestore.
-     */
     await expenseRef.set({
       ...expenseData,
 
@@ -1570,11 +1554,6 @@
           .serverTimestamp()
     });
 
-    /*
-     * La caché recibe una representación localizable.
-     * No se introduce FieldValue.serverTimestamp()
-     * en sessionStorage.
-     */
     upsertSessionDocument(
       EXPENSES_COLLECTION,
       expenseRef.id,
@@ -1638,12 +1617,6 @@
    * ============================================================
    * VENTAS
    * ============================================================
-   *
-   * Ahora recibe documentos de la caché:
-   *
-   * [
-   *   { id, data }
-   * ]
    */
 
   function aggregateMonthlySales(
@@ -1712,10 +1685,6 @@
           return;
         }
 
-        /*
-         * Si una venta antigua no tiene createdAt
-         * no se incluye en la métrica mensual.
-         */
         if (
           !createdAtMs
         ) {
@@ -2991,13 +2960,6 @@
           return;
         }
 
-        /*
-         * ======================================================
-         * PRODUCTOS
-         * ======================================================
-         *
-         * No se consulta Firestore.
-         */
         const productDocuments =
           getSessionCollection(
             PRODUCTS_COLLECTION
@@ -3142,13 +3104,6 @@
         currentProductsList =
           products;
 
-        /*
-         * ======================================================
-         * VENTAS
-         * ======================================================
-         *
-         * No se consulta Firestore.
-         */
         const salesDocuments =
           getSessionCollection(
             SALES_COLLECTION
@@ -3194,10 +3149,6 @@
    * ============================================================
    * MOVIMIENTOS
    * ============================================================
-   *
-   * Ya no se consulta Firestore para leer movimientos.
-   *
-   * La escritura permanece en Firestore.
    */
 
   function invalidateProductStockMovementsCache(
@@ -3320,6 +3271,16 @@
                       ""
                   ).trim(),
 
+                /*
+                 * NUEVO:
+                 * conservar el costo unitario histórico
+                 * guardado en el movimiento.
+                 */
+                costoUnitario:
+                  numberOrZero(
+                    data.costoUnitario
+                  ),
+
                 createdAtMs:
                   getTimestampMs(
                     data.createdAt
@@ -3422,6 +3383,12 @@
    * ============================================================
    * REGISTRAR MOVIMIENTO
    * ============================================================
+   *
+   * NUEVO CAMPO:
+   *
+   *   costoUnitario
+   *
+   * Representa el costo histórico por unidad del movimiento.
    */
 
   function buildMovementData({
@@ -3435,6 +3402,7 @@
     salida,
     saldoAnterior,
     saldoActual,
+    costoUnitario,
     detalle,
     user
   }) {
@@ -3495,6 +3463,20 @@
       saldoActual:
         numberOrZero(
           saldoActual
+        ),
+
+      /*
+       * ========================================================
+       * NUEVO:
+       * COSTO UNITARIO HISTÓRICO DEL MOVIMIENTO
+       * ========================================================
+       */
+      costoUnitario:
+        Math.max(
+          0,
+          numberOrZero(
+            costoUnitario
+          )
         ),
 
       detalle:
@@ -3730,6 +3712,13 @@
         )
         .doc();
 
+    /*
+     * ==========================================================
+     * MOVIMIENTO DEL PRODUCTO NUEVO
+     * ==========================================================
+     *
+     * costoUnitario = lastCostPerUnit
+     */
     const movementData =
       buildMovementData({
         productId:
@@ -3764,6 +3753,9 @@
         saldoActual:
           totalUnits,
 
+        costoUnitario:
+          lastCostPerUnit,
+
         detalle:
           [
             `Cajas: ${paidBoxes}`,
@@ -3772,7 +3764,11 @@
 
             `Unidades: ${paidUnits}`,
 
-            `Unidades bono: ${bonusUnits}`
+            `Unidades bono: ${bonusUnits}`,
+
+            `Costo unitario: ${currency(
+              lastCostPerUnit
+            )}`
           ].join(
             " | "
           ),
@@ -3780,9 +3776,6 @@
         user
       });
 
-    /*
-     * Guardar producto + movimiento en una sola operación.
-     */
     const batch =
       db.batch();
 
@@ -3959,16 +3952,8 @@
       await db.runTransaction(
         async transaction => {
           /*
-           * ======================================================
-           * ESTA LECTURA ES INTENCIONAL
-           * ======================================================
-           *
-           * Se conserva únicamente en la transacción porque
-           * necesitamos el valor más reciente de Firestore para
-           * evitar perder actualizaciones concurrentes.
-           *
-           * Las lecturas normales del inventario ya no utilizan
-           * Firestore.
+           * Esta lectura se conserva únicamente dentro
+           * de la transacción para garantizar consistencia.
            */
           const snap =
             await transaction.get(
@@ -4066,6 +4051,13 @@
               )
               .doc();
 
+          /*
+           * ======================================================
+           * MOVIMIENTO DE ENTRADA
+           * ======================================================
+           *
+           * costoUnitario = nextCostPerUnit
+           */
           movementData =
             buildMovementData({
               productId:
@@ -4106,6 +4098,9 @@
               saldoActual:
                 nextStock,
 
+              costoUnitario:
+                nextCostPerUnit,
+
               detalle:
                 [
                   `Cajas: ${paidBoxes}`,
@@ -4114,7 +4109,11 @@
 
                   `Unidades: ${paidUnits}`,
 
-                  `Unidades bono: ${bonusUnits}`
+                  `Unidades bono: ${bonusUnits}`,
+
+                  `Costo unitario: ${currency(
+                    nextCostPerUnit
+                  )}`
                 ].join(
                   " | "
                 ),
@@ -5995,12 +5994,6 @@
           0
         );
 
-      /*
-       * ========================================================
-       * COSTO TOTAL
-       * ========================================================
-       */
-
       const totalPurchaseCost =
         lines.reduce(
           (
@@ -6015,12 +6008,6 @@
             ),
           0
         );
-
-      /*
-       * ========================================================
-       * GASTO AUTOMÁTICO
-       * ========================================================
-       */
 
       let expenseResult =
         null;
@@ -6399,9 +6386,6 @@
       return;
     }
 
-    /*
-     * Los movimientos salen de app.js.
-     */
     const movements =
       await loadProductStockMovements(
         productId
@@ -6639,12 +6623,6 @@
       values.totalUnits;
 
     try {
-      /*
-       * ========================================================
-       * ESCRITURA FIRESTORE
-       * ========================================================
-       */
-
       await db
         .collection(
           PRODUCTS_COLLECTION
@@ -6740,6 +6718,12 @@
         movementId =
           movementRef.id;
 
+        /*
+         * ======================================================
+         * AJUSTE:
+         * se registra el costo unitario actualmente vigente.
+         * ======================================================
+         */
         movementData =
           buildMovementData({
             productId,
@@ -6781,8 +6765,19 @@
             saldoActual:
               newStock,
 
+            costoUnitario:
+              values.lastCostPerUnit,
+
             detalle:
-              "Ajuste manual de inventario",
+              [
+                "Ajuste manual de inventario",
+
+                `Costo unitario: ${currency(
+                  values.lastCostPerUnit
+                )}`
+              ].join(
+                " | "
+              ),
 
             user
           });
@@ -6796,12 +6791,6 @@
               .serverTimestamp()
         });
       }
-
-      /*
-       * ========================================================
-       * SINCRONIZAR CACHÉ DE PRODUCTO
-       * ========================================================
-       */
 
       const updatedProductData = {
         ...product,
@@ -6897,12 +6886,6 @@
         product,
         updatedProductData
       );
-
-      /*
-       * ========================================================
-       * SINCRONIZAR MOVIMIENTO
-       * ========================================================
-       */
 
       if (
         movementId &&
@@ -7026,9 +7009,6 @@
         )
         .delete();
 
-      /*
-       * Actualizar cache primero.
-       */
       removeSessionDocument(
         PRODUCTS_COLLECTION,
         productId
@@ -7342,10 +7322,6 @@
     try {
       injectInventoryStyles();
 
-      /*
-       * app.js se encarga de garantizar que la sesión
-       * y su caché estén disponibles.
-       */
       await resolveInventoryContext(
         user
       );
@@ -7370,16 +7346,8 @@
 
       ensureInventoryDataTable();
 
-      /*
-       * Proveedores:
-       * exclusivamente desde app.js.
-       */
       await loadInventoryProviders();
 
-      /*
-       * Productos + ventas:
-       * exclusivamente desde app.js.
-       */
       await loadInventoryData();
     } catch (
       error
