@@ -108,38 +108,23 @@ let currentUserContextUid =
  * - se reconstruye al iniciar una nueva sesión;
  * - permite que diferentes módulos reutilicen los mismos datos.
  *
- * Para Desarrollador:
+ * MODELOS:
  *
- * - local              -> global
- * - empleados          -> global
- * - login_attempts     -> global
+ * Desarrollador:
  *
- * Para usuarios operativos:
+ * - empleados      -> TODOS
+ * - local           -> TODOS
+ * - login_attempts  -> TODOS
  *
- * - empleados         -> por id_local
- * - proveedores       -> por id_local
- * - productos         -> por id_local
- * - ventas            -> por id_local
- * - gastos            -> por id_local
- * - stock_movimientos -> por id_local
- * - cierres_caja      -> por id_local
+ * Usuarios operativos:
  *
- * Estructura:
- *
- * {
- *   version: 1,
- *   uid: "...",
- *   role: "...",
- *   id_local: "...",
- *   createdAt: 123456789,
- *   collections: {
- *     productos: {
- *       loadedAt: 123456789,
- *       docs: [...]
- *     }
- *   },
- *   context: {...}
- * }
+ * - empleados       -> SOLO su local
+ * - proveedores     -> SOLO su local
+ * - productos       -> SOLO su local
+ * - ventas          -> SOLO su local
+ * - gastos          -> SOLO su local
+ * - movimientos     -> SOLO su local
+ * - cierres_caja     -> SOLO su local
  */
 
 const SESSION_CACHE_KEY =
@@ -159,47 +144,27 @@ let sessionDataCacheUid =
 
 /*
  * ============================================================
- * COLECCIONES PREVIAS DE LA SESIÓN
+ * COLECCIONES PRELOAD
  * ============================================================
  *
- * La configuración permite que app.js determine dinámicamente
- * cómo cargar cada colección según el rol autenticado.
+ * "local-or-developer-all":
  *
- * "developer-all":
+ * - Desarrollador -> colección completa
+ * - Usuarios operativos -> filtrada por id_local
  *
- *     Desarrollador -> colección completa
+ * Se utiliza para empleados porque:
  *
- *     Otros roles -> colección vacía/no aplicable
- *
- * "local":
- *
- *     Usuario operativo -> where("id_local", "==", ...)
- *
- *     Desarrollador -> no se consulta por local
+ * - Desarrollador necesita todos los empleados.
+ * - Administrador necesita únicamente empleados de su local.
  */
 
 const SESSION_PRELOAD_COLLECTIONS = [
-  /*
-   * ----------------------------------------------------------
-   * EMPLEADOS
-   * ----------------------------------------------------------
-   *
-   * Desarrollador necesita TODOS los empleados para:
-   *
-   * - crear usuarios
-   * - editar usuarios
-   * - bloquear/desbloquear usuarios
-   * - cambiar usuarios de local
-   * - mostrar conteos por local
-   * - localizar perfiles aunque el document ID no coincida
-   *   con el UID
-   */
   {
     name:
       EMPLOYEE_COLLECTION_NAME,
 
     mode:
-      "developer-all"
+      "local-or-developer-all"
   },
 
   {
@@ -251,11 +216,7 @@ const SESSION_PRELOAD_COLLECTIONS = [
   },
 
   /*
-   * ----------------------------------------------------------
-   * LOCALES
-   * ----------------------------------------------------------
-   *
-   * El Desarrollador administra todos los locales.
+   * Desarrollador administra todos los locales.
    */
   {
     name:
@@ -266,13 +227,7 @@ const SESSION_PRELOAD_COLLECTIONS = [
   },
 
   /*
-   * ----------------------------------------------------------
-   * INTENTOS DE ACCESO
-   * ----------------------------------------------------------
-   *
-   * El Desarrollador necesita todos los intentos.
-   *
-   * Los módulos operativos no necesitan esta precarga.
+   * Desarrollador necesita todos los intentos.
    */
   {
     name:
@@ -532,7 +487,7 @@ function getNavByRole(
 
   return (
     ROLE_NAV[
-    canonical
+      canonical
     ] || [
       {
         label: "Inicio",
@@ -553,7 +508,7 @@ function canAccessPage(
 
   const allowed =
     ROLE_ALLOWED_PAGES[
-    canonical
+      canonical
     ] || [];
 
   return allowed.includes(
@@ -571,7 +526,7 @@ function getDefaultPageForRole(
 
   return (
     ROLE_DEFAULT_PAGE[
-    canonical
+      canonical
     ] ||
     "dashboard.html"
   );
@@ -783,7 +738,7 @@ function bindMobileMenu() {
     menuToggle &&
     fullscreenMenu &&
     menuToggle.dataset.appMenuBound !==
-    "1"
+      "1"
   ) {
     menuToggle.dataset.appMenuBound =
       "1";
@@ -812,7 +767,7 @@ function bindMobileMenu() {
     closeMenu &&
     fullscreenMenu &&
     closeMenu.dataset.appCloseMenuBound !==
-    "1"
+      "1"
   ) {
     closeMenu.dataset.appCloseMenuBound =
       "1";
@@ -845,9 +800,9 @@ function bindMobileMenu() {
       e => {
         if (
           e.key ===
-          "Enter" ||
+            "Enter" ||
           e.key ===
-          " "
+            " "
         ) {
           e.preventDefault();
 
@@ -919,20 +874,20 @@ function cloneForSessionCache(
 ) {
   if (
     value ===
-    null ||
+      null ||
     value ===
-    undefined
+      undefined
   ) {
     return value;
   }
 
   if (
     typeof value ===
-    "string" ||
+      "string" ||
     typeof value ===
-    "number" ||
+      "number" ||
     typeof value ===
-    "boolean"
+      "boolean"
   ) {
     return value;
   }
@@ -955,11 +910,11 @@ function cloneForSessionCache(
 
   if (
     typeof firebase !==
-    "undefined" &&
+      "undefined" &&
     firebase.firestore &&
     firebase.firestore.Timestamp &&
     value instanceof
-    firebase.firestore.Timestamp
+      firebase.firestore.Timestamp
   ) {
     return value.toMillis();
   }
@@ -1026,7 +981,7 @@ function saveSessionDataCache() {
 
     return true;
   } catch (
-  error
+    error
   ) {
     console.warn(
       "No se pudo guardar toda la caché de sesión en sessionStorage. Se mantendrá en memoria mientras permanezca cargada esta página:",
@@ -1043,7 +998,7 @@ function loadSessionDataCache(
   const targetUid =
     String(
       uid ||
-      ""
+        ""
     ).trim();
 
   if (
@@ -1070,7 +1025,7 @@ function loadSessionDataCache(
     if (
       !parsed ||
       parsed.version !==
-      SESSION_CACHE_VERSION
+        SESSION_CACHE_VERSION
     ) {
       sessionStorage.removeItem(
         SESSION_CACHE_KEY
@@ -1082,7 +1037,7 @@ function loadSessionDataCache(
     if (
       String(
         parsed.uid ||
-        ""
+          ""
       ).trim() !==
       targetUid
     ) {
@@ -1091,7 +1046,7 @@ function loadSessionDataCache(
 
     return parsed;
   } catch (
-  error
+    error
   ) {
     console.warn(
       "No se pudo restaurar la caché de sesión:",
@@ -1130,7 +1085,7 @@ function createEmptySessionDataCache(
     uid:
       String(
         uid ||
-        ""
+          ""
       ).trim(),
 
     role:
@@ -1142,7 +1097,7 @@ function createEmptySessionDataCache(
       )
         ? String(
           idLocal ||
-          ""
+            ""
         ).trim()
         : "",
 
@@ -1173,7 +1128,7 @@ function ensureSessionCacheContainer(
   const targetUid =
     String(
       uid ||
-      ""
+        ""
     ).trim();
 
   const targetRole =
@@ -1187,14 +1142,14 @@ function ensureSessionCacheContainer(
     )
       ? String(
         idLocal ||
-        ""
+          ""
       ).trim()
       : "";
 
   if (
     sessionDataCache &&
     sessionDataCacheUid ===
-    targetUid
+      targetUid
   ) {
     if (
       targetRole
@@ -1203,9 +1158,6 @@ function ensureSessionCacheContainer(
         targetRole;
     }
 
-    /*
-     * Nunca conservar id_local en una sesión de Desarrollador.
-     */
     if (
       isDeveloperRole(
         targetRole
@@ -1245,9 +1197,6 @@ function ensureSessionCacheContainer(
         targetRole;
     }
 
-    /*
-     * Limpieza de posibles valores antiguos.
-     */
     if (
       isDeveloperRole(
         targetRole
@@ -1286,8 +1235,8 @@ function setSessionContext(
   const canonicalRole =
     getCanonicalRole(
       context.role ||
-      context.position ||
-      ""
+        context.position ||
+        ""
     );
 
   const cache =
@@ -1308,16 +1257,13 @@ function setSessionContext(
   cache.role =
     canonicalRole;
 
-  /*
-   * Desarrollador nunca conserva id_local.
-   */
   cache.id_local =
     roleRequiresLocal(
       canonicalRole
     )
       ? String(
         context.id_local ||
-        ""
+          ""
       ).trim()
       : "";
 
@@ -1334,7 +1280,7 @@ function getSessionContext(
   const targetUid =
     String(
       uid ||
-      ""
+        ""
     ).trim();
 
   if (
@@ -1358,7 +1304,7 @@ function getSessionContext(
   if (
     String(
       cache.context.uid ||
-      ""
+        ""
     ).trim() !==
     targetUid
   ) {
@@ -1395,7 +1341,7 @@ function seedSessionCollection(
     ensureSessionCacheContainer(
       user.uid,
       options.id_local ||
-      getCurrentLocalId(),
+        getCurrentLocalId(),
       contextRole
     );
 
@@ -1408,13 +1354,13 @@ function seedSessionCollection(
           id:
             String(
               item?.id ||
-              ""
+                ""
             ),
 
           data:
             cloneForSessionCache(
               item?.data ||
-              {}
+                {}
             )
         })
       )
@@ -1455,8 +1401,8 @@ function getSessionCollection(
   const targetUid =
     String(
       options.uid ||
-      user?.uid ||
-      ""
+        user?.uid ||
+        ""
     ).trim();
 
   if (
@@ -1476,13 +1422,13 @@ function getSessionCollection(
     ensureSessionCacheContainer(
       targetUid,
       options.id_local ||
-      getCurrentLocalId(),
+        getCurrentLocalId(),
       contextRole
     );
 
   const entry =
     cache.collections?.[
-    collectionName
+      collectionName
     ];
 
   if (
@@ -1500,10 +1446,10 @@ function getSessionCollection(
         doc.id,
 
       data:
-      {
-        ...(doc.data ||
-          {})
-      }
+        {
+          ...(doc.data ||
+            {})
+        }
     })
   );
 }
@@ -1539,7 +1485,7 @@ function getSessionDocument(
   const target =
     String(
       documentId ||
-      ""
+        ""
     ).trim();
 
   return (
@@ -1547,7 +1493,7 @@ function getSessionDocument(
       doc =>
         String(
           doc.id ||
-          ""
+            ""
         ).trim() ===
         target
     ) ||
@@ -1576,8 +1522,8 @@ function upsertSessionDocument(
       user.uid,
       getCurrentLocalId(),
       currentUserContextCache?.role ||
-      sessionDataCache?.role ||
-      ""
+        sessionDataCache?.role ||
+        ""
     );
 
   if (
@@ -1589,7 +1535,7 @@ function upsertSessionDocument(
 
   if (
     !cache.collections[
-    collectionName
+      collectionName
     ]
   ) {
     cache.collections[
@@ -1605,7 +1551,7 @@ function upsertSessionDocument(
 
   const entry =
     cache.collections[
-    collectionName
+      collectionName
     ];
 
   const normalizedId =
@@ -1618,7 +1564,7 @@ function upsertSessionDocument(
       doc =>
         String(
           doc.id ||
-          ""
+            ""
         ).trim() ===
         normalizedId
     );
@@ -1629,7 +1575,8 @@ function upsertSessionDocument(
     );
 
   if (
-    index >= 0
+    index >=
+    0
   ) {
     entry.docs[
       index
@@ -1638,13 +1585,13 @@ function upsertSessionDocument(
         normalizedId,
 
       data:
-      {
-        ...entry.docs[
-          index
-        ].data,
+        {
+          ...entry.docs[
+            index
+          ].data,
 
-        ...normalizedData
-      }
+          ...normalizedData
+        }
     };
   } else {
     entry.docs.push({
@@ -1682,13 +1629,13 @@ function removeSessionDocument(
       user.uid,
       getCurrentLocalId(),
       currentUserContextCache?.role ||
-      sessionDataCache?.role ||
-      ""
+        sessionDataCache?.role ||
+        ""
     );
 
   const entry =
     cache.collections?.[
-    collectionName
+      collectionName
     ];
 
   if (
@@ -1705,7 +1652,7 @@ function removeSessionDocument(
       doc =>
         String(
           doc.id ||
-          ""
+            ""
         ).trim() !==
         String(
           documentId
@@ -1730,7 +1677,7 @@ function updateSessionDocumentsWhere(
     !user ||
     !collectionName ||
     typeof predicate !==
-    "function"
+      "function"
   ) {
     return 0;
   }
@@ -1740,13 +1687,13 @@ function updateSessionDocumentsWhere(
       user.uid,
       getCurrentLocalId(),
       currentUserContextCache?.role ||
-      sessionDataCache?.role ||
-      ""
+        sessionDataCache?.role ||
+        ""
     );
 
   const entry =
     cache.collections?.[
-    collectionName
+      collectionName
     ];
 
   if (
@@ -1820,7 +1767,7 @@ function getSessionCacheStatus(
   const targetUid =
     String(
       uid ||
-      ""
+        ""
     ).trim();
 
   if (
@@ -1855,8 +1802,8 @@ function getSessionCacheStatus(
   const role =
     getCanonicalRole(
       cache?.role ||
-      cache?.context?.role ||
-      ""
+        cache?.context?.role ||
+        ""
     );
 
   return {
@@ -1889,14 +1836,1095 @@ function getSessionCacheStatus(
     collections:
       Object.keys(
         cache?.collections ||
-        {}
+          {}
       )
   };
 }
 
 /*
  * ============================================================
- * CARGA CENTRAL DE DATOS DE LA SESIÓN
+ * CONTEXTO LOCAL
+ * ============================================================
+ */
+
+function getCurrentLocalId() {
+  const stored =
+    getStoredCurrentUser();
+
+  const storedRole =
+    getCanonicalRole(
+      stored?.role ||
+        stored?.position ||
+        currentUserContextCache?.role ||
+        sessionDataCache?.role ||
+        ""
+    );
+
+  if (
+    isDeveloperRole(
+      storedRole
+    )
+  ) {
+    return "";
+  }
+
+  return String(
+    stored?.id_local ||
+      stored?.idLocal ||
+      stored?.localId ||
+      currentLocalContext.id_local ||
+      sessionDataCache?.id_local ||
+      ""
+  ).trim();
+}
+
+function getCurrentLocalInfo() {
+  const stored =
+    getStoredCurrentUser() ||
+    {};
+
+  const role =
+    getCanonicalRole(
+      stored.role ||
+        stored.position ||
+        currentUserContextCache?.role ||
+        sessionDataCache?.role ||
+        ""
+    );
+
+  if (
+    isDeveloperRole(
+      role
+    )
+  ) {
+    return {
+      id_local:
+        "",
+
+      nombre:
+        "",
+
+      numeroDocumento:
+        "",
+
+      ubicacion:
+        "",
+
+      contribuyente:
+        "",
+
+      tipoDocumento:
+        "",
+
+      nit:
+        "",
+
+      nrc:
+        ""
+    };
+  }
+
+  return {
+    id_local:
+      String(
+        stored.id_local ||
+          stored.idLocal ||
+          stored.localId ||
+          currentLocalContext.id_local ||
+          sessionDataCache?.id_local ||
+          ""
+      ).trim(),
+
+    nombre:
+      String(
+        stored.localNombre ||
+          stored.localName ||
+          currentLocalContext.nombre ||
+          ""
+      ).trim(),
+
+    numeroDocumento:
+      String(
+        stored.localNumeroDocumento ||
+          stored.localDocumentNumber ||
+          currentLocalContext.numeroDocumento ||
+          ""
+      ).trim(),
+
+    ubicacion:
+      String(
+        stored.localUbicacion ||
+          stored.localLocation ||
+          currentLocalContext.ubicacion ||
+          ""
+      ).trim(),
+
+    contribuyente:
+      String(
+        stored.localContribuyente ||
+          stored.localNombreContribuyente ||
+          currentLocalContext.contribuyente ||
+          ""
+      ).trim(),
+
+    tipoDocumento:
+      String(
+        stored.localTipoDocumento ||
+          stored.tipoDocumento ||
+          currentLocalContext.tipoDocumento ||
+          ""
+      ).trim(),
+
+    nit:
+      String(
+        stored.localNIT ||
+          stored.nit ||
+          currentLocalContext.nit ||
+          ""
+      ).trim(),
+
+    nrc:
+      String(
+        stored.localNRC ||
+          stored.nrc ||
+          currentLocalContext.nrc ||
+          ""
+      ).trim()
+  };
+}
+
+function matchesLocalContext(
+  data = {},
+  localId = ""
+) {
+  const target =
+    String(
+      localId ||
+        getCurrentLocalId()
+    ).trim();
+
+  if (
+    !target
+  ) {
+    return false;
+  }
+
+  const docLocalId =
+    String(
+      data.id_local ||
+        data.idLocal ||
+        data.localId ||
+        data.idlocal ||
+        ""
+    ).trim();
+
+  return (
+    docLocalId ===
+    target
+  );
+}
+
+/*
+ * ============================================================
+ * CARGAS FIRESTORE INDIVIDUALES
+ * ============================================================
+ */
+
+async function loadLocalById(
+  localId = ""
+) {
+  const target =
+    String(
+      localId
+    ).trim();
+
+  if (
+    !target
+  ) {
+    return null;
+  }
+
+  try {
+    const direct =
+      await db
+        .collection(
+          LOCAL_COLLECTION_NAME
+        )
+        .doc(
+          target
+        )
+        .get();
+
+    if (
+      direct.exists
+    ) {
+      return {
+        id:
+          direct.id,
+
+        ...(direct.data() ||
+          {})
+      };
+    }
+  } catch (
+    error
+  ) {
+    console.warn(
+      "No se pudo cargar el local por ID:",
+      error
+    );
+  }
+
+  try {
+    const byField =
+      await db
+        .collection(
+          LOCAL_COLLECTION_NAME
+        )
+        .where(
+          "id_local",
+          "==",
+          target
+        )
+        .limit(
+          1
+        )
+        .get();
+
+    if (
+      !byField.empty
+    ) {
+      const doc =
+        byField.docs[0];
+
+      return {
+        id:
+          doc.id,
+
+        ...(doc.data() ||
+          {})
+      };
+    }
+  } catch (
+    error
+  ) {
+    console.warn(
+      "No se pudo cargar el local por campo id_local:",
+      error
+    );
+  }
+
+  return null;
+}
+
+async function loadEmployeeByUser(
+  user
+) {
+  if (
+    !user
+  ) {
+    return null;
+  }
+
+  try {
+    const direct =
+      await db
+        .collection(
+          EMPLOYEE_COLLECTION_NAME
+        )
+        .doc(
+          user.uid
+        )
+        .get();
+
+    if (
+      direct.exists
+    ) {
+      return {
+        id:
+          direct.id,
+
+        ...(direct.data() ||
+          {})
+      };
+    }
+  } catch (
+    error
+  ) {
+    console.warn(
+      "No se pudo cargar el empleado por UID:",
+      error
+    );
+  }
+
+  if (
+    user.email
+  ) {
+    try {
+      const byEmail =
+        await db
+          .collection(
+            EMPLOYEE_COLLECTION_NAME
+          )
+          .where(
+            "email",
+            "==",
+            user.email
+          )
+          .limit(
+            1
+          )
+          .get();
+
+      if (
+        !byEmail.empty
+      ) {
+        const doc =
+          byEmail.docs[0];
+
+        return {
+          id:
+            doc.id,
+
+          ...(doc.data() ||
+            {})
+        };
+      }
+    } catch (
+      error
+    ) {
+      console.warn(
+        "No se pudo cargar el empleado por correo:",
+        error
+      );
+    }
+  }
+
+  return null;
+}
+
+/*
+ * ============================================================
+ * CONTEXTO UNIFICADO
+ * ============================================================
+ */
+
+function applyResolvedUserContext(
+  context
+) {
+  currentUserContextCache =
+    context;
+
+  currentUserContextUid =
+    context?.uid ||
+    "";
+
+  const canonicalRole =
+    getCanonicalRole(
+      context?.role ||
+        context?.position ||
+        ""
+    );
+
+  const requiresLocal =
+    roleRequiresLocal(
+      canonicalRole
+    );
+
+  currentLocalContext = {
+    id_local:
+      requiresLocal
+        ? (
+          context?.id_local ||
+            ""
+        )
+        : "",
+
+    nombre:
+      requiresLocal
+        ? (
+          context?.localNombre ||
+            ""
+        )
+        : "",
+
+    numeroDocumento:
+      requiresLocal
+        ? (
+          context?.localNumeroDocumento ||
+            ""
+        )
+        : "",
+
+    ubicacion:
+      requiresLocal
+        ? (
+          context?.localUbicacion ||
+            ""
+        )
+        : "",
+
+    contribuyente:
+      requiresLocal
+        ? (
+          context?.localContribuyente ||
+            ""
+        )
+        : "",
+
+    tipoDocumento:
+      requiresLocal
+        ? (
+          context?.localTipoDocumento ||
+            ""
+        )
+        : "",
+
+    nit:
+      requiresLocal
+        ? (
+          context?.localNIT ||
+            ""
+        )
+        : "",
+
+    nrc:
+      requiresLocal
+        ? (
+          context?.localNRC ||
+            ""
+        )
+        : ""
+  };
+
+  window.currentLocalContext =
+    currentLocalContext;
+
+  return context;
+}
+
+async function ensureCurrentUserContext(
+  user,
+  options = {}
+) {
+  if (
+    !user
+  ) {
+    return null;
+  }
+
+  const forceRefresh =
+    options.forceRefresh ===
+    true;
+
+  /*
+   * ==========================================================
+   * RESTAURAR CONTEXTO DESDE CACHE
+   * ==========================================================
+   */
+
+  if (
+    !forceRefresh
+  ) {
+    const cachedContext =
+      getSessionContext(
+        user.uid
+      );
+
+    if (
+      cachedContext
+    ) {
+      const cachedRole =
+        getCanonicalRole(
+          cachedContext.role ||
+            cachedContext.position ||
+            ""
+        );
+
+      if (
+        isDeveloperRole(
+          cachedRole
+        )
+      ) {
+        cachedContext.id_local =
+          "";
+      }
+
+      return applyResolvedUserContext(
+        cachedContext
+      );
+    }
+  }
+
+  if (
+    currentUserContextPromise &&
+    currentUserContextUid ===
+      user.uid &&
+    !forceRefresh
+  ) {
+    return (
+      currentUserContextPromise
+    );
+  }
+
+  if (
+    !forceRefresh &&
+    currentUserContextCache &&
+    currentUserContextUid ===
+      user.uid
+  ) {
+    const cachedRole =
+      getCanonicalRole(
+        currentUserContextCache.role ||
+          currentUserContextCache.position ||
+          ""
+      );
+
+    if (
+      isDeveloperRole(
+        cachedRole
+      )
+    ) {
+      currentUserContextCache.id_local =
+        "";
+    }
+
+    return (
+      currentUserContextCache
+    );
+  }
+
+  currentUserContextUid =
+    user.uid;
+
+  currentUserContextPromise =
+    (async () => {
+      const stored =
+        getStoredCurrentUser();
+
+      let employee =
+        null;
+
+      /*
+       * ========================================================
+       * PERFIL DESDE localStorage
+       * ========================================================
+       */
+
+      if (
+        stored &&
+        stored.uid ===
+          user.uid
+      ) {
+        employee = {
+          id:
+            stored.employeeId ||
+            user.uid,
+
+          uid:
+            stored.uid,
+
+          name:
+            stored.name ||
+            "",
+
+          email:
+            stored.email ||
+            user.email ||
+            "",
+
+          phone:
+            stored.phone ||
+            "",
+
+          position:
+            stored.position ||
+            stored.role ||
+            "",
+
+          role:
+            stored.role ||
+            "",
+
+          id_local:
+            stored.id_local ||
+            stored.idLocal ||
+            stored.localId ||
+            "",
+
+          localNombre:
+            stored.localNombre ||
+            "",
+
+          localNumeroDocumento:
+            stored.localNumeroDocumento ||
+            "",
+
+          localUbicacion:
+            stored.localUbicacion ||
+            "",
+
+          localContribuyente:
+            stored.localContribuyente ||
+            "",
+
+          localTipoDocumento:
+            stored.localTipoDocumento ||
+            "",
+
+          localNIT:
+            stored.localNIT ||
+            "",
+
+          localNRC:
+            stored.localNRC ||
+            "",
+
+          localBlocked:
+            stored.localBlocked ===
+            true,
+
+          active:
+            stored.active !==
+            false,
+
+          blocked:
+            stored.blocked ===
+            true,
+
+          failedLoginAttempts:
+            Number(
+              stored.failedLoginAttempts ||
+                0
+            ) || 0
+        };
+      }
+
+      /*
+       * ========================================================
+       * PERFIL DESDE FIRESTORE
+       * ========================================================
+       */
+
+      if (
+        !employee
+      ) {
+        const firestoreEmployee =
+          await loadEmployeeByUser(
+            user
+          );
+
+        if (
+          firestoreEmployee
+        ) {
+          employee =
+            firestoreEmployee;
+        }
+      }
+
+      if (
+        !employee
+      ) {
+        throw new Error(
+          `No existe el documento de perfil para el usuario ${user.uid}.`
+        );
+      }
+
+      const role =
+        getCanonicalRole(
+          employee.position ||
+            employee.role ||
+            ""
+        );
+
+      if (
+        !role
+      ) {
+        throw new Error(
+          "El usuario no tiene un rol válido configurado."
+        );
+      }
+
+      const requiresLocal =
+        roleRequiresLocal(
+          role
+        );
+
+      const name =
+        employee.name ||
+        user.displayName ||
+        user.email ||
+        "Usuario";
+
+      const email =
+        employee.email ||
+        user.email ||
+        "";
+
+      const phone =
+        employee.phone ||
+        "";
+
+      const id_local =
+        String(
+          employee.id_local ||
+            employee.idLocal ||
+            employee.localId ||
+            stored?.id_local ||
+            ""
+        ).trim();
+
+      /*
+       * Solo roles operativos necesitan local.
+       */
+      if (
+        requiresLocal &&
+        !id_local
+      ) {
+        throw new Error(
+          "El usuario no tiene un id_local asignado."
+        );
+      }
+
+      let localInfo = {
+        id_local,
+
+        nombre:
+          employee.localNombre ||
+          stored?.localNombre ||
+          "",
+
+        numeroDocumento:
+          employee.localNumeroDocumento ||
+          stored?.localNumeroDocumento ||
+          "",
+
+        ubicacion:
+          employee.localUbicacion ||
+          stored?.localUbicacion ||
+          "",
+
+        contribuyente:
+          employee.localNombreContribuyente ||
+          employee.localContribuyente ||
+          stored?.localContribuyente ||
+          "",
+
+        tipoDocumento:
+          employee.localTipoDocumento ||
+          stored?.localTipoDocumento ||
+          "",
+
+        nit:
+          employee.localNIT ||
+          stored?.localNIT ||
+          "",
+
+        nrc:
+          employee.localNRC ||
+          stored?.localNRC ||
+          "",
+
+        blocked:
+          employee.localBlocked ===
+            true ||
+          employee.localBloqueado ===
+            true ||
+          stored?.localBlocked ===
+            true
+      };
+
+      /*
+       * Solo se lee el local cuando es necesario.
+       * Desarrollador jamás necesita esta lectura.
+       */
+
+      const needsLocalRead =
+        requiresLocal &&
+        Boolean(
+          id_local
+        ) &&
+        (
+          !localInfo.nombre ||
+          !localInfo.numeroDocumento ||
+          !localInfo.ubicacion ||
+          !localInfo.tipoDocumento ||
+          !localInfo.nit ||
+          !localInfo.nrc
+        );
+
+      if (
+        needsLocalRead
+      ) {
+        const localDoc =
+          await loadLocalById(
+            id_local
+          );
+
+        if (
+          localDoc
+        ) {
+          localInfo = {
+            id_local,
+
+            nombre:
+              localDoc.nombre ||
+              localDoc.name ||
+              localDoc.localName ||
+              localInfo.nombre ||
+              "",
+
+            numeroDocumento:
+              localDoc.numeroDocumento ||
+              localDoc.numero_documento ||
+              localDoc.documentNumber ||
+              localDoc.nDocumento ||
+              localInfo.numeroDocumento ||
+              "",
+
+            ubicacion:
+              localDoc.ubicacion ||
+              localDoc.location ||
+              localDoc.direccion ||
+              localDoc.address ||
+              localInfo.ubicacion ||
+              "",
+
+            contribuyente:
+              localDoc.nombreContribuyente ||
+              localDoc.nombre_contribuyente ||
+              localDoc.contribuyente ||
+              localInfo.contribuyente ||
+              "",
+
+            tipoDocumento:
+              localDoc.tipoDocumento ||
+              localDoc.tipo_documento ||
+              localDoc.documentType ||
+              localInfo.tipoDocumento ||
+              "",
+
+            nit:
+              localDoc.nit ||
+              localDoc.NIT ||
+              localInfo.nit ||
+              "",
+
+            nrc:
+              localDoc.nrc ||
+              localDoc.NRC ||
+              localInfo.nrc ||
+              "",
+
+            blocked:
+              localDoc.blocked ===
+                true ||
+              localDoc.bloqueado ===
+                true ||
+              localInfo.blocked
+          };
+        }
+      }
+
+      const context = {
+        uid:
+          user.uid,
+
+        employeeId:
+          employee.id ||
+          employee.uid ||
+          user.uid,
+
+        name,
+
+        email,
+
+        phone,
+
+        role,
+
+        position:
+          employee.position ||
+          employee.role ||
+          role,
+
+        active:
+          employee.active !==
+          false,
+
+        blocked:
+          employee.blocked ===
+          true,
+
+        localBlocked:
+          requiresLocal
+            ? localInfo.blocked ===
+              true
+            : false,
+
+        failedLoginAttempts:
+          Number(
+            employee.failedLoginAttempts ||
+              0
+          ) || 0,
+
+        id_local:
+          requiresLocal
+            ? id_local
+            : "",
+
+        localNombre:
+          requiresLocal
+            ? String(
+              localInfo.nombre ||
+                ""
+            ).trim()
+            : "",
+
+        localNumeroDocumento:
+          requiresLocal
+            ? String(
+              localInfo.numeroDocumento ||
+                ""
+            ).trim()
+            : "",
+
+        localUbicacion:
+          requiresLocal
+            ? String(
+              localInfo.ubicacion ||
+                ""
+            ).trim()
+            : "",
+
+        localContribuyente:
+          requiresLocal
+            ? String(
+              localInfo.contribuyente ||
+                ""
+            ).trim()
+            : "",
+
+        localTipoDocumento:
+          requiresLocal
+            ? String(
+              localInfo.tipoDocumento ||
+                ""
+            ).trim()
+            : "",
+
+        localNIT:
+          requiresLocal
+            ? String(
+              localInfo.nit ||
+                ""
+            ).trim()
+            : "",
+
+        localNRC:
+          requiresLocal
+            ? String(
+              localInfo.nrc ||
+                ""
+            ).trim()
+            : ""
+      };
+
+      applyResolvedUserContext(
+        context
+      );
+
+      setSessionContext(
+        context
+      );
+
+      setStoredCurrentUser({
+        uid:
+          context.uid,
+
+        employeeId:
+          context.employeeId,
+
+        name:
+          context.name,
+
+        email:
+          context.email,
+
+        phone:
+          context.phone,
+
+        role:
+          context.role,
+
+        position:
+          context.position,
+
+        active:
+          context.active,
+
+        blocked:
+          context.blocked,
+
+        localBlocked:
+          context.localBlocked,
+
+        failedLoginAttempts:
+          context.failedLoginAttempts,
+
+        id_local:
+          context.id_local,
+
+        localNombre:
+          context.localNombre,
+
+        localNumeroDocumento:
+          context.localNumeroDocumento,
+
+        localUbicacion:
+          context.localUbicacion,
+
+        localContribuyente:
+          context.localContribuyente,
+
+        localTipoDocumento:
+          context.localTipoDocumento,
+
+        localNIT:
+          context.localNIT,
+
+        localNRC:
+          context.localNRC
+      });
+
+      return context;
+    })();
+
+  try {
+    return await currentUserContextPromise;
+  } finally {
+    currentUserContextPromise =
+      null;
+  }
+}
+
+async function getCurrentUserContext(
+  user = auth.currentUser
+) {
+  if (
+    !user
+  ) {
+    return null;
+  }
+
+  return ensureCurrentUserContext(
+    user
+  );
+}
+
+/*
+ * ============================================================
+ * CARGA CENTRAL DE DATOS
  * ============================================================
  */
 
@@ -1926,7 +2954,7 @@ async function querySessionCollection(
   const targetLocalId =
     String(
       localId ||
-      ""
+        ""
     ).trim();
 
   /*
@@ -1986,7 +3014,7 @@ async function querySessionCollection(
    * MODO LOCAL
    * ==========================================================
    *
-   * Solamente usuarios con local.
+   * Solo roles con local.
    */
 
   if (
@@ -2066,18 +3094,137 @@ async function querySessionCollection(
 
   /*
    * ==========================================================
+   * MODO LOCAL-OR-DEVELOPER-ALL
+   * ==========================================================
+   *
+   * Caso utilizado por "empleados".
+   *
+   * Desarrollador:
+   *
+   *     collection.get()
+   *
+   * Usuarios operativos:
+   *
+   *     collection.where("id_local", "==", localId)
+   */
+
+  if (
+    config.mode ===
+    "local-or-developer-all"
+  ) {
+    /*
+     * --------------------------------------------------------
+     * DESARROLLADOR
+     * --------------------------------------------------------
+     */
+
+    if (
+      canonicalRole ===
+      "Desarrollador"
+    ) {
+      const snapshot =
+        await db
+          .collection(
+            config.name
+          )
+          .get();
+
+      const documents =
+        [];
+
+      snapshot.forEach(
+        doc => {
+          documents.push({
+            id:
+              doc.id,
+
+            data:
+              doc.data() ||
+              {}
+          });
+        }
+      );
+
+      return {
+        name:
+          config.name,
+
+        documents
+      };
+    }
+
+    /*
+     * --------------------------------------------------------
+     * USUARIO OPERATIVO
+     * --------------------------------------------------------
+     */
+
+    if (
+      !targetLocalId
+    ) {
+      return {
+        name:
+          config.name,
+
+        documents:
+          []
+      };
+    }
+
+    const snapshot =
+      await db
+        .collection(
+          config.name
+        )
+        .where(
+          "id_local",
+          "==",
+          targetLocalId
+        )
+        .get();
+
+    const documents =
+      [];
+
+    snapshot.forEach(
+      doc => {
+        const data =
+          doc.data() ||
+          {};
+
+        /*
+         * Doble validación local.
+         */
+        if (
+          matchesLocalContext(
+            data,
+            targetLocalId
+          )
+        ) {
+          documents.push({
+            id:
+              doc.id,
+
+            data
+          });
+        }
+      }
+    );
+
+    return {
+      name:
+        config.name,
+
+      documents
+    };
+  }
+
+  /*
+   * ==========================================================
    * MODO DEVELOPER-ALL
    * ==========================================================
    *
-   * El Desarrollador recibe la colección completa.
-   *
-   * Esto se utiliza actualmente para:
-   *
-   * - local
-   * - empleados
-   * - login_attempts
-   *
-   * No requiere id_local.
+   * Exclusivamente Desarrollador.
    */
 
   if (
@@ -2132,8 +3279,6 @@ async function querySessionCollection(
    * ==========================================================
    * MODO FULL
    * ==========================================================
-   *
-   * Disponible para futuras colecciones.
    */
 
   const snapshot =
@@ -2184,7 +3329,7 @@ async function preloadSessionData(
   if (
     sessionDataCachePromise &&
     sessionDataCacheUid ===
-    user.uid &&
+      user.uid &&
     !forceRefresh
   ) {
     return sessionDataCachePromise;
@@ -2208,15 +3353,12 @@ async function preloadSessionData(
       sessionDataCacheUid =
         user.uid;
 
-      /*
-       * Normalizar posibles cachés antiguas.
-       */
       const restoredRole =
         getCanonicalRole(
           restored.role ||
-          restored.context.role ||
-          restored.context.position ||
-          ""
+            restored.context.role ||
+            restored.context.position ||
+            ""
         );
 
       restored.role =
@@ -2228,8 +3370,8 @@ async function preloadSessionData(
         )
           ? String(
             restored.id_local ||
-            restored.context.id_local ||
-            ""
+              restored.context.id_local ||
+              ""
           ).trim()
           : "";
 
@@ -2253,8 +3395,8 @@ async function preloadSessionData(
   const canonicalRole =
     getCanonicalRole(
       context.role ||
-      context.position ||
-      ""
+        context.position ||
+        ""
     );
 
   if (
@@ -2273,25 +3415,12 @@ async function preloadSessionData(
   const localId =
     String(
       context.id_local ||
-      ""
+        ""
     ).trim();
 
   /*
-   * ==========================================================
-   * VALIDACIÓN DE LOCAL
-   * ==========================================================
-   *
-   * Desarrollador:
-   *
-   *     id_local = ""
-   *
-   *     válido.
-   *
-   * Cualquier otro rol:
-   *
-   *     id_local obligatorio.
+   * Solo los roles operativos requieren local.
    */
-
   if (
     requiresLocal &&
     !localId
@@ -2335,10 +3464,6 @@ async function preloadSessionData(
 
   sessionDataCachePromise =
     (async () => {
-      /*
-       * Todas las colecciones independientes se cargan
-       * en paralelo.
-       */
       const results =
         await Promise.allSettled(
           SESSION_PRELOAD_COLLECTIONS.map(
@@ -2358,7 +3483,7 @@ async function preloadSessionData(
         ) => {
           const config =
             SESSION_PRELOAD_COLLECTIONS[
-            index
+              index
             ];
 
           if (
@@ -2368,7 +3493,7 @@ async function preloadSessionData(
             const documents =
               result.value
                 ?.documents ||
-              [];
+                [];
 
             cache.collections[
               config.name
@@ -2385,7 +3510,7 @@ async function preloadSessionData(
                     data:
                       cloneForSessionCache(
                         doc.data ||
-                        {}
+                          {}
                       )
                   })
                 )
@@ -2395,10 +3520,6 @@ async function preloadSessionData(
               `[Sesión] ${config.name}: ${documents.length} documentos cargados.`
             );
           } else {
-            /*
-             * Una colección opcional que falle no impide
-             * continuar con las demás.
-             */
             console.warn(
               `[Sesión] No se pudo precargar ${config.name}:`,
               result.reason
@@ -2417,7 +3538,7 @@ async function preloadSessionData(
                 result.reason?.message ||
                 String(
                   result.reason ||
-                  ""
+                    ""
                 )
             };
           }
@@ -2427,9 +3548,6 @@ async function preloadSessionData(
       cache.updatedAt =
         Date.now();
 
-      /*
-       * Garantizar que Desarrollador no conserve local.
-       */
       cache.id_local =
         isDeveloperRole(
           canonicalRole
@@ -2485,9 +3603,9 @@ async function ensureSessionDataLoaded(
     const restoredRole =
       getCanonicalRole(
         restored.role ||
-        restored.context.role ||
-        restored.context.position ||
-        ""
+          restored.context.role ||
+          restored.context.position ||
+          ""
       );
 
     restored.role =
@@ -2607,1121 +3725,6 @@ function getTodayBounds(
 
 /*
  * ============================================================
- * CONTEXTO LOCAL
- * ============================================================
- */
-
-function getCurrentLocalId() {
-  const stored =
-    getStoredCurrentUser();
-
-  const storedRole =
-    getCanonicalRole(
-      stored?.role ||
-      stored?.position ||
-      currentUserContextCache?.role ||
-      sessionDataCache?.role ||
-      ""
-    );
-
-  /*
-   * Un Desarrollador nunca usa id_local.
-   *
-   * Esto evita que un valor antiguo almacenado en
-   * localStorage contamine el contexto.
-   */
-  if (
-    isDeveloperRole(
-      storedRole
-    )
-  ) {
-    return "";
-  }
-
-  return String(
-    stored?.id_local ||
-    stored?.idLocal ||
-    stored?.localId ||
-    currentLocalContext.id_local ||
-    sessionDataCache?.id_local ||
-    ""
-  ).trim();
-}
-
-function getCurrentLocalInfo() {
-  const stored =
-    getStoredCurrentUser() ||
-    {};
-
-  const role =
-    getCanonicalRole(
-      stored.role ||
-      stored.position ||
-      currentUserContextCache?.role ||
-      sessionDataCache?.role ||
-      ""
-    );
-
-  /*
-   * Desarrollador no tiene local actual.
-   */
-  if (
-    isDeveloperRole(
-      role
-    )
-  ) {
-    return {
-      id_local:
-        "",
-
-      nombre:
-        "",
-
-      numeroDocumento:
-        "",
-
-      ubicacion:
-        "",
-
-      contribuyente:
-        "",
-
-      tipoDocumento:
-        "",
-
-      nit:
-        "",
-
-      nrc:
-        ""
-    };
-  }
-
-  return {
-    id_local:
-      String(
-        stored.id_local ||
-        stored.idLocal ||
-        stored.localId ||
-        currentLocalContext.id_local ||
-        sessionDataCache?.id_local ||
-        ""
-      ).trim(),
-
-    nombre:
-      String(
-        stored.localNombre ||
-        stored.localName ||
-        currentLocalContext.nombre ||
-        ""
-      ).trim(),
-
-    numeroDocumento:
-      String(
-        stored.localNumeroDocumento ||
-        stored.localDocumentNumber ||
-        currentLocalContext.numeroDocumento ||
-        ""
-      ).trim(),
-
-    ubicacion:
-      String(
-        stored.localUbicacion ||
-        stored.localLocation ||
-        currentLocalContext.ubicacion ||
-        ""
-      ).trim(),
-
-    contribuyente:
-      String(
-        stored.localContribuyente ||
-        stored.localNombreContribuyente ||
-        currentLocalContext.contribuyente ||
-        ""
-      ).trim(),
-
-    tipoDocumento:
-      String(
-        stored.localTipoDocumento ||
-        stored.tipoDocumento ||
-        currentLocalContext.tipoDocumento ||
-        ""
-      ).trim(),
-
-    nit:
-      String(
-        stored.localNIT ||
-        stored.nit ||
-        currentLocalContext.nit ||
-        ""
-      ).trim(),
-
-    nrc:
-      String(
-        stored.localNRC ||
-        stored.nrc ||
-        currentLocalContext.nrc ||
-        ""
-      ).trim()
-  };
-}
-
-function matchesLocalContext(
-  data = {},
-  localId = ""
-) {
-  const target =
-    String(
-      localId ||
-      getCurrentLocalId()
-    ).trim();
-
-  if (!target) {
-    return false;
-  }
-
-  const docLocalId =
-    String(
-      data.id_local ||
-      data.idLocal ||
-      data.localId ||
-      data.idlocal ||
-      ""
-    ).trim();
-
-  return (
-    docLocalId ===
-    target
-  );
-}
-
-/*
- * ============================================================
- * CARGAS FIRESTORE INDIVIDUALES
- * ============================================================
- *
- * Estas funciones se mantienen solamente para resolver
- * contexto cuando todavía no existe una sesión central válida.
- */
-
-async function loadLocalById(
-  localId = ""
-) {
-  const target =
-    String(
-      localId
-    ).trim();
-
-  if (!target) {
-    return null;
-  }
-
-  try {
-    const direct =
-      await db
-        .collection(
-          LOCAL_COLLECTION_NAME
-        )
-        .doc(
-          target
-        )
-        .get();
-
-    if (
-      direct.exists
-    ) {
-      return {
-        id:
-          direct.id,
-
-        ...(direct.data() ||
-          {})
-      };
-    }
-  } catch (
-  error
-  ) {
-    console.warn(
-      "No se pudo cargar el local por ID:",
-      error
-    );
-  }
-
-  try {
-    const byField =
-      await db
-        .collection(
-          LOCAL_COLLECTION_NAME
-        )
-        .where(
-          "id_local",
-          "==",
-          target
-        )
-        .limit(
-          1
-        )
-        .get();
-
-    if (
-      !byField.empty
-    ) {
-      const doc =
-        byField.docs[0];
-
-      return {
-        id:
-          doc.id,
-
-        ...(doc.data() ||
-          {})
-      };
-    }
-  } catch (
-  error
-  ) {
-    console.warn(
-      "No se pudo cargar el local por campo id_local:",
-      error
-    );
-  }
-
-  return null;
-}
-
-async function loadEmployeeByUser(
-  user
-) {
-  if (
-    !user
-  ) {
-    return null;
-  }
-
-  try {
-    const direct =
-      await db
-        .collection(
-          EMPLOYEE_COLLECTION_NAME
-        )
-        .doc(
-          user.uid
-        )
-        .get();
-
-    if (
-      direct.exists
-    ) {
-      return {
-        id:
-          direct.id,
-
-        ...(direct.data() ||
-          {})
-      };
-    }
-  } catch (
-  error
-  ) {
-    console.warn(
-      "No se pudo cargar el empleado por UID:",
-      error
-    );
-  }
-
-  if (
-    user.email
-  ) {
-    try {
-      const byEmail =
-        await db
-          .collection(
-            EMPLOYEE_COLLECTION_NAME
-          )
-          .where(
-            "email",
-            "==",
-            user.email
-          )
-          .limit(
-            1
-          )
-          .get();
-
-      if (
-        !byEmail.empty
-      ) {
-        const doc =
-          byEmail.docs[0];
-
-        return {
-          id:
-            doc.id,
-
-          ...(doc.data() ||
-            {})
-        };
-      }
-    } catch (
-    error
-    ) {
-      console.warn(
-        "No se pudo cargar el empleado por correo:",
-        error
-      );
-    }
-  }
-
-  return null;
-}
-
-/*
- * ============================================================
- * CONTEXTO UNIFICADO
- * ============================================================
- */
-
-function applyResolvedUserContext(
-  context
-) {
-  currentUserContextCache =
-    context;
-
-  currentUserContextUid =
-    context?.uid ||
-    "";
-
-  const canonicalRole =
-    getCanonicalRole(
-      context?.role ||
-      context?.position ||
-      ""
-    );
-
-  const requiresLocal =
-    roleRequiresLocal(
-      canonicalRole
-    );
-
-  currentLocalContext = {
-    id_local:
-      requiresLocal
-        ? (
-          context?.id_local ||
-          ""
-        )
-        : "",
-
-    nombre:
-      requiresLocal
-        ? (
-          context?.localNombre ||
-          ""
-        )
-        : "",
-
-    numeroDocumento:
-      requiresLocal
-        ? (
-          context?.localNumeroDocumento ||
-          ""
-        )
-        : "",
-
-    ubicacion:
-      requiresLocal
-        ? (
-          context?.localUbicacion ||
-          ""
-        )
-        : "",
-
-    contribuyente:
-      requiresLocal
-        ? (
-          context?.localContribuyente ||
-          ""
-        )
-        : "",
-
-    tipoDocumento:
-      requiresLocal
-        ? (
-          context?.localTipoDocumento ||
-          ""
-        )
-        : "",
-
-    nit:
-      requiresLocal
-        ? (
-          context?.localNIT ||
-          ""
-        )
-        : "",
-
-    nrc:
-      requiresLocal
-        ? (
-          context?.localNRC ||
-          ""
-        )
-        : ""
-  };
-
-  window.currentLocalContext =
-    currentLocalContext;
-
-  return context;
-}
-
-async function ensureCurrentUserContext(
-  user,
-  options = {}
-) {
-  if (!user) {
-    return null;
-  }
-
-  const forceRefresh =
-    options.forceRefresh ===
-    true;
-
-  /*
-   * ==========================================================
-   * CACHE DE SESIÓN
-   * ==========================================================
-   */
-
-  if (
-    !forceRefresh
-  ) {
-    const cachedContext =
-      getSessionContext(
-        user.uid
-      );
-
-    if (
-      cachedContext
-    ) {
-      const cachedRole =
-        getCanonicalRole(
-          cachedContext.role ||
-          cachedContext.position ||
-          ""
-        );
-
-      /*
-       * Desarrollador no puede conservar id_local.
-       */
-      if (
-        isDeveloperRole(
-          cachedRole
-        )
-      ) {
-        cachedContext.id_local =
-          "";
-      }
-
-      return applyResolvedUserContext(
-        cachedContext
-      );
-    }
-  }
-
-  if (
-    currentUserContextPromise &&
-    currentUserContextUid ===
-    user.uid &&
-    !forceRefresh
-  ) {
-    return (
-      currentUserContextPromise
-    );
-  }
-
-  if (
-    !forceRefresh &&
-    currentUserContextCache &&
-    currentUserContextUid ===
-    user.uid
-  ) {
-    const cachedRole =
-      getCanonicalRole(
-        currentUserContextCache.role ||
-        currentUserContextCache.position ||
-        ""
-      );
-
-    if (
-      isDeveloperRole(
-        cachedRole
-      )
-    ) {
-      currentUserContextCache.id_local =
-        "";
-    }
-
-    return (
-      currentUserContextCache
-    );
-  }
-
-  currentUserContextUid =
-    user.uid;
-
-  currentUserContextPromise =
-    (async () => {
-      const stored =
-        getStoredCurrentUser();
-
-      let employee =
-        null;
-
-      /*
-       * ========================================================
-       * PERFIL DESDE localStorage
-       * ========================================================
-       */
-
-      if (
-        stored &&
-        stored.uid ===
-        user.uid
-      ) {
-        employee = {
-          id:
-            stored.employeeId ||
-            user.uid,
-
-          uid:
-            stored.uid,
-
-          name:
-            stored.name ||
-            "",
-
-          email:
-            stored.email ||
-            user.email ||
-            "",
-
-          phone:
-            stored.phone ||
-            "",
-
-          position:
-            stored.position ||
-            stored.role ||
-            "",
-
-          role:
-            stored.role ||
-            "",
-
-          id_local:
-            stored.id_local ||
-            stored.idLocal ||
-            stored.localId ||
-            "",
-
-          localNombre:
-            stored.localNombre ||
-            "",
-
-          localNumeroDocumento:
-            stored.localNumeroDocumento ||
-            "",
-
-          localUbicacion:
-            stored.localUbicacion ||
-            "",
-
-          localContribuyente:
-            stored.localContribuyente ||
-            "",
-
-          localTipoDocumento:
-            stored.localTipoDocumento ||
-            "",
-
-          localNIT:
-            stored.localNIT ||
-            "",
-
-          localNRC:
-            stored.localNRC ||
-            "",
-
-          localBlocked:
-            stored.localBlocked ===
-            true,
-
-          active:
-            stored.active !==
-            false,
-
-          blocked:
-            stored.blocked ===
-            true,
-
-          failedLoginAttempts:
-            Number(
-              stored.failedLoginAttempts ||
-              0
-            ) || 0
-        };
-      }
-
-      /*
-       * ========================================================
-       * PERFIL DESDE FIRESTORE
-       * ========================================================
-       *
-       * No se exige id_local antes de consultar.
-       *
-       * Esto permite que Desarrollador exista sin local.
-       */
-
-      if (
-        !employee
-      ) {
-        const firestoreEmployee =
-          await loadEmployeeByUser(
-            user
-          );
-
-        if (
-          firestoreEmployee
-        ) {
-          employee =
-            firestoreEmployee;
-        }
-      }
-
-      if (
-        !employee
-      ) {
-        throw new Error(
-          `No existe el documento de perfil para el usuario ${user.uid}.`
-        );
-      }
-
-      const role =
-        getCanonicalRole(
-          employee.position ||
-          employee.role ||
-          ""
-        );
-
-      if (
-        !role
-      ) {
-        throw new Error(
-          "El usuario no tiene un rol válido configurado."
-        );
-      }
-
-      const requiresLocal =
-        roleRequiresLocal(
-          role
-        );
-
-      const name =
-        employee.name ||
-        user.displayName ||
-        user.email ||
-        "Usuario";
-
-      const email =
-        employee.email ||
-        user.email ||
-        "";
-
-      const phone =
-        employee.phone ||
-        "";
-
-      /*
-       * ========================================================
-       * ID_LOCAL
-       * ========================================================
-       */
-
-      const id_local =
-        String(
-          employee.id_local ||
-          employee.idLocal ||
-          employee.localId ||
-          stored?.id_local ||
-          ""
-        ).trim();
-
-      /*
-       * Solamente los roles operativos requieren local.
-       */
-      if (
-        requiresLocal &&
-        !id_local
-      ) {
-        throw new Error(
-          "El usuario no tiene un id_local asignado."
-        );
-      }
-
-      let localInfo = {
-        id_local,
-
-        nombre:
-          employee.localNombre ||
-          stored?.localNombre ||
-          "",
-
-        numeroDocumento:
-          employee.localNumeroDocumento ||
-          stored?.localNumeroDocumento ||
-          "",
-
-        ubicacion:
-          employee.localUbicacion ||
-          stored?.localUbicacion ||
-          "",
-
-        contribuyente:
-          employee.localNombreContribuyente ||
-          employee.localContribuyente ||
-          stored?.localContribuyente ||
-          "",
-
-        tipoDocumento:
-          employee.localTipoDocumento ||
-          stored?.localTipoDocumento ||
-          "",
-
-        nit:
-          employee.localNIT ||
-          stored?.localNIT ||
-          "",
-
-        nrc:
-          employee.localNRC ||
-          stored?.localNRC ||
-          "",
-
-        blocked:
-          employee.localBlocked ===
-          true ||
-          employee.localBloqueado ===
-          true ||
-          stored?.localBlocked ===
-          true
-      };
-
-      /*
-       * ========================================================
-       * DATOS DEL LOCAL
-       * ========================================================
-       *
-       * Nunca se consulta para Desarrollador.
-       */
-
-      const needsLocalRead =
-        requiresLocal &&
-        Boolean(
-          id_local
-        ) &&
-        (
-          !localInfo.nombre ||
-          !localInfo.numeroDocumento ||
-          !localInfo.ubicacion ||
-          !localInfo.tipoDocumento ||
-          !localInfo.nit ||
-          !localInfo.nrc
-        );
-
-      if (
-        needsLocalRead
-      ) {
-        const localDoc =
-          await loadLocalById(
-            id_local
-          );
-
-        if (
-          localDoc
-        ) {
-          localInfo = {
-            id_local,
-
-            nombre:
-              localDoc.nombre ||
-              localDoc.name ||
-              localDoc.localName ||
-              localInfo.nombre ||
-              "",
-
-            numeroDocumento:
-              localDoc.numeroDocumento ||
-              localDoc.numero_documento ||
-              localDoc.documentNumber ||
-              localDoc.nDocumento ||
-              localInfo.numeroDocumento ||
-              "",
-
-            ubicacion:
-              localDoc.ubicacion ||
-              localDoc.location ||
-              localDoc.direccion ||
-              localDoc.address ||
-              localInfo.ubicacion ||
-              "",
-
-            contribuyente:
-              localDoc.nombreContribuyente ||
-              localDoc.nombre_contribuyente ||
-              localDoc.contribuyente ||
-              localInfo.contribuyente ||
-              "",
-
-            tipoDocumento:
-              localDoc.tipoDocumento ||
-              localDoc.tipo_documento ||
-              localDoc.documentType ||
-              localInfo.tipoDocumento ||
-              "",
-
-            nit:
-              localDoc.nit ||
-              localDoc.NIT ||
-              localInfo.nit ||
-              "",
-
-            nrc:
-              localDoc.nrc ||
-              localDoc.NRC ||
-              localInfo.nrc ||
-              "",
-
-            blocked:
-              localDoc.blocked ===
-              true ||
-              localDoc.bloqueado ===
-              true ||
-              localInfo.blocked
-          };
-        }
-      }
-
-      /*
-       * ========================================================
-       * CONTEXTO FINAL
-       * ========================================================
-       *
-       * Desarrollador:
-       *
-       * - id_local = ""
-       * - localBlocked = false
-       * - datos locales = ""
-       */
-
-      const context = {
-        uid:
-          user.uid,
-
-        employeeId:
-          employee.id ||
-          employee.uid ||
-          user.uid,
-
-        name,
-
-        email,
-
-        phone,
-
-        role,
-
-        position:
-          employee.position ||
-          employee.role ||
-          role,
-
-        active:
-          employee.active !==
-          false,
-
-        blocked:
-          employee.blocked ===
-          true,
-
-        localBlocked:
-          requiresLocal
-            ? (
-              localInfo.blocked ===
-              true
-            )
-            : false,
-
-        failedLoginAttempts:
-          Number(
-            employee.failedLoginAttempts ||
-            0
-          ) || 0,
-
-        id_local:
-          requiresLocal
-            ? id_local
-            : "",
-
-        localNombre:
-          requiresLocal
-            ? String(
-              localInfo.nombre ||
-              ""
-            ).trim()
-            : "",
-
-        localNumeroDocumento:
-          requiresLocal
-            ? String(
-              localInfo.numeroDocumento ||
-              ""
-            ).trim()
-            : "",
-
-        localUbicacion:
-          requiresLocal
-            ? String(
-              localInfo.ubicacion ||
-              ""
-            ).trim()
-            : "",
-
-        localContribuyente:
-          requiresLocal
-            ? String(
-              localInfo.contribuyente ||
-              ""
-            ).trim()
-            : "",
-
-        localTipoDocumento:
-          requiresLocal
-            ? String(
-              localInfo.tipoDocumento ||
-              ""
-            ).trim()
-            : "",
-
-        localNIT:
-          requiresLocal
-            ? String(
-              localInfo.nit ||
-              ""
-            ).trim()
-            : "",
-
-        localNRC:
-          requiresLocal
-            ? String(
-              localInfo.nrc ||
-              ""
-            ).trim()
-            : ""
-      };
-
-      applyResolvedUserContext(
-        context
-      );
-
-      setSessionContext(
-        context
-      );
-
-      setStoredCurrentUser({
-        uid:
-          context.uid,
-
-        employeeId:
-          context.employeeId,
-
-        name:
-          context.name,
-
-        email:
-          context.email,
-
-        phone:
-          context.phone,
-
-        role:
-          context.role,
-
-        position:
-          context.position,
-
-        active:
-          context.active,
-
-        blocked:
-          context.blocked,
-
-        localBlocked:
-          context.localBlocked,
-
-        failedLoginAttempts:
-          context.failedLoginAttempts,
-
-        id_local:
-          context.id_local,
-
-        localNombre:
-          context.localNombre,
-
-        localNumeroDocumento:
-          context.localNumeroDocumento,
-
-        localUbicacion:
-          context.localUbicacion,
-
-        localContribuyente:
-          context.localContribuyente,
-
-        localTipoDocumento:
-          context.localTipoDocumento,
-
-        localNIT:
-          context.localNIT,
-
-        localNRC:
-          context.localNRC
-      });
-
-      return context;
-    })();
-
-  try {
-    return await currentUserContextPromise;
-  } finally {
-    currentUserContextPromise =
-      null;
-  }
-}
-
-async function getCurrentUserContext(
-  user = auth.currentUser
-) {
-  if (!user) {
-    return null;
-  }
-
-  return ensureCurrentUserContext(
-    user
-  );
-}
-
-/*
- * ============================================================
  * FINANZAS
  * ============================================================
  */
@@ -3741,16 +3744,8 @@ function formatMoney(
   ).format(
     Number(
       value ||
-      0
+        0
     )
-  );
-}
-
-function getDocumentsFromSessionOrEmpty(
-  collectionName
-) {
-  return getSessionCollection(
-    collectionName
   );
 }
 
@@ -3759,11 +3754,11 @@ function getTimestampMs(
 ) {
   if (
     value ===
-    null ||
+      null ||
     value ===
-    undefined ||
+      undefined ||
     value ===
-    ""
+      ""
   ) {
     return 0;
   }
@@ -3791,9 +3786,9 @@ function getTimestampMs(
 
   if (
     typeof value ===
-    "object" &&
+      "object" &&
     typeof value.seconds ===
-    "number"
+      "number"
   ) {
     return (
       value.seconds *
@@ -3827,6 +3822,14 @@ function getTimestampMs(
     : 0;
 }
 
+function getDocumentsFromSessionOrEmpty(
+  collectionName
+) {
+  return getSessionCollection(
+    collectionName
+  );
+}
+
 function calculateDailyFinancialSummaryFromCache(
   date = new Date(),
   localId = getCurrentLocalId()
@@ -3834,7 +3837,7 @@ function calculateDailyFinancialSummaryFromCache(
   const targetLocalId =
     String(
       localId ||
-      ""
+        ""
     ).trim();
 
   const start =
@@ -3874,9 +3877,6 @@ function calculateDailyFinancialSummaryFromCache(
     ({
       data
     }) => {
-      /*
-       * Sólo se calcula para un local.
-       */
       if (
         targetLocalId &&
         !matchesLocalContext(
@@ -3894,14 +3894,14 @@ function calculateDailyFinancialSummaryFromCache(
 
       if (
         timestamp >=
-        start.getTime() &&
+          start.getTime() &&
         timestamp <=
-        end.getTime()
+          end.getTime()
       ) {
         sales +=
           Number(
             data.total ||
-            0
+              0
           );
       }
     }
@@ -3933,14 +3933,14 @@ function calculateDailyFinancialSummaryFromCache(
 
       if (
         timestamp >=
-        start.getTime() &&
+          start.getTime() &&
         timestamp <=
-        end.getTime()
+          end.getTime()
       ) {
         expenses +=
           Number(
             data.amount ||
-            0
+              0
           );
       }
     }
@@ -3961,15 +3961,11 @@ async function getDailyFinancialSummary(
   date = new Date(),
   localId = getCurrentLocalId()
 ) {
-  /*
-   * Para Desarrollador no existe resumen financiero
-   * asociado a un local actual.
-   */
   if (
     isDeveloperRole(
       currentUserContextCache?.role ||
-      getStoredCurrentUser()?.role ||
-      ""
+        getStoredCurrentUser()?.role ||
+        ""
     )
   ) {
     return {
@@ -4062,7 +4058,7 @@ async function recordLoginAttempt(
       }
     );
   } catch (
-  error
+    error
   ) {
     console.error(
       "No se pudo registrar el intento de acceso:",
@@ -4075,7 +4071,9 @@ async function updateEmployeeAccess(
   employeeId = "",
   patch = {}
 ) {
-  if (!employeeId) {
+  if (
+    !employeeId
+  ) {
     return;
   }
 
@@ -4101,7 +4099,7 @@ async function updateEmployeeAccess(
 
     Object.entries(
       patch ||
-      {}
+        {}
     ).forEach(
       ([
         key,
@@ -4109,13 +4107,13 @@ async function updateEmployeeAccess(
       ]) => {
         if (
           key ===
-          "lastLoginAt" ||
+            "lastLoginAt" ||
           key ===
-          "lastAccessAt" ||
+            "lastAccessAt" ||
           key ===
-          "lastFailedAt" ||
+            "lastFailedAt" ||
           key ===
-          "updatedAt"
+            "updatedAt"
         ) {
           safePatch[
             key
@@ -4140,11 +4138,11 @@ async function updateEmployeeAccess(
       currentUserContextCache &&
       String(
         currentUserContextCache.employeeId ||
-        ""
+          ""
       ) ===
-      String(
-        employeeId
-      )
+        String(
+          employeeId
+        )
     ) {
       currentUserContextCache = {
         ...currentUserContextCache,
@@ -4157,7 +4155,7 @@ async function updateEmployeeAccess(
       );
     }
   } catch (
-  error
+    error
   ) {
     console.error(
       "No se pudo actualizar el acceso del empleado:",
@@ -4239,7 +4237,9 @@ document.addEventListener(
       text =
         "Validando..."
     ) {
-      if (!btnLogin) {
+      if (
+        !btnLogin
+      ) {
         return;
       }
 
@@ -4436,7 +4436,7 @@ document.addEventListener(
             "#4CAF50"
         });
       } catch (
-      error
+        error
       ) {
         console.error(
           "Error enviando recuperación:",
@@ -4447,7 +4447,7 @@ document.addEventListener(
           "No se pudo enviar el correo de recuperación.";
 
         switch (
-        error.code
+          error.code
         ) {
           case "auth/invalid-email":
             mensaje =
@@ -4534,16 +4534,8 @@ document.addEventListener(
             const user =
               userCredential.user;
 
-            /*
-             * Cada login exitoso comienza una sesión limpia.
-             */
             clearSessionDataCache();
 
-            /*
-             * Resolver primero el perfil.
-             *
-             * El Desarrollador puede no tener id_local.
-             */
             const context =
               await ensureCurrentUserContext(
                 user,
@@ -4570,8 +4562,8 @@ document.addEventListener(
             const role =
               getCanonicalRole(
                 context.role ||
-                context.position ||
-                ""
+                  context.position ||
+                  ""
               );
 
             if (
@@ -4596,22 +4588,8 @@ document.addEventListener(
             const id_local =
               String(
                 context.id_local ||
-                ""
+                  ""
               ).trim();
-
-            /*
-             * ==================================================
-             * VALIDACIÓN DE LOCAL
-             * ==================================================
-             *
-             * Desarrollador:
-             *
-             *     NO requiere local.
-             *
-             * Otros roles:
-             *
-             *     sí requieren local.
-             */
 
             if (
               requiresLocal &&
@@ -4645,17 +4623,11 @@ document.addEventListener(
               return;
             }
 
-            /*
-             * ==================================================
-             * USUARIO BLOQUEADO
-             * ==================================================
-             */
-
             if (
               context.blocked ===
-              true ||
+                true ||
               context.active ===
-              false
+                false
             ) {
               await recordLoginAttempt({
                 email:
@@ -4685,7 +4657,7 @@ document.addEventListener(
 
               await updateEmployeeAccess(
                 context.employeeId ||
-                user.uid,
+                  user.uid,
                 {
                   failedLoginAttempts:
                     (
@@ -4731,18 +4703,10 @@ document.addEventListener(
               return;
             }
 
-            /*
-             * ==================================================
-             * LOCAL BLOQUEADO
-             * ==================================================
-             *
-             * No aplica para Desarrollador.
-             */
-
             if (
               requiresLocal &&
               context.localBlocked ===
-              true
+                true
             ) {
               await recordLoginAttempt({
                 email:
@@ -4793,12 +4757,6 @@ document.addEventListener(
 
               return;
             }
-
-            /*
-             * ==================================================
-             * USUARIO ACTUAL
-             * ==================================================
-             */
 
             const currentUser = {
               uid:
@@ -4901,12 +4859,6 @@ document.addEventListener(
                   : ""
             };
 
-            /*
-             * ==================================================
-             * STORAGE DEL USUARIO
-             * ==================================================
-             */
-
             setStoredCurrentUser(
               currentUser
             );
@@ -4941,26 +4893,17 @@ document.addEventListener(
               currentLocalContext;
 
             currentUserContextCache =
-            {
-              ...context,
-              ...currentUser
-            };
+              {
+                ...context,
+                ...currentUser
+              };
 
             currentUserContextUid =
               user.uid;
 
-            /*
-             * Guardar primero el contexto definitivo.
-             */
             setSessionContext(
               currentUserContextCache
             );
-
-            /*
-             * ==================================================
-             * ACTUALIZAR ACCESO
-             * ==================================================
-             */
 
             await updateEmployeeAccess(
               currentUser.employeeId,
@@ -4982,12 +4925,6 @@ document.addEventListener(
                   null
               }
             );
-
-            /*
-             * ==================================================
-             * REGISTRO DE LOGIN
-             * ==================================================
-             */
 
             await recordLoginAttempt({
               email:
@@ -5014,28 +4951,22 @@ document.addEventListener(
                 "login_ok"
             });
 
-            /*
-             * ==================================================
-             * PRE-CARGA DE DATOS
-             * ==================================================
-             *
-             * Desarrollador:
-             *
-             * - empleados -> global
-             * - local -> global
-             * - login_attempts -> global
-             * - colecciones operativas por local -> no aplican
-             *
-             * Operativos:
-             *
-             * - colecciones operativas por id_local
-             */
-
             setLoading(
               true,
               "Preparando datos..."
             );
 
+            /*
+             * IMPORTANTE:
+             *
+             * Para Administrador y demás roles operativos:
+             *
+             * empleados -> solo su local
+             *
+             * Para Desarrollador:
+             *
+             * empleados -> todos
+             */
             await preloadSessionData(
               user,
               {
@@ -5071,7 +5002,7 @@ document.addEventListener(
               500
             );
           } catch (
-          error
+            error
           ) {
             console.error(
               "Error auth:",
@@ -5086,7 +5017,7 @@ document.addEventListener(
               "Ocurrió un error inesperado.";
 
             switch (
-            error.code
+              error.code
             ) {
               case "auth/user-not-found":
                 mensajeError =
@@ -5152,9 +5083,9 @@ document.addEventListener(
 
           if (
             currentPage !==
-            "index.html" &&
+              "index.html" &&
             currentPage !==
-            "login.html"
+              "login.html"
           ) {
             window.location.href =
               "../index.html";
@@ -5164,9 +5095,6 @@ document.addEventListener(
         }
 
         try {
-          /*
-           * Recuperar contexto central.
-           */
           const resolved =
             await getCurrentUserContext(
               user
@@ -5181,19 +5109,10 @@ document.addEventListener(
           const role =
             getCanonicalRole(
               resolved.role ||
-              resolved.position ||
-              ""
+                resolved.position ||
+                ""
             );
 
-          /*
-           * Garantizar caché.
-           *
-           * Para Desarrollador esto cargará globalmente:
-           *
-           * - empleados
-           * - local
-           * - login_attempts
-           */
           await ensureSessionDataLoaded(
             user
           );
@@ -5213,9 +5132,9 @@ document.addEventListener(
 
           if (
             currentPage !==
-            "index.html" &&
+              "index.html" &&
             currentPage !==
-            "login.html"
+              "login.html"
           ) {
             if (
               !canAccessPage(
@@ -5232,7 +5151,7 @@ document.addEventListener(
             }
           }
         } catch (
-        err
+          err
         ) {
           console.error(
             "Error resolviendo contexto del usuario:",
@@ -5249,7 +5168,7 @@ document.addEventListener(
           const role =
             getCanonicalRole(
               storedUser?.role ||
-              ""
+                ""
             );
 
           setUserGreeting(
