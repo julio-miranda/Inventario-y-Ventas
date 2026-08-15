@@ -19,21 +19,15 @@
 // - renderNavigationForRole
 // - getCanonicalRole
 //
-// Optimización:
-// - NO consulta empleados.
-// - NO consulta local.
-// - NO consulta ventas directamente.
-// - NO consulta gastos directamente.
-// - NO utiliza onSnapshot().
-// - NO mantiene listeners realtime.
-// - NO hace una consulta adicional para el resumen.
-//
-// Todas las lecturas normales salen de la caché de sesión
-// preparada por app.js.
-//
-// Las escrituras continúan realizándose en Firestore.
-// Después de una escritura, se actualiza la caché de sesión
-// para mantener la interfaz consistente sin otra lectura.
+// Características:
+// - Los gastos se filtran por una fecha seleccionada.
+// - El resumen financiero utiliza la fecha seleccionada.
+// - Se puede registrar un gasto con una fecha determinada.
+// - Se puede cambiar la fecha de un gasto existente.
+// - Al cambiar la fecha se conserva la hora original.
+// - La caché de sesión se mantiene como fuente de lectura.
+// - No se agregan lecturas adicionales a Firestore después
+//   de registrar, editar o eliminar.
 //
 
 (() => {
@@ -41,11 +35,8 @@
 
   /*
    * ==========================================================
-   * CONSTANTES LOCALES
+   * CONSTANTES
    * ==========================================================
-   *
-   * Se mantienen dentro de esta IIFE para evitar conflictos
-   * con las constantes globales declaradas por app.js.
    */
 
   const EXPENSES_COLLECTION =
@@ -80,9 +71,44 @@
       "expensePayment"
     );
 
+  const expenseDateInput =
+    document.getElementById(
+      "expenseDate"
+    );
+
   const expenseNotesInput =
     document.getElementById(
       "expenseNotes"
+    );
+
+  const expenseFilterDateInput =
+    document.getElementById(
+      "expenseFilterDate"
+    );
+
+  const btnExpenseFilterToday =
+    document.getElementById(
+      "btnExpenseFilterToday"
+    );
+
+  const btnExpenseFilterYesterday =
+    document.getElementById(
+      "btnExpenseFilterYesterday"
+    );
+
+  const btnExpenseFilterReset =
+    document.getElementById(
+      "btnExpenseFilterReset"
+    );
+
+  const expenseSelectedDateLabel =
+    document.getElementById(
+      "expenseSelectedDateLabel"
+    );
+
+  const expensesTableTitle =
+    document.getElementById(
+      "expensesTableTitle"
     );
 
   const btnAddExpense =
@@ -150,11 +176,17 @@
   let isDeletingExpense =
     false;
 
+  let isChangingExpenseDate =
+    false;
+
   let currentContextLoaded =
     false;
 
   let dataLoadedFromSession =
     false;
+
+  let selectedDateKey =
+    "";
 
   /*
    * ==========================================================
@@ -203,6 +235,84 @@
     )
       ? number
       : 0;
+  }
+
+  function pad2(
+    value
+  ) {
+    return String(
+      value
+    ).padStart(
+      2,
+      "0"
+    );
+  }
+
+  function getLocalDateKey(
+    date = new Date()
+  ) {
+    return [
+      date.getFullYear(),
+      pad2(
+        date.getMonth() + 1
+      ),
+      pad2(
+        date.getDate()
+      )
+    ].join("-");
+  }
+
+  function parseDateInput(
+    value
+  ) {
+    const raw =
+      String(
+        value ||
+          ""
+      ).trim();
+
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(
+        raw
+      )
+    ) {
+      return null;
+    }
+
+    const [
+      year,
+      month,
+      day
+    ] =
+      raw
+        .split("-")
+        .map(
+          Number
+        );
+
+    const date =
+      new Date(
+        year,
+        month - 1,
+        day,
+        0,
+        0,
+        0,
+        0
+      );
+
+    if (
+      date.getFullYear() !==
+        year ||
+      date.getMonth() !==
+        month - 1 ||
+      date.getDate() !==
+        day
+    ) {
+      return null;
+    }
+
+    return date;
   }
 
   function getTimestampMs(
@@ -294,6 +404,27 @@
       : date.getTime();
   }
 
+  function getDateKeyFromTimestamp(
+    value
+  ) {
+    const timestamp =
+      getTimestampMs(
+        value
+      );
+
+    if (
+      !timestamp
+    ) {
+      return "";
+    }
+
+    return getLocalDateKey(
+      new Date(
+        timestamp
+      )
+    );
+  }
+
   function formatDateOnly(
     value
   ) {
@@ -343,6 +474,35 @@
     );
   }
 
+  function formatDateKeyForLabel(
+    dateKey
+  ) {
+    const date =
+      parseDateInput(
+        dateKey
+      );
+
+    if (
+      !date
+    ) {
+      return dateKey;
+    }
+
+    return date.toLocaleDateString(
+      "es-ES",
+      {
+        day:
+          "2-digit",
+
+        month:
+          "2-digit",
+
+        year:
+          "numeric"
+      }
+    );
+  }
+
   function currency(
     value
   ) {
@@ -386,6 +546,79 @@
     } catch {
       return null;
     }
+  }
+
+  function getTodayDateKey() {
+    return getLocalDateKey(
+      new Date()
+    );
+  }
+
+  function getYesterdayDateKey() {
+    const date =
+      new Date();
+
+    date.setDate(
+      date.getDate() - 1
+    );
+
+    return getLocalDateKey(
+      date
+    );
+  }
+
+  /*
+   * ==========================================================
+   * CREACIÓN DE TIMESTAMP PARA FECHA SELECCIONADA
+   * ==========================================================
+   *
+   * Utilizamos hora local.
+   *
+   * Al registrar:
+   * - se utiliza la fecha seleccionada;
+   * - se conserva la hora actual.
+   *
+   * Al editar:
+   * - se utiliza la nueva fecha;
+   * - se conserva la hora original.
+   */
+
+  function createLocalDateTimeFromDateKey(
+    dateKey,
+    referenceTimestamp =
+      Date.now()
+  ) {
+    const baseDate =
+      parseDateInput(
+        dateKey
+      );
+
+    if (
+      !baseDate
+    ) {
+      return null;
+    }
+
+    const referenceDate =
+      new Date(
+        getTimestampMs(
+          referenceTimestamp
+        ) ||
+          Date.now()
+      );
+
+    baseDate.setHours(
+      referenceDate.getHours(),
+      referenceDate.getMinutes(),
+      referenceDate.getSeconds(),
+      referenceDate.getMilliseconds()
+    );
+
+    return baseDate;
+  }
+
+  function getCurrentDateInputValue() {
+    return getTodayDateKey();
   }
 
   /*
@@ -646,35 +879,110 @@
 
   /*
    * ==========================================================
-   * FILTRADO DEL DÍA
+   * FILTRADO POR FECHA
    * ==========================================================
    */
 
-  function getTodayRange() {
-    const today =
-      new Date();
+  function setSelectedDate(
+    dateKey
+  ) {
+    const validDate =
+      parseDateInput(
+        dateKey
+      );
+
+    if (
+      !validDate
+    ) {
+      selectedDateKey =
+        getTodayDateKey();
+    } else {
+      selectedDateKey =
+        dateKey;
+    }
+
+    if (
+      expenseFilterDateInput
+    ) {
+      expenseFilterDateInput.value =
+        selectedDateKey;
+    }
+
+    updateDateFilterLabels();
+
+    rebuildDateCaches();
+
+    renderExpenses(
+      expensesCache
+    );
+
+    updateDailySummary();
+  }
+
+  function updateDateFilterLabels() {
+    const formattedDate =
+      formatDateKeyForLabel(
+        selectedDateKey
+      );
+
+    const isTodaySelected =
+      selectedDateKey ===
+      getTodayDateKey();
+
+    if (
+      expenseSelectedDateLabel
+    ) {
+      expenseSelectedDateLabel.textContent =
+        isTodaySelected
+          ? `Mostrando gastos de hoy (${formattedDate}).`
+          : `Mostrando gastos del ${formattedDate}.`;
+    }
+
+    if (
+      expensesTableTitle
+    ) {
+      expensesTableTitle.textContent =
+        isTodaySelected
+          ? "Gastos registrados hoy"
+          : `Gastos registrados del ${formattedDate}`;
+    }
+  }
+
+  function getSelectedDateRange() {
+    const selectedDate =
+      parseDateInput(
+        selectedDateKey
+      );
+
+    if (
+      !selectedDate
+    ) {
+      return null;
+    }
 
     const start =
       new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate(),
-        0,
-        0,
-        0,
-        0
+        selectedDate
       );
+
+    start.setHours(
+      0,
+      0,
+      0,
+      0
+    );
 
     const end =
       new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate(),
-        23,
-        59,
-        59,
-        999
+        selectedDate
       );
+
+    end.setHours(
+      23,
+      59,
+      59,
+      999
+    );
 
     return {
       start,
@@ -682,7 +990,7 @@
     };
   }
 
-  function isToday(
+  function belongsToSelectedDate(
     value
   ) {
     const timestamp =
@@ -696,26 +1004,29 @@
       return false;
     }
 
-    const {
-      start,
-      end
-    } =
-      getTodayRange();
+    const range =
+      getSelectedDateRange();
+
+    if (
+      !range
+    ) {
+      return false;
+    }
 
     return (
       timestamp >=
-        start.getTime() &&
+        range.start.getTime() &&
       timestamp <=
-        end.getTime()
+        range.end.getTime()
     );
   }
 
-  function rebuildDailyCaches() {
+  function rebuildDateCaches() {
     expensesCache =
       loadExpensesFromSession()
         .filter(
           item =>
-            isToday(
+            belongsToSelectedDate(
               item.createdAt
             )
         );
@@ -724,7 +1035,7 @@
       loadSalesFromSession()
         .filter(
           item =>
-            isToday(
+            belongsToSelectedDate(
               item.createdAt
             )
         );
@@ -734,10 +1045,6 @@
    * ==========================================================
    * RESUMEN
    * ==========================================================
-   *
-   * 100 % en memoria.
-   *
-   * No se consulta Firestore.
    */
 
   function updateDailySummary() {
@@ -835,6 +1142,14 @@
     }
 
     if (
+      expenseDateInput
+    ) {
+      expenseDateInput.value =
+        selectedDateKey ||
+        getCurrentDateInputValue();
+    }
+
+    if (
       expenseNotesInput
     ) {
       expenseNotesInput.value =
@@ -862,11 +1177,45 @@
 
   /*
    * ==========================================================
-   * ELIMINACIÓN
+   * PERMISOS POR GASTO
    * ==========================================================
    */
 
   function canDeleteExpenseItem(
+    item
+  ) {
+    if (
+      !item
+    ) {
+      return false;
+    }
+
+    const currentRole =
+      currentUserInfo.role ||
+      "";
+
+    const isAdmin =
+      isAdministratorRole(
+        currentRole
+      );
+
+    const isOwner =
+      item.userId &&
+      currentUserInfo.uid &&
+      String(
+        item.userId
+      ) ===
+        String(
+          currentUserInfo.uid
+        );
+
+    return (
+      isAdmin ||
+      isOwner
+    );
+  }
+
+  function canChangeExpenseDate(
     item
   ) {
     if (
@@ -925,7 +1274,7 @@
         `
           <tr>
             <td colspan="8">
-              No hay gastos registrados hoy.
+              No hay gastos registrados para esta fecha.
             </td>
           </tr>
         `;
@@ -939,6 +1288,44 @@
           document.createElement(
             "tr"
           );
+
+        const editDateButton =
+          canChangeExpenseDate(
+            item
+          )
+            ? `
+              <button
+                class="btn-outline"
+                type="button"
+                data-action="change-date"
+                data-id="${escapeHtml(
+                  item.id
+                )}"
+                style="margin-right:6px;"
+              >
+                <i class="fas fa-calendar-alt"></i>
+                Cambiar fecha
+              </button>
+            `
+            : "";
+
+        const deleteButton =
+          canDeleteExpenseItem(
+            item
+          )
+            ? `
+              <button
+                class="btn-delete"
+                type="button"
+                data-action="delete"
+                data-id="${escapeHtml(
+                  item.id
+                )}"
+              >
+                Eliminar
+              </button>
+            `
+            : "";
 
         tr.innerHTML = `
           <td>
@@ -993,23 +1380,8 @@
           </td>
 
           <td>
-            ${
-              canDeleteExpenseItem(
-                item
-              )
-                ? `
-                  <button
-                    class="btn-delete"
-                    type="button"
-                    data-id="${escapeHtml(
-                      item.id
-                    )}"
-                  >
-                    Eliminar
-                  </button>
-                `
-                : "-"
-            }
+            ${editDateButton}
+            ${deleteButton || "-"}
           </td>
         `;
 
@@ -1021,7 +1393,7 @@
 
     expensesTableBody
       .querySelectorAll(
-        "button[data-id]"
+        "button[data-action]"
       )
       .forEach(
         button => {
@@ -1038,46 +1410,39 @@
           button.addEventListener(
             "click",
             async () => {
-              if (
-                isDeletingExpense
-              ) {
-                return;
-              }
-
               const id =
                 button.getAttribute(
                   "data-id"
                 );
 
-              await deleteExpense(
-                id
-              );
+              const action =
+                button.getAttribute(
+                  "data-action"
+                );
+
+              if (
+                action ===
+                "delete"
+              ) {
+                await deleteExpense(
+                  id
+                );
+
+                return;
+              }
+
+              if (
+                action ===
+                "change-date"
+              ) {
+                await changeExpenseDate(
+                  id
+                );
+              }
             }
           );
         }
       );
-  }
-
-  /*
-   * ==========================================================
-   * RECARGAR DESDE LA CACHÉ
-   * ==========================================================
-   */
-
-  function refreshFromSessionCache() {
-    if (
-      !dataLoadedFromSession
-    ) {
-      return;
-    }
-
-    rebuildDailyCaches();
-
-    renderExpenses(
-      expensesCache
-    );
-
-    updateDailySummary();
   }
 
   /*
@@ -1113,11 +1478,6 @@
     if (
       !id_local
     ) {
-      console.error(
-        "No se encontró id_local para el usuario actual:",
-        currentUserInfo
-      );
-
       await Swal.fire(
         "Error de configuración",
         "El usuario actual no tiene un local asociado. No se puede registrar el gasto.",
@@ -1148,6 +1508,13 @@
     const paymentMethod =
       String(
         expensePaymentInput?.value ||
+          ""
+      ).trim();
+
+    const selectedExpenseDate =
+      String(
+        expenseDateInput?.value ||
+          selectedDateKey ||
           ""
       ).trim();
 
@@ -1185,6 +1552,23 @@
       return;
     }
 
+    const validDate =
+      parseDateInput(
+        selectedExpenseDate
+      );
+
+    if (
+      !validDate
+    ) {
+      await Swal.fire(
+        "Validación",
+        "Selecciona una fecha válida para el gasto.",
+        "warning"
+      );
+
+      return;
+    }
+
     if (
       !window.auth ||
       !window.auth.currentUser
@@ -1212,8 +1596,25 @@
           ? window.getCurrentLocalInfo()
           : {};
 
+      /*
+       * La fecha seleccionada se combina con la hora actual.
+       */
+      const expenseDate =
+        createLocalDateTimeFromDateKey(
+          selectedExpenseDate,
+          Date.now()
+        );
+
+      if (
+        !expenseDate
+      ) {
+        throw new Error(
+          "No se pudo construir la fecha del gasto."
+        );
+      }
+
       const createdAtMillis =
-        Date.now();
+        expenseDate.getTime();
 
       const expenseData = {
         concept,
@@ -1227,26 +1628,16 @@
         notes,
 
         dayKey:
-          typeof window.getTodayBounds ===
-          "function"
-            ? window.getTodayBounds(
-                new Date()
-              ).dayKey
-            : new Date()
-                .toISOString()
-                .slice(
-                  0,
-                  10
-                ),
+          getLocalDateKey(
+            expenseDate
+          ),
 
-        /*
-         * La escritura continúa utilizando el timestamp
-         * del servidor de Firestore.
-         */
         createdAt:
           firebase.firestore
-            .FieldValue
-            .serverTimestamp(),
+            .Timestamp
+            .fromDate(
+              expenseDate
+            ),
 
         userId:
           currentUserInfo.uid ||
@@ -1284,7 +1675,12 @@
 
         localNRC:
           localInfo.nrc ||
-          ""
+          "",
+
+        updatedAt:
+          firebase.firestore
+            .FieldValue
+            .serverTimestamp()
       };
 
       const documentReference =
@@ -1297,24 +1693,18 @@
           );
 
       /*
-       * serverTimestamp() no está resuelto dentro del
-       * objeto que conservamos localmente.
-       *
-       * Para la caché usamos el instante en el que se
-       * registró correctamente la operación.
+       * Para la caché utilizamos milisegundos.
        */
       const cacheData = {
         ...expenseData,
 
         createdAt:
-          createdAtMillis
+          createdAtMillis,
+
+        updatedAt:
+          Date.now()
       };
 
-      /*
-       * Actualizar caché central de app.js.
-       *
-       * NO hacemos .get() después del .add().
-       */
       if (
         typeof window.upsertSessionDocument !==
         "function"
@@ -1331,38 +1721,15 @@
       );
 
       /*
-       * Actualizar caché local del módulo.
+       * Recargar datos desde la caché central.
        */
-      expensesCache.push({
-        id:
-          documentReference.id,
+      expensesCache =
+        loadExpensesFromSession();
 
-        ...cacheData
-      });
+      salesCache =
+        loadSalesFromSession();
 
-      expensesCache.sort(
-        (
-          a,
-          b
-        ) =>
-          getTimestampMs(
-            b.createdAt
-          ) -
-          getTimestampMs(
-            a.createdAt
-          )
-      );
-
-      renderExpenses(
-        expensesCache.filter(
-          item =>
-            isToday(
-              item.createdAt
-            )
-        )
-      );
-
-      rebuildDailyCaches();
+      rebuildDateCaches();
 
       renderExpenses(
         expensesCache
@@ -1383,11 +1750,16 @@
         title:
           "Gasto agregado",
 
+        text:
+          `Fecha: ${formatDateKeyForLabel(
+            selectedExpenseDate
+          )}`,
+
         showConfirmButton:
           false,
 
         timer:
-          1400
+          1600
       });
 
       clearForm();
@@ -1413,6 +1785,396 @@
       setExpenseButtonsDisabled(
         false
       );
+    }
+  }
+
+  /*
+   * ==========================================================
+   * CAMBIAR FECHA DE UN GASTO
+   * ==========================================================
+   */
+
+  async function changeExpenseDate(
+    id
+  ) {
+    if (
+      isChangingExpenseDate
+    ) {
+      return;
+    }
+
+    if (
+      !canManageExpenses(
+        currentUserInfo.role
+      )
+    ) {
+      await Swal.fire(
+        "No tienes permisos",
+        "No tienes permisos para modificar gastos.",
+        "error"
+      );
+
+      return;
+    }
+
+    const allExpenses =
+      loadExpensesFromSession();
+
+    const target =
+      allExpenses.find(
+        item =>
+          String(
+            item.id
+          ) ===
+          String(
+            id
+          )
+      );
+
+    if (
+      !target
+    ) {
+      await Swal.fire(
+        "Error",
+        "No se encontró el gasto.",
+        "error"
+      );
+
+      return;
+    }
+
+    if (
+      !canChangeExpenseDate(
+        target
+      )
+    ) {
+      await Swal.fire(
+        "No tienes permisos",
+        "Solo el creador o el administrador pueden cambiar la fecha de este gasto.",
+        "error"
+      );
+
+      return;
+    }
+
+    const currentLocalId =
+      getCurrentContextLocalId();
+
+    const expenseLocalId =
+      getDocumentLocalId(
+        target
+      );
+
+    if (
+      currentLocalId &&
+      expenseLocalId &&
+      currentLocalId !==
+        expenseLocalId
+    ) {
+      await Swal.fire(
+        "No tienes permisos",
+        "Este gasto pertenece a otro local.",
+        "error"
+      );
+
+      return;
+    }
+
+    const currentTimestamp =
+      getTimestampMs(
+        target.createdAt
+      );
+
+    if (
+      !currentTimestamp
+    ) {
+      await Swal.fire(
+        "Error",
+        "El gasto no tiene una fecha válida y no puede modificarse.",
+        "error"
+      );
+
+      return;
+    }
+
+    const currentDateKey =
+      getDateKeyFromTimestamp(
+        target.createdAt
+      );
+
+    const result =
+      await Swal.fire({
+        title:
+          "Cambiar fecha del gasto",
+
+        html:
+          `
+            <div style="text-align:left;">
+              <div style="margin-bottom:8px;">
+                <strong>Concepto:</strong>
+                ${escapeHtml(
+                  target.concept ||
+                  "-"
+                )}
+              </div>
+
+              <div style="margin-bottom:8px;">
+                <strong>Fecha actual:</strong>
+                ${escapeHtml(
+                  formatDateOnly(
+                    target.createdAt
+                  )
+                )}
+              </div>
+
+              <label
+                for="swalExpenseNewDate"
+                style="
+                  display:block;
+                  margin-bottom:6px;
+                "
+              >
+                Nueva fecha
+              </label>
+
+              <input
+                id="swalExpenseNewDate"
+                class="swal2-input"
+                type="date"
+                value="${escapeHtml(
+                  currentDateKey
+                )}"
+                style="
+                  width:calc(100% - 2em);
+                  margin:0 auto;
+                "
+              >
+            </div>
+          `,
+
+        showCancelButton:
+          true,
+
+        confirmButtonText:
+          "Guardar fecha",
+
+        cancelButtonText:
+          "Cancelar",
+
+        focusConfirm:
+          false,
+
+        preConfirm:
+          () => {
+            const input =
+              document.getElementById(
+                "swalExpenseNewDate"
+              );
+
+            const value =
+              String(
+                input?.value ||
+                  ""
+              ).trim();
+
+            if (
+              !parseDateInput(
+                value
+              )
+            ) {
+              Swal.showValidationMessage(
+                "Selecciona una fecha válida."
+              );
+
+              return false;
+            }
+
+            return value;
+          }
+      });
+
+    if (
+      !result.isConfirmed
+    ) {
+      return;
+    }
+
+    const newDateKey =
+      String(
+        result.value ||
+          ""
+      ).trim();
+
+    if (
+      !parseDateInput(
+        newDateKey
+      )
+    ) {
+      return;
+    }
+
+    if (
+      newDateKey ===
+      currentDateKey
+    ) {
+      await Swal.fire({
+        toast:
+          true,
+
+        position:
+          "top-end",
+
+        icon:
+          "info",
+
+        title:
+          "La fecha no cambió",
+
+        showConfirmButton:
+          false,
+
+        timer:
+          1200
+      });
+
+      return;
+    }
+
+    const newExpenseDate =
+      createLocalDateTimeFromDateKey(
+        newDateKey,
+        currentTimestamp
+      );
+
+    if (
+      !newExpenseDate
+    ) {
+      await Swal.fire(
+        "Error",
+        "No se pudo construir la nueva fecha.",
+        "error"
+      );
+
+      return;
+    }
+
+    isChangingExpenseDate =
+      true;
+
+    try {
+      const newCreatedAt =
+        firebase.firestore
+          .Timestamp
+          .fromDate(
+            newExpenseDate
+          );
+
+      await window.db
+        .collection(
+          EXPENSES_COLLECTION
+        )
+        .doc(
+          id
+        )
+        .update({
+          createdAt:
+            newCreatedAt,
+
+          dayKey:
+            newDateKey,
+
+          updatedAt:
+            firebase.firestore
+              .FieldValue
+              .serverTimestamp()
+        });
+
+      /*
+       * Actualizar la caché central.
+       */
+      if (
+        typeof window.upsertSessionDocument !==
+        "function"
+      ) {
+        throw new Error(
+          "app.js no expuso upsertSessionDocument()."
+        );
+      }
+
+      window.upsertSessionDocument(
+        EXPENSES_COLLECTION,
+        id,
+        {
+          createdAt:
+            newExpenseDate.getTime(),
+
+          dayKey:
+            newDateKey,
+
+          updatedAt:
+            Date.now()
+        }
+      );
+
+      /*
+       * Volver a cargar desde la caché.
+       */
+      expensesCache =
+        loadExpensesFromSession();
+
+      salesCache =
+        loadSalesFromSession();
+
+      rebuildDateCaches();
+
+      renderExpenses(
+        expensesCache
+      );
+
+      updateDailySummary();
+
+      await Swal.fire({
+        toast:
+          true,
+
+        position:
+          "top-end",
+
+        icon:
+          "success",
+
+        title:
+          "Fecha actualizada",
+
+        text:
+          `Nueva fecha: ${formatDateKeyForLabel(
+            newDateKey
+          )}`,
+
+        showConfirmButton:
+          false,
+
+        timer:
+          1600
+      });
+
+    } catch (
+      error
+    ) {
+      console.error(
+        "Error cambiando fecha del gasto:",
+        error
+      );
+
+      await Swal.fire(
+        "Error",
+        error.message ||
+          "No se pudo cambiar la fecha del gasto.",
+        "error"
+      );
+    } finally {
+      isChangingExpenseDate =
+        false;
     }
   }
 
@@ -1445,8 +2207,11 @@
       return;
     }
 
+    const allExpenses =
+      loadExpensesFromSession();
+
     const target =
-      expensesCache.find(
+      allExpenses.find(
         item =>
           String(
             item.id
@@ -1555,9 +2320,6 @@
       true;
 
     try {
-      /*
-       * Escritura únicamente.
-       */
       await window.db
         .collection(
           EXPENSES_COLLECTION
@@ -1567,11 +2329,6 @@
         )
         .delete();
 
-      /*
-       * Eliminar de la caché central.
-       *
-       * NO hacemos .get() después del .delete().
-       */
       if (
         typeof window.removeSessionDocument !==
         "function"
@@ -1586,24 +2343,13 @@
         id
       );
 
-      /*
-       * Eliminar del caché local.
-       */
       expensesCache =
-        expensesCache.filter(
-          item =>
-            String(
-              item.id
-            ) !==
-            String(
-              id
-            )
-        );
+        loadExpensesFromSession();
 
-      /*
-       * Recalcular desde la caché.
-       */
-      rebuildDailyCaches();
+      salesCache =
+        loadSalesFromSession();
+
+      rebuildDateCaches();
 
       renderExpenses(
         expensesCache
@@ -1673,9 +2419,6 @@
       currentUserInfo.uid ===
         user.uid
     ) {
-      /*
-       * Verificar que la caché central exista.
-       */
       if (
         typeof window.ensureSessionDataLoaded ===
         "function"
@@ -1688,9 +2431,6 @@
       return;
     }
 
-    /*
-     * app.js es la fuente central del contexto.
-     */
     if (
       typeof window.getCurrentUserContext !==
       "function"
@@ -1713,9 +2453,6 @@
       );
     }
 
-    /*
-     * Garantizar la caché de la sesión.
-     */
     if (
       typeof window.ensureSessionDataLoaded !==
       "function"
@@ -1765,9 +2502,6 @@
     currentContextLoaded =
       true;
 
-    /*
-     * Saludo.
-     */
     const greetingEls =
       document.querySelectorAll(
         ".userGreeting"
@@ -1780,9 +2514,6 @@
       }
     );
 
-    /*
-     * Navegación.
-     */
     if (
       typeof window.renderNavigationForRole ===
       "function"
@@ -1795,7 +2526,7 @@
 
   /*
    * ==========================================================
-   * CARGA INICIAL DESDE CACHE
+   * CARGA INICIAL DESDE CACHÉ
    * ==========================================================
    */
 
@@ -1818,33 +2549,46 @@
       );
     }
 
-    /*
-     * Si la caché ya fue precargada durante el login,
-     * esta operación solamente la recupera/reutiliza.
-     */
     await window.ensureSessionDataLoaded(
       window.auth.currentUser
     );
 
-    rebuildDailyCaches();
+    expensesCache =
+      loadExpensesFromSession();
+
+    salesCache =
+      loadSalesFromSession();
 
     dataLoadedFromSession =
       true;
 
-    renderExpenses(
-      expensesCache
+    setSelectedDate(
+      selectedDateKey ||
+        getTodayDateKey()
     );
 
-    updateDailySummary();
+    /*
+     * El formulario de alta inicia con la fecha
+     * actualmente seleccionada.
+     */
+    if (
+      expenseDateInput
+    ) {
+      expenseDateInput.value =
+        selectedDateKey;
+    }
 
     console.log(
       "[Gastos] Datos cargados desde la caché de sesión:",
       {
-        ventasDelDia:
+        ventas:
           salesCache.length,
 
-        gastosDelDia:
+        gastos:
           expensesCache.length,
+
+        fechaSeleccionada:
+          selectedDateKey,
 
         id_local:
           currentUserInfo.id_local
@@ -1856,8 +2600,6 @@
    * ==========================================================
    * ACTUALIZACIÓN DE VISTA
    * ==========================================================
-   *
-   * No realiza ninguna lectura a Firestore.
    */
 
   function refreshExpenseViewFromSession() {
@@ -1867,7 +2609,13 @@
       return;
     }
 
-    rebuildDailyCaches();
+    expensesCache =
+      loadExpensesFromSession();
+
+    salesCache =
+      loadSalesFromSession();
+
+    rebuildDateCaches();
 
     renderExpenses(
       expensesCache
@@ -1875,12 +2623,6 @@
 
     updateDailySummary();
   }
-
-  /*
-   * ==========================================================
-   * EXPONER SOLO LO NECESARIO
-   * ==========================================================
-   */
 
   window.refreshExpenseViewFromSession =
     refreshExpenseViewFromSession;
@@ -1937,10 +2679,9 @@
         salesCache =
           [];
 
-        /*
-         * app.js también limpia esta caché durante
-         * el cierre de sesión.
-         */
+        selectedDateKey =
+          "";
+
         if (
           typeof window.clearSessionDataCache ===
           "function"
@@ -2001,9 +2742,6 @@
           return;
         }
 
-        /*
-         * Toda la lectura sale de app.js.
-         */
         await initializeExpenseData();
 
       } catch (
@@ -2034,13 +2772,174 @@
 
   /*
    * ==========================================================
-   * DOM
+   * EVENTOS DOM
    * ==========================================================
    */
 
   document.addEventListener(
     "DOMContentLoaded",
     () => {
+
+      /*
+       * --------------------------------------------------------
+       * FECHA DEL FORMULARIO
+       * --------------------------------------------------------
+       */
+
+      if (
+        expenseDateInput
+      ) {
+        expenseDateInput.value =
+          selectedDateKey ||
+          getTodayDateKey();
+
+        expenseDateInput.addEventListener(
+          "change",
+          () => {
+            const value =
+              expenseDateInput.value;
+
+            if (
+              !parseDateInput(
+                value
+              )
+            ) {
+              expenseDateInput.value =
+                selectedDateKey ||
+                getTodayDateKey();
+            }
+          }
+        );
+      }
+
+      /*
+       * --------------------------------------------------------
+       * FILTRO PRINCIPAL
+       * --------------------------------------------------------
+       */
+
+      if (
+        expenseFilterDateInput
+      ) {
+        expenseFilterDateInput.value =
+          getTodayDateKey();
+
+        expenseFilterDateInput.addEventListener(
+          "change",
+          () => {
+            const value =
+              expenseFilterDateInput.value;
+
+            if (
+              !parseDateInput(
+                value
+              )
+            ) {
+              expenseFilterDateInput.value =
+                selectedDateKey ||
+                getTodayDateKey();
+
+              return;
+            }
+
+            setSelectedDate(
+              value
+            );
+
+            /*
+             * Al cambiar el filtro también dejamos
+             * el formulario listo para registrar en
+             * la fecha seleccionada.
+             */
+            if (
+              expenseDateInput
+            ) {
+              expenseDateInput.value =
+                selectedDateKey;
+            }
+          }
+        );
+      }
+
+      /*
+       * --------------------------------------------------------
+       * BOTÓN HOY
+       * --------------------------------------------------------
+       */
+
+      if (
+        btnExpenseFilterToday
+      ) {
+        btnExpenseFilterToday.addEventListener(
+          "click",
+          () => {
+            setSelectedDate(
+              getTodayDateKey()
+            );
+
+            if (
+              expenseDateInput
+            ) {
+              expenseDateInput.value =
+                selectedDateKey;
+            }
+          }
+        );
+      }
+
+      /*
+       * --------------------------------------------------------
+       * BOTÓN AYER
+       * --------------------------------------------------------
+       */
+
+      if (
+        btnExpenseFilterYesterday
+      ) {
+        btnExpenseFilterYesterday.addEventListener(
+          "click",
+          () => {
+            setSelectedDate(
+              getYesterdayDateKey()
+            );
+
+            if (
+              expenseDateInput
+            ) {
+              expenseDateInput.value =
+                selectedDateKey;
+            }
+          }
+        );
+      }
+
+      /*
+       * --------------------------------------------------------
+       * RESTABLECER
+       * --------------------------------------------------------
+       */
+
+      if (
+        btnExpenseFilterReset
+      ) {
+        btnExpenseFilterReset.addEventListener(
+          "click",
+          () => {
+            setSelectedDate(
+              getTodayDateKey()
+            );
+
+            clearForm();
+          }
+        );
+      }
+
+      /*
+       * --------------------------------------------------------
+       * AGREGAR
+       * --------------------------------------------------------
+       */
+
       if (
         btnAddExpense
       ) {
@@ -2054,6 +2953,12 @@
         );
       }
 
+      /*
+       * --------------------------------------------------------
+       * LIMPIAR
+       * --------------------------------------------------------
+       */
+
       if (
         btnClearExpenseForm
       ) {
@@ -2066,6 +2971,17 @@
           }
         );
       }
+
+      /*
+       * --------------------------------------------------------
+       * Inicialización visual inmediata
+       * --------------------------------------------------------
+       */
+
+      selectedDateKey =
+        getTodayDateKey();
+
+      updateDateFilterLabels();
     }
   );
 })();
