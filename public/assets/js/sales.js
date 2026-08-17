@@ -2,10 +2,6 @@
 //
 // Ventas.
 //
-// assets/js/sales.js
-//
-// Ventas.
-//
 // Reglas:
 // - stock actual = stockCurrentUnits / quantity.
 // - Al registrar una venta se descuenta inventario.
@@ -1571,6 +1567,106 @@
     }
 
     return 0;
+  }
+
+  /*
+   * ============================================================
+   * PROVEEDOR DEL PRODUCTO
+   * ============================================================
+   *
+   * Se intenta soportar las distintas estructuras que puede
+   * tener actualmente el producto/proveedor.
+   *
+   * Ejemplos:
+   * - producto.proveedorNombre
+   * - producto.nombreProveedor
+   * - producto.supplierName
+   * - producto.proveedor.nombre
+   * - producto.supplier.nombre
+   * - producto.provider.nombre
+   */
+
+  function getProductSupplierName(
+    product
+  ) {
+    if (
+      !product
+    ) {
+      return "";
+    }
+
+    const supplier =
+      product.proveedor ||
+      product.supplier ||
+      product.provider ||
+      {};
+
+    const directCandidates = [
+      product.proveedorNombre,
+      product.nombreProveedor,
+      product.supplierName,
+      product.providerName,
+      product.nombreSupplier,
+      product.nombreProveedor,
+      product.proveedor_nombre,
+      product.supplier_name,
+      product.provider_name
+    ];
+
+    for (
+      const candidate of
+      directCandidates
+    ) {
+      if (
+        candidate !==
+          null &&
+        candidate !==
+          undefined &&
+        String(
+          candidate
+        ).trim()
+      ) {
+        return String(
+          candidate
+        ).trim();
+      }
+    }
+
+    const nestedCandidates = [
+      supplier.proveedorNombre,
+      supplier.nombreProveedor,
+      supplier.supplierName,
+      supplier.providerName,
+      supplier.nombre,
+      supplier.name,
+      supplier.razonSocial,
+      supplier.razon_social,
+      supplier.businessName,
+      supplier.business_name,
+      supplier.nombreComercial,
+      supplier.commercialName
+    ];
+
+    for (
+      const candidate of
+      nestedCandidates
+    ) {
+      if (
+        candidate !==
+          null &&
+        candidate !==
+          undefined &&
+        String(
+          candidate
+        ).trim()
+      ) {
+        return String(
+          candidate
+        ).trim();
+      }
+    }
+
+    return "";
   }
 
   /*
@@ -3244,12 +3340,19 @@
     userName,
     userId,
     costoUnitario,
+    supplierName,
     createdAt
   }) {
     const normalizedUnitCost =
       numberOrZero(
         costoUnitario
       );
+
+    const normalizedSupplierName =
+      String(
+        supplierName ||
+        ""
+      ).trim();
 
     return {
       productId,
@@ -3304,6 +3407,26 @@
 
       costoPorUnidad:
         normalizedUnitCost,
+
+      /*
+       * ========================================================
+       * PROVEEDOR
+       * ========================================================
+       *
+       * Se guardan varias claves compatibles con las distintas
+       * partes del sistema, especialmente dashboard.js.
+       */
+      proveedorNombre:
+        normalizedSupplierName,
+
+      nombreProveedor:
+        normalizedSupplierName,
+
+      supplierName:
+        normalizedSupplierName,
+
+      providerName:
+        normalizedSupplierName,
 
       detalle:
         detalle ||
@@ -3879,6 +4002,19 @@
                   data
                 );
 
+              /*
+               * Obtener el proveedor desde el producto real
+               * leído dentro de la transacción.
+               *
+               * De esta forma el movimiento de salida conserva
+               * el proveedor asociado al producto en el momento
+               * exacto de registrar la venta.
+               */
+              const supplierName =
+                getProductSupplierName(
+                  data
+                );
+
               const movementPayload =
                 createMovementObject({
                   productId,
@@ -3908,6 +4044,8 @@
                     remainingUnits,
 
                   costoUnitario,
+
+                  supplierName,
 
                   detalle:
                     `Salida por venta ${ventaRef.id} - Referencia: ${referenciaLibro}`,
@@ -5525,7 +5663,7 @@
       typeof CSS !==
         "undefined" &&
       typeof CSS.escape ===
-        "function"
+      "function"
         ? CSS.escape(
           saleId
         )
@@ -6227,6 +6365,15 @@
                   data
                 );
 
+              /*
+               * Mantener también el proveedor en el movimiento
+               * de devolución generado al eliminar la venta.
+               */
+              const supplierName =
+                getProductSupplierName(
+                  data
+                );
+
               const movementPayload =
                 createMovementObject({
                   productId,
@@ -6258,6 +6405,8 @@
                     resultingStock,
 
                   costoUnitario,
+
+                  supplierName,
 
                   detalle:
                     `Devolución de ${unitsToReturn} unidades por eliminación de venta ${saleId}.`,

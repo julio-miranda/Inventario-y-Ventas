@@ -23,6 +23,15 @@
 //      referencia
 //      documento
 //
+// - NUEVO:
+//      La carga múltiple permite seleccionar una
+//      fecha de operación.
+//      Esa fecha se utiliza para registrar:
+//          stock_movimientos.createdAt
+//          gastos.createdAt
+//          gastos.dayKey
+//          caché de sesión
+//
 // - Producto existente:
 //      se suma al stock actual.
 //
@@ -541,6 +550,176 @@
     )
       ? 0
       : date.getTime();
+  }
+
+  /*
+   * ============================================================
+   * NUEVO: FECHA DE OPERACIÓN
+   * ============================================================
+   *
+   * La fecha se toma de un <input type="date">.
+   *
+   * Se construye en hora local para evitar desfases de zona
+   * horaria cuando Firestore convierta el Timestamp a UTC.
+   */
+
+  function getLocalDateInputValue(
+    date = new Date()
+  ) {
+    const value =
+      date instanceof Date
+        ? date
+        : new Date(
+            date
+          );
+
+    if (
+      isNaN(
+        value.getTime()
+      )
+    ) {
+      return "";
+    }
+
+    const year =
+      value.getFullYear();
+
+    const month =
+      String(
+        value.getMonth() +
+          1
+      ).padStart(
+        2,
+        "0"
+      );
+
+    const day =
+      String(
+        value.getDate()
+      ).padStart(
+        2,
+        "0"
+      );
+
+    return `${year}-${month}-${day}`;
+  }
+
+  function parseOperationDate(
+    value
+  ) {
+    const text =
+      String(
+        value ||
+          ""
+      ).trim();
+
+    if (
+      !text
+    ) {
+      return null;
+    }
+
+    const match =
+      /^(\d{4})-(\d{2})-(\d{2})$/.exec(
+        text
+      );
+
+    if (
+      !match
+    ) {
+      return null;
+    }
+
+    const year =
+      Number(
+        match[1]
+      );
+
+    const month =
+      Number(
+        match[2]
+      );
+
+    const day =
+      Number(
+        match[3]
+      );
+
+    const date =
+      new Date(
+        year,
+        month - 1,
+        day,
+        12,
+        0,
+        0,
+        0
+      );
+
+    if (
+      date.getFullYear() !==
+        year ||
+      date.getMonth() !==
+        month - 1 ||
+      date.getDate() !==
+        day
+    ) {
+      return null;
+    }
+
+    return date;
+  }
+
+  function formatOperationDate(
+    date
+  ) {
+    if (
+      !date
+    ) {
+      return "—";
+    }
+
+    return date.toLocaleDateString(
+      "es-ES"
+    );
+  }
+
+  function buildOperationTimestamp(
+    operationDate
+  ) {
+    const date =
+      operationDate instanceof Date
+        ? operationDate
+        : new Date(
+            operationDate
+          );
+
+    if (
+      isNaN(
+        date.getTime()
+      )
+    ) {
+      throw new Error(
+        "La fecha de operación no es válida."
+      );
+    }
+
+    /*
+     * Se fija el timestamp al mediodía local.
+     * Así se evita que la conversión UTC pueda mover
+     * la fecha al día anterior.
+     */
+    return firebase.firestore.Timestamp.fromDate(
+      new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        12,
+        0,
+        0,
+        0
+      )
+    );
   }
 
   /*
@@ -1219,12 +1398,19 @@
       );
     }
 
+    const operationDate =
+      date instanceof Date
+        ? date
+        : new Date(
+            date
+          );
+
     const year =
-      date.getFullYear();
+      operationDate.getFullYear();
 
     const month =
       String(
-        date.getMonth() +
+        operationDate.getMonth() +
           1
       ).padStart(
         2,
@@ -1233,7 +1419,7 @@
 
     const day =
       String(
-        date.getDate()
+        operationDate.getDate()
       ).padStart(
         2,
         "0"
@@ -1334,10 +1520,20 @@
       );
   }
 
+  /*
+   * ============================================================
+   * GASTO AUTOMÁTICO DE INVENTARIO
+   * ============================================================
+   *
+   * NUEVO:
+   * operationDate determina createdAt y dayKey.
+   */
+
   async function registerInventoryExpense(
     totalAmount,
     lines,
-    user
+    user,
+    operationDate
   ) {
     const amount =
       Math.max(
@@ -1362,6 +1558,26 @@
           ""
       };
     }
+
+    const validOperationDate =
+      operationDate instanceof Date
+        ? operationDate
+        : parseOperationDate(
+            operationDate
+          );
+
+    if (
+      !validOperationDate
+    ) {
+      throw new Error(
+        "La fecha de operación no es válida para registrar el gasto."
+      );
+    }
+
+    const operationTimestamp =
+      buildOperationTimestamp(
+        validOperationDate
+      );
 
     const context =
       currentUserInventoryContext ||
@@ -1460,6 +1676,10 @@
 
         "Las cantidades bono no generan costo.",
 
+        `Fecha de operación: ${formatOperationDate(
+          validOperationDate
+        )}`,
+
         `Productos ingresados: ${productCount}`,
 
         `Unidades totales ingresadas: ${totalUnits}`,
@@ -1486,7 +1706,7 @@
 
       dayKey:
         getInventoryDayKey(
-          new Date()
+          validOperationDate
         ),
 
       userId:
@@ -1538,6 +1758,11 @@
       inventoryOperation:
         true,
 
+      inventoryOperationDate:
+        getLocalDateInputValue(
+          validOperationDate
+        ),
+
       inventoryProductCount:
         productCount,
 
@@ -1548,10 +1773,12 @@
     await expenseRef.set({
       ...expenseData,
 
+      /*
+       * La fecha elegida en el formulario es la fecha
+       * histórica de la operación.
+       */
       createdAt:
-        firebase.firestore
-          .FieldValue
-          .serverTimestamp()
+        operationTimestamp
     });
 
     upsertSessionDocument(
@@ -1561,7 +1788,7 @@
         ...expenseData,
 
         createdAt:
-          Date.now()
+          operationTimestamp.toMillis()
       }
     );
 
@@ -3271,11 +3498,6 @@
                       ""
                   ).trim(),
 
-                /*
-                 * NUEVO:
-                 * conservar el costo unitario histórico
-                 * guardado en el movimiento.
-                 */
                 costoUnitario:
                   numberOrZero(
                     data.costoUnitario
@@ -3383,12 +3605,6 @@
    * ============================================================
    * REGISTRAR MOVIMIENTO
    * ============================================================
-   *
-   * NUEVO CAMPO:
-   *
-   *   costoUnitario
-   *
-   * Representa el costo histórico por unidad del movimiento.
    */
 
   function buildMovementData({
@@ -3404,11 +3620,19 @@
     saldoActual,
     costoUnitario,
     detalle,
-    user
+    user,
+    operationDate
   }) {
     const context =
       currentUserInventoryContext ||
       {};
+
+    const validOperationDate =
+      operationDate instanceof Date
+        ? operationDate
+        : parseOperationDate(
+            operationDate
+          );
 
     return {
       productId,
@@ -3465,12 +3689,6 @@
           saldoActual
         ),
 
-      /*
-       * ========================================================
-       * NUEVO:
-       * COSTO UNITARIO HISTÓRICO DEL MOVIMIENTO
-       * ========================================================
-       */
       costoUnitario:
         Math.max(
           0,
@@ -3482,6 +3700,13 @@
       detalle:
         detalle ||
         "",
+
+      fechaOperacion:
+        validOperationDate
+          ? getLocalDateInputValue(
+              validOperationDate
+            )
+          : "",
 
       id_local:
         currentLocalId ||
@@ -3535,7 +3760,8 @@
 
   async function createNewProductFromLine(
     line,
-    user
+    user,
+    operationDate
   ) {
     const paidBoxes =
       integerOrZero(
@@ -3586,6 +3812,26 @@
         `El producto "${line.name}" no tiene cantidad de inventario.`
       );
     }
+
+    const validOperationDate =
+      operationDate instanceof Date
+        ? operationDate
+        : parseOperationDate(
+            operationDate
+          );
+
+    if (
+      !validOperationDate
+    ) {
+      throw new Error(
+        `La fecha de operación no es válida para el producto "${line.name}".`
+      );
+    }
+
+    const operationTimestamp =
+      buildOperationTimestamp(
+        validOperationDate
+      );
 
     const productRef =
       db
@@ -3702,7 +3948,12 @@
 
       numeroDocumento:
         line.numeroDocumento ||
-        ""
+        "",
+
+      fechaOperacion:
+        getLocalDateInputValue(
+          validOperationDate
+        )
     };
 
     const movementRef =
@@ -3712,13 +3963,6 @@
         )
         .doc();
 
-    /*
-     * ==========================================================
-     * MOVIMIENTO DEL PRODUCTO NUEVO
-     * ==========================================================
-     *
-     * costoUnitario = lastCostPerUnit
-     */
     const movementData =
       buildMovementData({
         productId:
@@ -3768,12 +4012,19 @@
 
             `Costo unitario: ${currency(
               lastCostPerUnit
+            )}`,
+
+            `Fecha de operación: ${formatOperationDate(
+              validOperationDate
             )}`
           ].join(
             " | "
           ),
 
-        user
+        user,
+
+        operationDate:
+          validOperationDate
       });
 
     const batch =
@@ -3784,10 +4035,12 @@
       {
         ...productData,
 
+        /*
+         * Para un producto nuevo la fecha de creación
+         * representa la fecha de operación seleccionada.
+         */
         createdAt:
-          firebase.firestore
-            .FieldValue
-            .serverTimestamp(),
+          operationTimestamp,
 
         updatedAt:
           firebase.firestore
@@ -3802,9 +4055,7 @@
         ...movementData,
 
         createdAt:
-          firebase.firestore
-            .FieldValue
-            .serverTimestamp()
+          operationTimestamp
       }
     );
 
@@ -3823,7 +4074,7 @@
         ...productData,
 
         createdAt:
-          Date.now(),
+          operationTimestamp.toMillis(),
 
         updatedAt:
           Date.now()
@@ -3837,7 +4088,7 @@
         ...movementData,
 
         createdAt:
-          Date.now()
+          operationTimestamp.toMillis()
       }
     );
 
@@ -3845,7 +4096,13 @@
       id:
         productRef.id,
 
-      ...productData
+      ...productData,
+
+      createdAt:
+        operationTimestamp.toMillis(),
+
+      updatedAt:
+        Date.now()
     });
 
     return {
@@ -3868,7 +4125,8 @@
   async function addStockToExistingProduct(
     product,
     line,
-    user
+    user,
+    operationDate
   ) {
     const unitsPerBox =
       getUnitsPerBox(
@@ -3915,6 +4173,26 @@
       );
     }
 
+    const validOperationDate =
+      operationDate instanceof Date
+        ? operationDate
+        : parseOperationDate(
+            operationDate
+          );
+
+    if (
+      !validOperationDate
+    ) {
+      throw new Error(
+        `La fecha de operación no es válida para el producto "${product.name}".`
+      );
+    }
+
+    const operationTimestamp =
+      buildOperationTimestamp(
+        validOperationDate
+      );
+
     const productRef =
       db
         .collection(
@@ -3951,10 +4229,6 @@
     const transactionResult =
       await db.runTransaction(
         async transaction => {
-          /*
-           * Esta lectura se conserva únicamente dentro
-           * de la transacción para garantizar consistencia.
-           */
           const snap =
             await transaction.get(
               productRef
@@ -4051,13 +4325,6 @@
               )
               .doc();
 
-          /*
-           * ======================================================
-           * MOVIMIENTO DE ENTRADA
-           * ======================================================
-           *
-           * costoUnitario = nextCostPerUnit
-           */
           movementData =
             buildMovementData({
               productId:
@@ -4113,12 +4380,19 @@
 
                   `Costo unitario: ${currency(
                     nextCostPerUnit
+                  )}`,
+
+                  `Fecha de operación: ${formatOperationDate(
+                    validOperationDate
                   )}`
                 ].join(
                   " | "
                 ),
 
-              user
+              user,
+
+              operationDate:
+                validOperationDate
             });
 
           transaction.update(
@@ -4190,6 +4464,11 @@
                 data.numeroDocumento ||
                 "",
 
+              fechaUltimaEntrada:
+                getLocalDateInputValue(
+                  validOperationDate
+                ),
+
               updatedAt:
                 firebase.firestore
                   .FieldValue
@@ -4203,9 +4482,7 @@
               ...movementData,
 
               createdAt:
-                firebase.firestore
-                  .FieldValue
-                  .serverTimestamp()
+                operationTimestamp
             }
           );
 
@@ -4305,6 +4582,11 @@
         product.numeroDocumento ||
         "",
 
+      fechaUltimaEntrada:
+        getLocalDateInputValue(
+          validOperationDate
+        ),
+
       id_local:
         currentLocalId,
 
@@ -4348,12 +4630,6 @@
       );
     }
 
-    /*
-     * ==========================================================
-     * ACTUALIZAR CACHÉ DEL MOVIMIENTO
-     * ==========================================================
-     */
-
     const movementId =
       transactionResult
         ?.movementId ||
@@ -4370,7 +4646,7 @@
           ...movementData,
 
           createdAt:
-            Date.now()
+            operationTimestamp.toMillis()
         }
       );
     }
@@ -5625,11 +5901,27 @@
    */
 
   async function processBatchLines(
-    lines
+    lines,
+    operationDate
   ) {
     const user =
       auth.currentUser ||
       null;
+
+    const validOperationDate =
+      operationDate instanceof Date
+        ? operationDate
+        : parseOperationDate(
+            operationDate
+          );
+
+    if (
+      !validOperationDate
+    ) {
+      throw new Error(
+        "La fecha de operación no es válida."
+      );
+    }
 
     const results =
       [];
@@ -5670,7 +5962,8 @@
           await addStockToExistingProduct(
             product,
             line,
-            user
+            user,
+            validOperationDate
           );
 
         results.push(
@@ -5687,7 +5980,8 @@
       const result =
         await createNewProductFromLine(
           line,
-          user
+          user,
+          validOperationDate
         );
 
       results.push(
@@ -5710,6 +6004,41 @@
 
   function buildBatchModalHtml() {
     return `
+      <div
+        class="batch-operation-date-box"
+      >
+        <div class="inv-field">
+          <label
+            for="batch-operation-date"
+          >
+            Fecha de operación
+          </label>
+
+          <input
+            id="batch-operation-date"
+            type="date"
+            value="${getLocalDateInputValue()}"
+          >
+
+          <small>
+            Esta fecha se utilizará para el movimiento
+            de inventario y para el gasto automático.
+          </small>
+        </div>
+
+        <div
+          class="batch-operation-date-preview"
+          id="batch-operation-date-preview"
+        >
+          Fecha seleccionada:
+          <strong>
+            ${formatOperationDate(
+              new Date()
+            )}
+          </strong>
+        </div>
+      </div>
+
       <div
         id="batch-products-container"
         class="batch-products-container"
@@ -5833,6 +6162,16 @@
                 "batch-add-row"
               );
 
+            const dateInput =
+              document.getElementById(
+                "batch-operation-date"
+              );
+
+            const datePreview =
+              document.getElementById(
+                "batch-operation-date-preview"
+              );
+
             if (
               !container ||
               !addButton
@@ -5859,6 +6198,47 @@
                 );
               }
             );
+
+            if (
+              dateInput &&
+              datePreview
+            ) {
+              dateInput.addEventListener(
+                "change",
+                () => {
+                  const selectedDate =
+                    parseOperationDate(
+                      dateInput.value
+                    );
+
+                  if (
+                    selectedDate
+                  ) {
+                    datePreview.innerHTML = `
+                      Fecha seleccionada:
+                      <strong>
+                        ${escapeHtml(
+                          formatOperationDate(
+                            selectedDate
+                          )
+                        )}
+                      </strong>
+                    `;
+                  } else {
+                    datePreview.innerHTML = `
+                      <span
+                        style="
+                          color:#b91c1c;
+                          font-weight:700;
+                        "
+                      >
+                        Fecha no válida.
+                      </span>
+                    `;
+                  }
+                }
+              );
+            }
           },
 
         preConfirm:
@@ -5868,11 +6248,41 @@
                 "batch-products-container"
               );
 
+            const dateInput =
+              document.getElementById(
+                "batch-operation-date"
+              );
+
             if (
               !container
             ) {
               Swal.showValidationMessage(
                 "No se pudo construir el formulario."
+              );
+
+              return;
+            }
+
+            if (
+              !dateInput
+            ) {
+              Swal.showValidationMessage(
+                "No se pudo obtener la fecha de operación."
+              );
+
+              return;
+            }
+
+            const operationDate =
+              parseOperationDate(
+                dateInput.value
+              );
+
+            if (
+              !operationDate
+            ) {
+              Swal.showValidationMessage(
+                "Debes seleccionar una fecha de operación válida."
               );
 
               return;
@@ -5917,7 +6327,15 @@
               return;
             }
 
-            return validation.parsed;
+            return {
+              operationDate,
+
+              operationDateValue:
+                dateInput.value,
+
+              lines:
+                validation.parsed
+            };
           }
       });
 
@@ -5927,16 +6345,39 @@
       return;
     }
 
+    const payload =
+      result.value ||
+      {};
+
     const lines =
       Array.isArray(
-        result.value
+        payload.lines
       )
-        ? result.value
+        ? payload.lines
         : [];
+
+    const operationDate =
+      payload.operationDate instanceof Date
+        ? payload.operationDate
+        : parseOperationDate(
+            payload.operationDateValue
+          );
 
     if (
       !lines.length
     ) {
+      return;
+    }
+
+    if (
+      !operationDate
+    ) {
+      await Swal.fire(
+        "Fecha inválida",
+        "La fecha de operación seleccionada no es válida.",
+        "error"
+      );
+
       return;
     }
 
@@ -5946,9 +6387,22 @@
           "Procesando productos",
 
         html:
-          `Preparando ${
-            lines.length
-          } producto(s)...`,
+          `
+            <div>
+              Preparando ${
+                lines.length
+              } producto(s)...
+              <br><br>
+              <strong>
+                Fecha de operación:
+              </strong>
+              ${escapeHtml(
+                formatOperationDate(
+                  operationDate
+                )
+              )}
+            </div>
+          `,
 
         allowOutsideClick:
           false,
@@ -5964,7 +6418,8 @@
 
       const results =
         await processBatchLines(
-          lines
+          lines,
+          operationDate
         );
 
       const created =
@@ -6021,7 +6476,8 @@
             totalPurchaseCost,
             lines,
             auth.currentUser ||
-              null
+              null,
+            operationDate
           );
       } catch (
         error
@@ -6097,6 +6553,17 @@
                 text-align:left;
               "
             >
+              <p>
+                Fecha de operación:
+                <strong>
+                  ${escapeHtml(
+                    formatOperationDate(
+                      operationDate
+                    )
+                  )}
+                </strong>
+              </p>
+
               <p>
                 Productos procesados:
                 <strong>
@@ -6718,12 +7185,6 @@
         movementId =
           movementRef.id;
 
-        /*
-         * ======================================================
-         * AJUSTE:
-         * se registra el costo unitario actualmente vigente.
-         * ======================================================
-         */
         movementData =
           buildMovementData({
             productId,
@@ -7117,6 +7578,46 @@
         overflow-y: auto !important;
       }
 
+      .batch-operation-date-box {
+        display:grid;
+        grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
+        gap:12px;
+        margin-bottom:14px;
+        padding:12px;
+        border:1px solid #dbeafe;
+        border-radius:12px;
+        background:#eff6ff;
+        text-align:left;
+      }
+
+      .batch-operation-date-box .inv-field {
+        max-width:100%;
+      }
+
+      .batch-operation-date-box input[type="date"] {
+        width:100%;
+        min-height:40px;
+        box-sizing:border-box;
+      }
+
+      .batch-operation-date-preview {
+        display:flex;
+        flex-direction:column;
+        justify-content:center;
+        padding:10px 12px;
+        border-radius:10px;
+        background:#ffffff;
+        border:1px solid #bfdbfe;
+        color:#374151;
+        font-size:.85rem;
+      }
+
+      .batch-operation-date-preview strong {
+        margin-top:4px;
+        color:#1d4ed8;
+        font-size:1rem;
+      }
+
       .batch-products-container {
         display:flex;
         flex-direction:column;
@@ -7270,6 +7771,10 @@
       }
 
       @media (max-width:900px) {
+        .batch-operation-date-box {
+          grid-template-columns:1fr;
+        }
+
         .batch-grid {
           grid-template-columns:
             repeat(2, minmax(0, 1fr));
