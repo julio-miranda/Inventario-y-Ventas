@@ -106,7 +106,10 @@ textarea {
   color: var(--text);
   font: inherit;
   outline: none;
-  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition),
+    background var(--transition);
 }
 
 input:focus,
@@ -137,7 +140,12 @@ button,
   cursor: pointer;
   font: inherit;
   font-weight: 600;
-  transition: transform var(--transition), box-shadow var(--transition), background var(--transition), color var(--transition), border-color var(--transition);
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    background var(--transition),
+    color var(--transition),
+    border-color var(--transition);
 }
 
 button:active,
@@ -247,7 +255,10 @@ button:disabled,
   color: var(--nav-link);
   text-decoration: none;
   font-size: 0.95rem;
-  transition: background var(--transition), color var(--transition), transform var(--transition);
+  transition:
+    background var(--transition),
+    color var(--transition),
+    transform var(--transition);
 }
 
 .navbar-links a:hover,
@@ -354,7 +365,9 @@ button:disabled,
   text-decoration: none;
   font-size: 1.4rem;
   font-weight: 700;
-  transition: background var(--transition), color var(--transition);
+  transition:
+    background var(--transition),
+    color var(--transition);
 }
 
 .menu-links a:hover,
@@ -533,6 +546,7 @@ form textarea,
 }
 
 /* =============== Tablas =============== */
+
 .table-container {
   padding: 12px;
   overflow-x: auto;
@@ -540,6 +554,12 @@ form textarea,
   overflow-y: auto;
 }
 
+/*
+ * Tabla general.
+ *
+ * Se mantiene el comportamiento existente para el resto
+ * del sistema.
+ */
 table {
   width: 100%;
   border-collapse: collapse;
@@ -573,7 +593,11 @@ tbody tr:hover {
 }
 
 .table thead th {
-  background: linear-gradient(90deg, var(--success), var(--success-dark));
+  background: linear-gradient(
+    90deg,
+    var(--success),
+    var(--success-dark)
+  );
   color: #fff;
   border: 0;
 }
@@ -586,14 +610,19 @@ tbody tr:hover {
   background: #f8fafc;
 }
 
-/* DataTables */
+/* =============== DataTables general =============== */
+
 table.dataTable {
   width: 100% !important;
   border-collapse: collapse !important;
 }
 
 table.dataTable thead th {
-  background: linear-gradient(90deg, var(--success), var(--success-dark)) !important;
+  background: linear-gradient(
+    90deg,
+    var(--success),
+    var(--success-dark)
+  ) !important;
   color: #fff !important;
   border: 0 !important;
 }
@@ -626,6 +655,213 @@ table.dataTable.no-footer {
   background: var(--primary) !important;
   color: #fff !important;
   border-color: var(--primary) !important;
+}
+
+/* =========================================================
+   INVENTARIO — TABLA SIN SCROLL VERTICAL INTERNO
+   ========================================================= */
+
+/*
+ * El contenedor del inventario no debe limitar su altura.
+ * De esta forma las filas crecen normalmente y la página
+ * es la encargada del desplazamiento vertical.
+ */
+#inventoryTable_wrapper {
+  width: 100% !important;
+  max-height: none !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+/*
+ * DataTables puede crear .dataTables_scrollBody cuando
+ * alguna configuración de scroll está activa.
+ *
+ * Para inventario se fuerza a que no exista scroll vertical.
+ */
+#inventoryTable_wrapper .dataTables_scroll,
+#inventoryTable_wrapper .dataTables_scrollHead,
+#inventoryTable_wrapper .dataTables_scrollBody {
+  max-height: none !important;
+  height: auto !important;
+}
+
+#inventoryTable_wrapper .dataTables_scrollBody {
+  overflow-y: visible !important;
+  overflow-x: auto !important;
+}
+
+/*
+ * Contenedor inmediatamente usado para tablas de inventario.
+ * Se elimina cualquier límite vertical heredado de
+ * .table-container.
+ */
+.table-container:has(#inventoryTable) {
+  max-height: none !important;
+  height: auto !important;
+  overflow-y: visible !important;
+  overflow-x: auto !important;
+}
+
+/*
+ * La tabla debe calcular automáticamente el ancho de
+ * cada columna según el contenido real de sus celdas.
+ */
+#inventoryTable,
+#inventoryTable.dataTable {
+  width: 100% !important;
+  max-width: none !important;
+  table-layout: auto !important;
+  border-collapse: collapse !important;
+}
+
+/*
+ * Encabezados y celdas mantienen su contenido alineado
+ * verticalmente.
+ */
+#inventoryTable th,
+#inventoryTable td {
+  box-sizing: border-box;
+  vertical-align: middle !important;
+}
+
+/*
+ * Los encabezados no deben partirse en varias líneas.
+ * Esto evita que DataTables recalcule alturas extrañas.
+ */
+#inventoryTable thead th {
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+}
+
+/*
+ * Celdas numéricas: siempre una sola línea.
+ */
+#inventoryTable td:nth-child(3),
+#inventoryTable td:nth-child(4),
+#inventoryTable td:nth-child(5),
+#inventoryTable td:nth-child(6),
+#inventoryTable td:nth-child(7),
+#inventoryTable td:nth-child(8),
+#inventoryTable td:nth-child(9),
+#inventoryTable td:nth-child(10) {
+  white-space: nowrap !important;
+  word-break: normal !important;
+}
+
+/*
+ * El nombre del producto puede ocupar el espacio disponible,
+ * pero las palabras largas pueden dividirse para impedir
+ * que una sola fila destruya el ancho de toda la tabla.
+ */
+#inventoryTable td:nth-child(1) {
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+}
+
+/*
+ * El proveedor también puede ajustarse.
+ */
+#inventoryTable td:nth-child(2) {
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+}
+
+/*
+ * Estado.
+ */
+#inventoryTable td:nth-child(10) {
+  white-space: nowrap !important;
+}
+
+/*
+ * Acciones: nunca deben partirse en varias líneas.
+ */
+#inventoryTable th:last-child,
+#inventoryTable td:last-child {
+  white-space: nowrap !important;
+  width: 1% !important;
+}
+
+/*
+ * Los botones de las acciones permanecen juntos.
+ */
+#inventoryTable td:last-child {
+  min-width: max-content;
+}
+
+#inventoryTable td:last-child button {
+  white-space: nowrap !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/*
+ * El contenido secundario de Stock se mantiene compacto.
+ */
+#inventoryTable td small {
+  white-space: nowrap;
+}
+
+/*
+ * Evita que DataTables o el navegador introduzcan
+ * saltos inesperados en las columnas numéricas.
+ */
+#inventoryTable td:nth-child(3) small {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/*
+ * Si la tabla supera realmente el ancho disponible,
+ * solamente se permite desplazamiento horizontal.
+ * Nunca se introduce scroll vertical interno.
+ */
+#inventoryTable_wrapper,
+.table-container:has(#inventoryTable) {
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+}
+
+/*
+ * El cuerpo de DataTables para inventario no debe tener
+ * altura fija.
+ */
+#inventoryTable_wrapper .dataTables_scrollBody table {
+  width: 100% !important;
+  table-layout: auto !important;
+}
+
+/*
+ * En caso de que DataTables cree una tabla de encabezado
+ * separada, ambas deben conservar el mismo algoritmo de
+ * layout.
+ */
+#inventoryTable_wrapper .dataTables_scrollHead table,
+#inventoryTable_wrapper .dataTables_scrollBody table {
+  table-layout: auto !important;
+}
+
+/*
+ * El encabezado del inventario puede permanecer visible
+ * mientras la página completa hace scroll.
+ */
+#inventoryTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+/*
+ * El wrapper de DataTables no debe imponer alturas.
+ */
+#inventoryTable_wrapper .dataTables_scrollHeadInner {
+  width: 100% !important;
 }
 
 /* =============== Login =============== */
@@ -763,7 +999,6 @@ td:last-child button:last-child {
   font-size: 15px;
 }
 
-
 /* =============== Invoices =============== */
 .invoices {
   margin: 24px auto;
@@ -791,7 +1026,11 @@ td:last-child button:last-child {
 }
 
 #invoiceTable th {
-  background: linear-gradient(90deg, var(--success), var(--success-dark));
+  background: linear-gradient(
+    90deg,
+    var(--success),
+    var(--success-dark)
+  );
   color: #fff;
   font-weight: 800;
 }
@@ -865,6 +1104,27 @@ Responsive
   .sales .top-summary {
     gap: 14px;
   }
+
+  /*
+   * Inventario:
+   * conserva únicamente desplazamiento horizontal
+   * cuando la pantalla es pequeña.
+   */
+  #inventoryTable_wrapper {
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+  }
+
+  #inventoryTable_wrapper .dataTables_scrollBody {
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    max-height: none !important;
+  }
+
+  #inventoryTable th,
+  #inventoryTable td {
+    padding: 10px 8px;
+  }
 }
 
 @media (max-width: 560px) {
@@ -896,9 +1156,19 @@ Responsive
     padding: 10px 8px;
   }
 
-  .sales .summary-grid>div,
-  .top-summary>div {
+  .sales .summary-grid > div,
+  .top-summary > div {
     min-width: 100%;
+  }
+
+  #inventoryTable th,
+  #inventoryTable td {
+    padding: 9px 7px;
+    font-size: 0.82rem;
+  }
+
+  #inventoryTable td:last-child button {
+    padding: 7px 9px;
   }
 }
 
@@ -921,6 +1191,12 @@ Responsive
   .menu-links a {
     font-size: 0.98rem;
     padding: 16px 0;
+  }
+
+  #inventoryTable th,
+  #inventoryTable td {
+    padding: 8px 6px;
+    font-size: 0.78rem;
   }
 }
 
@@ -1074,7 +1350,10 @@ textarea:focus-visible {
 
 .inv-field input[list] {
   background: #fff;
-  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition),
+    background var(--transition);
 }
 
 .inv-field input[list]:focus {
@@ -1136,7 +1415,9 @@ datalist {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1fr);
+  grid-template-columns:
+    minmax(0, 1.8fr)
+    minmax(320px, 1fr);
   gap: 18px;
   margin-bottom: 24px;
 }
@@ -1221,7 +1502,8 @@ datalist {
 
 .filter-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -1305,7 +1587,8 @@ datalist {
 
 .info-card__meta {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
   gap: 8px 12px;
   font-size: 0.92rem;
   color: #374151;
@@ -1382,7 +1665,8 @@ datalist {
 
 .low-stock-item__right {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns:
+    1fr 1fr;
   gap: 6px 12px;
   min-width: 180px;
   text-align: right;
@@ -1464,7 +1748,11 @@ datalist {
   white-space: nowrap;
   font-weight: 800;
   color: #fff;
-  background: linear-gradient(90deg, var(--nav-bg), #111827);
+  background: linear-gradient(
+    90deg,
+    var(--nav-bg),
+    #111827
+  );
   padding: 14px 12px;
 }
 

@@ -13,16 +13,11 @@
 //
 // Los datos se obtienen de la caché de sesión creada por app.js.
 //
-// La primera vez que se inicia la sesión:
+// La caché local se reconstruye antes de cada recálculo del
+// dashboard para reflejar los cambios realizados por otros módulos
+// durante la misma sesión.
 //
-//     app.js -> Firestore -> sessionStorage
-//
-// Después:
-//
-//     dashboard.js -> sessionStorage
-//
-// Los filtros, búsquedas, estadísticas y exportaciones
-// funcionan completamente en memoria.
+// Las exportaciones funcionan completamente en memoria.
 //
 
 document.addEventListener(
@@ -379,7 +374,7 @@ document.addEventListener(
       return (
         !!value &&
         typeof value ===
-        "object" &&
+          "object" &&
         !Array.isArray(
           value
         )
@@ -394,33 +389,33 @@ document.addEventListener(
       ).replace(
         /[&<>"'`=\/]/g,
         char =>
-        ({
-          "&":
-            "&amp;",
+          ({
+            "&":
+              "&amp;",
 
-          "<":
-            "&lt;",
+            "<":
+              "&lt;",
 
-          ">":
-            "&gt;",
+            ">":
+              "&gt;",
 
-          '"':
-            "&quot;",
+            '"':
+              "&quot;",
 
-          "'":
-            "&#39;",
+            "'":
+              "&#39;",
 
-          "/":
-            "&#x2F;",
+            "/":
+              "&#x2F;",
 
-          "`":
-            "&#96;",
+            "`":
+              "&#96;",
 
-          "=":
-            "&#61;"
-        }[
-          char
-        ])
+            "=":
+              "&#61;"
+          }[
+            char
+          ])
       );
     }
 
@@ -429,9 +424,9 @@ document.addEventListener(
     ) {
       if (
         typeof appChartUtils !==
-        "undefined" &&
+          "undefined" &&
         typeof appChartUtils.formatCurrency ===
-        "function"
+          "function"
       ) {
         return appChartUtils.formatCurrency(
           value
@@ -477,7 +472,12 @@ document.addEventListener(
       value
     ) {
       if (
-        !value
+        value ===
+          null ||
+        value ===
+          undefined ||
+        value ===
+          ""
       ) {
         return 0;
       }
@@ -594,7 +594,8 @@ document.addEventListener(
 
       const m =
         String(
-          d.getMonth() + 1
+          d.getMonth() +
+            1
         ).padStart(
           2,
           "0"
@@ -720,10 +721,6 @@ document.addEventListener(
         );
       }
 
-      /*
-       * Garantizar que la caché exista antes de
-       * intentar leer sus colecciones.
-       */
       if (
         typeof window.ensureSessionDataLoaded ===
         "function"
@@ -756,7 +753,7 @@ document.addEventListener(
       currentLocalId =
         String(
           context.id_local ||
-          ""
+            ""
         ).trim();
 
       currentLocalInfo = {
@@ -766,43 +763,43 @@ document.addEventListener(
         nombre:
           String(
             context.localNombre ||
-            ""
+              ""
           ).trim(),
 
         numeroDocumento:
           String(
             context.localNumeroDocumento ||
-            ""
+              ""
           ).trim(),
 
         ubicacion:
           String(
             context.localUbicacion ||
-            ""
+              ""
           ).trim(),
 
         contribuyente:
           String(
             context.localContribuyente ||
-            ""
+              ""
           ).trim(),
 
         tipoDocumento:
           String(
             context.localTipoDocumento ||
-            ""
+              ""
           ).trim(),
 
         nit:
           String(
             context.localNIT ||
-            ""
+              ""
           ).trim(),
 
         nrc:
           String(
             context.localNRC ||
-            ""
+              ""
           ).trim()
       };
 
@@ -817,10 +814,12 @@ document.addEventListener(
       greetingEls.forEach(
         element => {
           element.textContent =
-            `Hola, ${currentUserInfo.name ||
-            "Usuario"
-            } (${currentUserInfo.role ||
-            ""
+            `Hola, ${
+              currentUserInfo.name ||
+              "Usuario"
+            } (${
+              currentUserInfo.role ||
+              ""
             })`;
         }
       );
@@ -855,56 +854,56 @@ document.addEventListener(
         >
           <strong>Local:</strong>
           ${escapeHtml(
-        currentLocalInfo.nombre ||
-        "—"
-      )}
+            currentLocalInfo.nombre ||
+              "—"
+          )}
           <br>
 
           <strong>Número de documento:</strong>
           ${escapeHtml(
-        currentLocalInfo.numeroDocumento ||
-        "—"
-      )}
+            currentLocalInfo.numeroDocumento ||
+              "—"
+          )}
           <br>
 
           <strong>Contribuyente:</strong>
           ${escapeHtml(
-        currentLocalInfo.contribuyente ||
-        "—"
-      )}
+            currentLocalInfo.contribuyente ||
+              "—"
+          )}
           <br>
 
           <strong>Tipo de documento:</strong>
           ${escapeHtml(
-        currentLocalInfo.tipoDocumento ||
-        "—"
-      )}
+            currentLocalInfo.tipoDocumento ||
+              "—"
+          )}
           <br>
 
           <strong>NIT:</strong>
           ${escapeHtml(
-        currentLocalInfo.nit ||
-        "—"
-      )}
+            currentLocalInfo.nit ||
+              "—"
+          )}
           <br>
 
           <strong>NRC:</strong>
           ${escapeHtml(
-        currentLocalInfo.nrc ||
-        "—"
-      )}
+            currentLocalInfo.nrc ||
+              "—"
+          )}
           <br>
 
           <strong>Ubicación:</strong>
           ${escapeHtml(
-        currentLocalInfo.ubicacion ||
-        "—"
-      )}
+            currentLocalInfo.ubicacion ||
+              "—"
+          )}
         </p>
 
         <p class="hero-subtitle">
-          Los datos de esta sesión se cargaron una sola vez.
-          Los filtros y búsquedas trabajan en memoria.
+          Los datos de esta sesión se cargan desde la caché
+          de sesión. Los filtros y búsquedas trabajan en memoria.
         </p>
       `;
     }
@@ -937,10 +936,10 @@ document.addEventListener(
       const documentLocalId =
         String(
           data.id_local ||
-          data.idLocal ||
-          data.localId ||
-          data.idlocal ||
-          ""
+            data.idLocal ||
+            data.localId ||
+            data.idlocal ||
+            ""
         ).trim();
 
       return (
@@ -979,7 +978,8 @@ document.addEventListener(
           product?.unitsPerBox
         );
 
-      return units > 0
+      return units >
+        0
         ? units
         : 1;
     }
@@ -1077,7 +1077,7 @@ document.addEventListener(
 
       for (
         const candidate of
-        directUnitCosts
+          directUnitCosts
       ) {
         const value =
           Number(
@@ -1088,7 +1088,8 @@ document.addEventListener(
           Number.isFinite(
             value
           ) &&
-          value > 0
+          value >
+            0
         ) {
           return value;
         }
@@ -1103,7 +1104,7 @@ document.addEventListener(
 
       for (
         const candidate of
-        boxCosts
+          boxCosts
       ) {
         const value =
           Number(
@@ -1114,7 +1115,8 @@ document.addEventListener(
           Number.isFinite(
             value
           ) &&
-          value > 0
+          value >
+            0
         ) {
           return (
             value /
@@ -1162,7 +1164,8 @@ document.addEventListener(
         Number.isFinite(
           explicitUnits
         ) &&
-        explicitUnits > 0
+        explicitUnits >
+          0
       ) {
         return explicitUnits;
       }
@@ -1176,18 +1179,20 @@ document.addEventListener(
         Number.isFinite(
           quantity
         ) &&
-        quantity > 0
+        quantity >
+          0
       ) {
         const mode =
           String(
             product.mode ||
-            product.saleMode ||
-            product.saleType ||
-            "unit"
+              product.saleMode ||
+              product.saleType ||
+              "unit"
           ).toLowerCase();
 
         if (
-          mode === "box"
+          mode ===
+          "box"
         ) {
           return (
             quantity *
@@ -1209,7 +1214,8 @@ document.addEventListener(
         Number.isFinite(
           boxes
         ) &&
-        boxes > 0
+        boxes >
+          0
       ) {
         return (
           boxes *
@@ -1253,10 +1259,10 @@ document.addEventListener(
               const productId =
                 String(
                   product.productId ||
-                  product.productID ||
-                  product.product_id ||
-                  product.id ||
-                  ""
+                    product.productID ||
+                    product.product_id ||
+                    product.id ||
+                    ""
                 ).trim();
 
               if (
@@ -1278,31 +1284,34 @@ document.addEventListener(
               const mode =
                 String(
                   product.mode ||
-                  product.saleMode ||
-                  product.saleType ||
-                  ""
+                    product.saleMode ||
+                    product.saleType ||
+                    ""
                 ).toLowerCase();
 
               const boxes =
-                mode === "box"
+                mode ===
+                "box"
                   ? numberOrZero(
-                    product.quantity ||
-                    product.boxes
-                  )
+                      product.quantity ||
+                        product.boxes
+                    )
                   : (
-                    unitsPerBox > 1
-                      ? units /
-                      unitsPerBox
-                      : 0
-                  );
+                      unitsPerBox >
+                        1
+                        ? units /
+                          unitsPerBox
+                        : 0
+                    );
 
               unitsMap[
                 productId
               ] =
                 (
                   unitsMap[
-                  productId
-                  ] || 0
+                    productId
+                  ] ||
+                  0
                 ) +
                 units;
 
@@ -1311,8 +1320,9 @@ document.addEventListener(
               ] =
                 (
                   boxesMap[
-                  productId
-                  ] || 0
+                    productId
+                  ] ||
+                  0
                 ) +
                 boxes;
 
@@ -1330,9 +1340,10 @@ document.addEventListener(
           productId =>
             numberOrZero(
               unitsMap[
-              productId
+                productId
               ]
-            ) > 0
+            ) >
+            0
         ).length;
 
       return {
@@ -1362,13 +1373,14 @@ document.addEventListener(
             const quantity =
               numberOrZero(
                 product.quantity ||
-                product.unitsTotal
+                  product.unitsTotal
               );
 
-            return `${product.name ||
+            return `${
+              product.name ||
               product.productName ||
               "Producto"
-              } x${quantity}`;
+            } x${quantity}`;
           }
         )
         .join(
@@ -1423,11 +1435,13 @@ document.addEventListener(
 
       for (
         const key of
-        keys
+          keys
       ) {
         if (
           isPlainObject(
-            movement?.[key]
+            movement?.[
+              key
+            ]
           )
         ) {
           return movement[
@@ -1454,7 +1468,8 @@ document.addEventListener(
       ) {
         if (
           !value ||
-          depth < 0
+          depth <
+            0
         ) {
           return undefined;
         }
@@ -1483,12 +1498,13 @@ document.addEventListener(
         ) {
           for (
             const item of
-            value
+              value
           ) {
             const found =
               walk(
                 item,
-                depth - 1
+                depth -
+                  1
               );
 
             if (
@@ -1509,7 +1525,7 @@ document.addEventListener(
         ) {
           for (
             const key of
-            keys
+              keys
           ) {
             if (
               Object.prototype.hasOwnProperty.call(
@@ -1519,14 +1535,14 @@ document.addEventListener(
             ) {
               const candidate =
                 value[
-                key
+                  key
                 ];
 
               if (
                 candidate !==
-                null &&
+                  null &&
                 candidate !==
-                undefined &&
+                  undefined &&
                 String(
                   candidate
                 ).trim()
@@ -1540,16 +1556,17 @@ document.addEventListener(
 
           for (
             const key of
-            Object.keys(
-              value
-            )
+              Object.keys(
+                value
+              )
           ) {
             const found =
               walk(
                 value[
-                key
+                  key
                 ],
-                depth - 1
+                depth -
+                  1
               );
 
             if (
@@ -1678,7 +1695,7 @@ document.addEventListener(
 
       return String(
         supplierName ||
-        ""
+          ""
       ).trim() ||
         "—";
     }
@@ -1688,12 +1705,12 @@ document.addEventListener(
     ) {
       return String(
         movement &&
-        (
-          movement.numeroDocumento ||
-          movement.documentNumber ||
-          movement.docNumber ||
-          "—"
-        )
+          (
+            movement.numeroDocumento ||
+            movement.documentNumber ||
+            movement.docNumber ||
+            "—"
+          )
       );
     }
 
@@ -1702,14 +1719,14 @@ document.addEventListener(
     ) {
       return String(
         movement &&
-        (
-          movement.libro ||
-          movement.referenceBook ||
-          movement.referenciaLibro ||
-          movement.bookReference ||
-          movement.libroReferencia ||
-          ""
-        )
+          (
+            movement.libro ||
+            movement.referenceBook ||
+            movement.referenciaLibro ||
+            movement.bookReference ||
+            movement.libroReferencia ||
+            ""
+          )
       ).trim() ||
         "—";
     }
@@ -1719,12 +1736,12 @@ document.addEventListener(
     ) {
       return numberOrZero(
         movement &&
-        (
-          movement.entrada ??
-          movement.entry ??
-          movement.unitsIn ??
-          0
-        )
+          (
+            movement.entrada ??
+            movement.entry ??
+            movement.unitsIn ??
+            0
+          )
       );
     }
 
@@ -1733,12 +1750,12 @@ document.addEventListener(
     ) {
       return numberOrZero(
         movement &&
-        (
-          movement.salida ??
-          movement.exit ??
-          movement.unitsOut ??
-          0
-        )
+          (
+            movement.salida ??
+            movement.exit ??
+            movement.unitsOut ??
+            0
+          )
       );
     }
 
@@ -1747,12 +1764,12 @@ document.addEventListener(
     ) {
       return numberOrZero(
         movement &&
-        (
-          movement.saldoAnterior ??
-          movement.balanceBefore ??
-          movement.previousBalance ??
-          0
-        )
+          (
+            movement.saldoAnterior ??
+            movement.balanceBefore ??
+            movement.previousBalance ??
+            0
+          )
       );
     }
 
@@ -1761,13 +1778,13 @@ document.addEventListener(
     ) {
       return numberOrZero(
         movement &&
-        (
-          movement.saldoActual ??
-          movement.balance ??
-          movement.saldo ??
-          movement.currentBalance ??
-          0
-        )
+          (
+            movement.saldoActual ??
+            movement.balance ??
+            movement.saldo ??
+            movement.currentBalance ??
+            0
+          )
       );
     }
 
@@ -1776,12 +1793,12 @@ document.addEventListener(
     ) {
       return String(
         movement &&
-        (
-          movement.detalle ||
-          movement.detail ||
-          movement.notes ||
-          ""
-        )
+          (
+            movement.detalle ||
+            movement.detail ||
+            movement.notes ||
+            ""
+          )
       );
     }
 
@@ -1798,7 +1815,7 @@ document.addEventListener(
 
       for (
         const candidate of
-        movementCosts
+          movementCosts
       ) {
         const value =
           Number(
@@ -1809,7 +1826,8 @@ document.addEventListener(
           Number.isFinite(
             value
           ) &&
-          value >= 0
+          value >=
+            0
         ) {
           return value;
         }
@@ -1831,7 +1849,7 @@ document.addEventListener(
 
         for (
           const candidate of
-          productCosts
+            productCosts
         ) {
           const value =
             Number(
@@ -1842,7 +1860,8 @@ document.addEventListener(
             Number.isFinite(
               value
             ) &&
-            value >= 0
+            value >=
+              0
           ) {
             return value;
           }
@@ -1862,7 +1881,7 @@ document.addEventListener(
 
         for (
           const candidate of
-          boxCosts
+            boxCosts
         ) {
           const value =
             Number(
@@ -1873,7 +1892,8 @@ document.addEventListener(
             Number.isFinite(
               value
             ) &&
-            value >= 0
+            value >=
+              0
           ) {
             return (
               value /
@@ -1920,9 +1940,9 @@ document.addEventListener(
 
       return (
         date >=
-        selectedRange.from &&
+          selectedRange.from &&
         date <=
-        selectedRange.to
+          selectedRange.to
       );
     }
 
@@ -1967,15 +1987,15 @@ document.addEventListener(
       const fromText =
         selectedRange.from
           ? selectedRange.from.toLocaleDateString(
-            "es-ES"
-          )
+              "es-ES"
+            )
           : "inicio";
 
       const toText =
         selectedRange.to
           ? selectedRange.to.toLocaleDateString(
-            "es-ES"
-          )
+              "es-ES"
+            )
           : "hoy";
 
       const localText =
@@ -2010,7 +2030,7 @@ document.addEventListener(
 
     /*
      * ==========================================================
-     * LECTURAS DE SESIÓN
+     * LECTURAS DESDE LA CACHE
      * ==========================================================
      */
 
@@ -2071,13 +2091,57 @@ document.addEventListener(
         );
     }
 
-    async function loadDashboardDataOnce() {
-      if (
-        dashboardDataLoaded
-      ) {
-        return;
-      }
+    /*
+     * ==========================================================
+     * ACTUALIZAR COPIAS INTERNAS DESDE LA CACHE
+     * ==========================================================
+     */
 
+    function refreshDashboardDataFromSessionCache() {
+      rawSalesDocs =
+        loadCollectionFromSession(
+          SALES_COLLECTION_NAME
+        );
+
+      rawExpensesDocs =
+        loadCollectionFromSession(
+          EXPENSES_COLLECTION_NAME
+        );
+
+      rawMovementsDocs =
+        loadCollectionFromSession(
+          MOVEMENTS_COLLECTION_NAME
+        );
+
+      rawProductsDocs =
+        loadCollectionFromSession(
+          PRODUCTS_COLLECTION_NAME
+        );
+
+      rebuildProductsMap();
+
+      dashboardDataLoaded =
+        true;
+
+      debugLog(
+        "Datos actualizados desde la caché:",
+        {
+          ventas:
+            rawSalesDocs.length,
+
+          gastos:
+            rawExpensesDocs.length,
+
+          movimientos:
+            rawMovementsDocs.length,
+
+          productos:
+            rawProductsDocs.length
+        }
+      );
+    }
+
+    async function loadDashboardDataOnce() {
       if (
         dashboardLoadingPromise
       ) {
@@ -2094,12 +2158,6 @@ document.addEventListener(
 
       dashboardLoadingPromise =
         (async () => {
-          /*
-           * Garantizar que la caché esté disponible.
-           *
-           * Normalmente esta función no genera lecturas porque
-           * app.js ya preparó la sesión al iniciar sesión.
-           */
           if (
             typeof window.ensureSessionDataLoaded ===
             "function"
@@ -2109,47 +2167,7 @@ document.addEventListener(
             );
           }
 
-          rawSalesDocs =
-            loadCollectionFromSession(
-              SALES_COLLECTION_NAME
-            );
-
-          rawExpensesDocs =
-            loadCollectionFromSession(
-              EXPENSES_COLLECTION_NAME
-            );
-
-          rawMovementsDocs =
-            loadCollectionFromSession(
-              MOVEMENTS_COLLECTION_NAME
-            );
-
-          rawProductsDocs =
-            loadCollectionFromSession(
-              PRODUCTS_COLLECTION_NAME
-            );
-
-          rebuildProductsMap();
-
-          dashboardDataLoaded =
-            true;
-
-          debugLog(
-            "Carga desde caché de sesión completada:",
-            {
-              ventas:
-                rawSalesDocs.length,
-
-              gastos:
-                rawExpensesDocs.length,
-
-              movimientos:
-                rawMovementsDocs.length,
-
-              productos:
-                rawProductsDocs.length
-            }
-          );
+          refreshDashboardDataFromSessionCache();
         })()
           .catch(
             error => {
@@ -2157,7 +2175,7 @@ document.addEventListener(
                 false;
 
               debugError(
-                "Error leyendo la caché del dashboard:",
+                "Error actualizando datos desde la caché:",
                 error
               );
 
@@ -2176,7 +2194,7 @@ document.addEventListener(
 
     /*
      * ==========================================================
-     * SALES CACHE
+     * CACHE VENTAS
      * ==========================================================
      */
 
@@ -2239,9 +2257,9 @@ document.addEventListener(
                   [
                     productText,
                     data.total ||
-                    "",
+                      "",
                     data.userName ||
-                    ""
+                      ""
                   ].join(
                     " "
                   )
@@ -2260,7 +2278,7 @@ document.addEventListener(
 
     /*
      * ==========================================================
-     * EXPENSES CACHE
+     * CACHE GASTOS
      * ==========================================================
      */
 
@@ -2331,17 +2349,17 @@ document.addEventListener(
               rawText:
                 [
                   data.concept ||
-                  "",
+                    "",
                   data.category ||
-                  "",
+                    "",
                   data.paymentMethod ||
-                  "",
+                    "",
                   data.userName ||
-                  "",
+                    "",
                   data.notes ||
-                  "",
+                    "",
                   data.amount ||
-                  ""
+                    ""
                 ].join(
                   " "
                 )
@@ -2359,7 +2377,7 @@ document.addEventListener(
 
     /*
      * ==========================================================
-     * MOVEMENTS CACHE
+     * CACHE MOVIMIENTOS
      * ==========================================================
      */
 
@@ -2382,9 +2400,9 @@ document.addEventListener(
               const productId =
                 String(
                   data.productId ||
-                  data.productID ||
-                  data.product_id ||
-                  ""
+                    data.productID ||
+                    data.product_id ||
+                    ""
                 ).trim();
 
               const product =
@@ -2396,23 +2414,23 @@ document.addEventListener(
               const productName =
                 String(
                   data.productName ||
-                  data.name ||
-                  data.nombre ||
-                  product.name ||
-                  "—"
+                    data.name ||
+                    data.nombre ||
+                    product.name ||
+                    "—"
                 );
 
               const productCode =
                 String(
                   data.codigoProducto ||
-                  data.productCode ||
-                  data.code ||
-                  data.sku ||
-                  product.codigoProducto ||
-                  product.productCode ||
-                  product.code ||
-                  product.sku ||
-                  "—"
+                    data.productCode ||
+                    data.code ||
+                    data.sku ||
+                    product.codigoProducto ||
+                    product.productCode ||
+                    product.code ||
+                    product.sku ||
+                    "—"
                 );
 
               const supplierName =
@@ -2423,18 +2441,18 @@ document.addEventListener(
               const docNumber =
                 String(
                   data.numeroDocumento ||
-                  data.documentNumber ||
-                  data.docNumber ||
-                  "—"
+                    data.documentNumber ||
+                    data.docNumber ||
+                    "—"
                 );
 
               const bookReference =
                 String(
                   data.referenciaLibro ||
-                  data.referenceBook ||
-                  data.bookReference ||
-                  data.libro ||
-                  "—"
+                    data.referenceBook ||
+                    data.bookReference ||
+                    data.libro ||
+                    "—"
                 );
 
               const entry =
@@ -2495,15 +2513,15 @@ document.addEventListener(
                 detail:
                   String(
                     data.detalle ||
-                    data.detail ||
-                    data.notes ||
-                    ""
+                      data.detail ||
+                      data.notes ||
+                      ""
                   ),
 
                 typeLabel:
                   String(
                     data.tipoMovimiento ||
-                    ""
+                      ""
                   ),
 
                 createdAtMs:
@@ -2535,9 +2553,9 @@ document.addEventListener(
                     entry,
                     exit,
                     data.detalle ||
-                    "",
+                      "",
                     data.tipoMovimiento ||
-                    ""
+                      ""
                   ].join(
                     " "
                   )
@@ -2562,11 +2580,11 @@ document.addEventListener(
 
               return String(
                 a.id ||
-                ""
+                  ""
               ).localeCompare(
                 String(
                   b.id ||
-                  ""
+                    ""
                 )
               );
             }
@@ -2588,20 +2606,17 @@ document.addEventListener(
 
       rebuildMovementsCache();
 
-      visibleSales =
-        [
-          ...cachedSales
-        ];
+      visibleSales = [
+        ...cachedSales
+      ];
 
-      visibleExpenses =
-        [
-          ...cachedExpenses
-        ];
+      visibleExpenses = [
+        ...cachedExpenses
+      ];
 
-      visibleMovements =
-        [
-          ...cachedMovements
-        ];
+      visibleMovements = [
+        ...cachedMovements
+      ];
     }
 
     /*
@@ -2647,32 +2662,32 @@ document.addEventListener(
           tr.innerHTML = `
             <td>
               ${escapeHtml(
-            row.products
-          )}
+                row.products
+              )}
             </td>
 
             <td>
               ${formatMoney(
-            row.total
-          )}
+                row.total
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            row.userName
-          )}
+                row.userName
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            row.dateStr
-          )}
+                row.dateStr
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            row.timeStr
-          )}
+                row.timeStr
+              )}
             </td>
           `;
 
@@ -2726,56 +2741,56 @@ document.addEventListener(
           tr.innerHTML = `
             <td>
               ${escapeHtml(
-            item.concept ||
-            "—"
-          )}
+                item.concept ||
+                  "—"
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            item.category ||
-            "—"
-          )}
+                item.category ||
+                  "—"
+              )}
             </td>
 
             <td>
               ${formatMoney(
-            item.amount ||
-            0
-          )}
+                item.amount ||
+                  0
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            item.paymentMethod ||
-            "—"
-          )}
+                item.paymentMethod ||
+                  "—"
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            item.userName ||
-            "—"
-          )}
+                item.userName ||
+                  "—"
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            item.dateStr
-          )}
+                item.dateStr
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            item.timeStr
-          )}
+                item.timeStr
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            item.notes ||
-            "—"
-          )}
+                item.notes ||
+                  "—"
+              )}
             </td>
           `;
 
@@ -2829,87 +2844,87 @@ document.addEventListener(
           tr.innerHTML = `
             <td>
               ${escapeHtml(
-            item.dateStr
-          )}
+                item.dateStr
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            item.timeStr
-          )}
+                item.timeStr
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            item.productName ||
-            "—"
-          )}
+                item.productName ||
+                  "—"
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            item.productCode ||
-            "—"
-          )}
+                item.productCode ||
+                  "—"
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            item.docNumber ||
-            "—"
-          )}
+                item.docNumber ||
+                  "—"
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            item.bookReference ||
-            "—"
-          )}
+                item.bookReference ||
+                  "—"
+              )}
             </td>
 
             <td>
               ${formatMoney(
-            item.unitCost ||
-            0
-          )}
+                item.unitCost ||
+                  0
+              )}
             </td>
 
             <td>
               ${formatMoney(
-            item.inventoryValue ||
-            0
-          )}
+                item.inventoryValue ||
+                  0
+              )}
             </td>
 
             <td>
               ${numberOrZero(
-            item.entry
-          )}
+                item.entry
+              )}
             </td>
 
             <td>
               ${numberOrZero(
-            item.exit
-          )}
+                item.exit
+              )}
             </td>
 
             <td>
               ${numberOrZero(
-            item.balanceBefore
-          )}
+                item.balanceBefore
+              )}
             </td>
 
             <td>
               ${numberOrZero(
-            item.balanceAfter
-          )}
+                item.balanceAfter
+              )}
             </td>
 
             <td>
               ${escapeHtml(
-            item.detail ||
-            "—"
-          )}
+                item.detail ||
+                  "—"
+              )}
             </td>
           `;
 
@@ -2953,7 +2968,7 @@ document.addEventListener(
       const query =
         String(
           rangeSearch?.value ||
-          ""
+            ""
         )
           .trim()
           .toLowerCase();
@@ -2961,20 +2976,17 @@ document.addEventListener(
       if (
         !query
       ) {
-        visibleSales =
-          [
-            ...cachedSales
-          ];
+        visibleSales = [
+          ...cachedSales
+        ];
 
-        visibleExpenses =
-          [
-            ...cachedExpenses
-          ];
+        visibleExpenses = [
+          ...cachedExpenses
+        ];
 
-        visibleMovements =
-          [
-            ...cachedMovements
-          ];
+        visibleMovements = [
+          ...cachedMovements
+        ];
       } else {
         visibleSales =
           cachedSales.filter(
@@ -3099,7 +3111,7 @@ document.addEventListener(
       } else if (
         netProfit <
         grossProfit *
-        0.4
+          0.4
       ) {
         tone =
           "warning";
@@ -3120,8 +3132,8 @@ document.addEventListener(
 
         <div class="status-panel__value">
           ${escapeHtml(
-        message
-      )}
+            message
+          )}
         </div>
 
         <div
@@ -3131,8 +3143,8 @@ document.addEventListener(
           Costo estimado:
           <strong>
             ${formatMoney(
-        estimatedCostOfSales
-      )}
+              estimatedCostOfSales
+            )}
           </strong>
 
           ·
@@ -3140,8 +3152,8 @@ document.addEventListener(
           Bruto estimado:
           <strong>
             ${formatMoney(
-        grossProfit
-      )}
+              grossProfit
+            )}
           </strong>
 
           ·
@@ -3149,8 +3161,8 @@ document.addEventListener(
           Neto:
           <strong>
             ${formatMoney(
-        netProfit
-      )}
+              netProfit
+            )}
           </strong>
         </div>
       `;
@@ -3190,7 +3202,7 @@ document.addEventListener(
           const soldUnits =
             numberOrZero(
               salesAgg.unitsMap[
-              product.id
+                product.id
               ]
             );
 
@@ -3212,7 +3224,7 @@ document.addEventListener(
               daysLeft =
                 Math.floor(
                   stockUnits /
-                  dailyRate
+                    dailyRate
                 );
             }
           }
@@ -3293,8 +3305,8 @@ document.addEventListener(
 
                 <strong>
                   ${escapeHtml(
-              item.name
-            )}
+                    item.name
+                  )}
                 </strong>
 
                 <div class="low-stock-item__muted">
@@ -3322,8 +3334,8 @@ document.addEventListener(
 
                   <strong>
                     ${item.stockBoxes.toFixed(
-              2
-            )}
+                      2
+                    )}
                   </strong>
                 </div>
 
@@ -3343,11 +3355,12 @@ document.addEventListener(
                   </span>
 
                   <strong>
-                    ${item.daysLeft ===
-                "-"
-                ? "-"
-                : `${item.daysLeft} días`
-              }
+                    ${
+                      item.daysLeft ===
+                      "-"
+                        ? "-"
+                        : `${item.daysLeft} días`
+                    }
                   </strong>
                 </div>
 
@@ -3379,9 +3392,9 @@ document.addEventListener(
     ) {
       if (
         typeof appChartUtils !==
-        "undefined" &&
+          "undefined" &&
         typeof appChartUtils.drawSalesChart ===
-        "function"
+          "function"
       ) {
         appChartUtils.drawSalesChart(
           "salesChart",
@@ -3415,7 +3428,7 @@ document.addEventListener(
         statNetEl.textContent =
           formatMoney(
             totalSales -
-            totalExpenses
+              totalExpenses
           );
       }
 
@@ -3467,15 +3480,15 @@ document.addEventListener(
       const from =
         rangeFrom?.value
           ? startOfDay(
-            rangeFrom.value
-          )
+              rangeFrom.value
+            )
           : startOfMonth();
 
       const to =
         rangeTo?.value
           ? endOfDay(
-            rangeTo.value
-          )
+              rangeTo.value
+            )
           : endOfToday();
 
       if (
@@ -3615,9 +3628,9 @@ document.addEventListener(
         new Blob(
           [
             "\uFEFF" +
-            lines.join(
-              "\n"
-            )
+              lines.join(
+                "\n"
+              )
           ],
           {
             type:
@@ -3668,170 +3681,887 @@ document.addEventListener(
       };
     }
 
-    function exportSalesCSV() {
-      const source =
-        visibleSales.length
-          ? visibleSales
-          : cachedSales;
+    function formatPeriodForExcel() {
+      const from =
+        selectedRange.from
+          ? selectedRange.from.toLocaleDateString(
+              "es-ES"
+            )
+          : "—";
 
-      if (
-        !source.length
-      ) {
-        Swal.fire(
-          "Sin datos",
-          "No hay ventas para exportar.",
-          "info"
-        );
+      const to =
+        selectedRange.to
+          ? selectedRange.to.toLocaleDateString(
+              "es-ES"
+            )
+          : "—";
 
-        return;
-      }
-
-      const headers = [
-        "Local",
-        "Número documento local",
-        "Ubicación local",
-        "Productos",
-        "Total",
-        "Usuario",
-        "Fecha",
-        "Hora"
-      ];
-
-      const rows =
-        source.map(
-          item => [
-            currentLocalInfo.nombre ||
-            "",
-
-            currentLocalInfo.numeroDocumento ||
-            "",
-
-            currentLocalInfo.ubicacion ||
-            "",
-
-            item.products,
-
-            formatMoney(
-              item.total
-            ),
-
-            item.userName,
-
-            item.dateStr,
-
-            item.timeStr
-          ]
-        );
-
-      const {
-        from,
-        to
-      } =
-        getExportRangeTags();
-
-      const localTag =
-        sanitizeFilePart(
-          currentLocalInfo.nombre ||
-          currentLocalInfo.id ||
-          "local"
-        );
-
-      downloadCSV(
-        `${localTag}_ventas_${from}_a_${to}.csv`,
-        headers,
-        rows
-      );
+      return `${from} al ${to}`;
     }
 
-    function exportExpensesCSV() {
-      const source =
-        visibleExpenses.length
-          ? visibleExpenses
-          : cachedExpenses;
+    /*
+     * ==========================================================
+     * ACTUALIZAR ANTES DE EXPORTAR
+     * ==========================================================
+     */
 
-      if (
-        !source.length
-      ) {
-        Swal.fire(
-          "Sin datos",
-          "No hay gastos para exportar.",
-          "info"
+    async function refreshBeforeExport() {
+      await loadDashboardDataOnce();
+
+      rebuildCachesForRange();
+
+      applySearchFilter();
+    }
+
+    /*
+     * ==========================================================
+     * EXPORTAR VENTAS CSV
+     * ==========================================================
+     */
+
+    async function exportSalesCSV() {
+      try {
+        await refreshBeforeExport();
+
+        const source =
+          visibleSales.length
+            ? visibleSales
+            : cachedSales;
+
+        if (
+          !source.length
+        ) {
+          await Swal.fire(
+            "Sin datos",
+            "No hay ventas para exportar en el rango seleccionado.",
+            "info"
+          );
+
+          return;
+        }
+
+        const headers = [
+          "Local",
+          "Número documento local",
+          "Ubicación",
+          "Nombre del contribuyente",
+          "NIT",
+          "NRC",
+          "Productos",
+          "Total",
+          "Usuario",
+          "Fecha",
+          "Hora"
+        ];
+
+        const rows =
+          source.map(
+            item => [
+              currentLocalInfo.nombre ||
+                "",
+
+              currentLocalInfo.numeroDocumento ||
+                "",
+
+              currentLocalInfo.ubicacion ||
+                "",
+
+              currentLocalInfo.contribuyente ||
+                "",
+
+              currentLocalInfo.nit ||
+                "",
+
+              currentLocalInfo.nrc ||
+                "",
+
+              item.products ||
+                "",
+
+              numberOrZero(
+                item.total
+              ).toFixed(
+                2
+              ),
+
+              item.userName ||
+                "",
+
+              item.dateStr ||
+                "",
+
+              item.timeStr ||
+                ""
+            ]
+          );
+
+        const {
+          from,
+          to
+        } =
+          getExportRangeTags();
+
+        const localTag =
+          sanitizeFilePart(
+            currentLocalInfo.nombre ||
+              currentLocalInfo.id ||
+              "local"
+          );
+
+        downloadCSV(
+          `${localTag}_ventas_${from}_a_${to}.csv`,
+          headers,
+          rows
         );
 
+        await Swal.fire({
+          toast:
+            true,
+
+          position:
+            "top-end",
+
+          icon:
+            "success",
+
+          title:
+            "Ventas exportadas",
+
+          showConfirmButton:
+            false,
+
+          timer:
+            1400
+        });
+      } catch (
+        error
+      ) {
+        debugError(
+          "Error exportando ventas:",
+          error
+        );
+
+        await Swal.fire(
+          "Error",
+          error.message ||
+            "No se pudo exportar las ventas.",
+          "error"
+        );
+      }
+    }
+
+    /*
+     * ==========================================================
+     * EXPORTAR GASTOS CSV
+     * ==========================================================
+     */
+
+    async function exportExpensesCSV() {
+      try {
+        await refreshBeforeExport();
+
+        const source =
+          visibleExpenses.length
+            ? visibleExpenses
+            : cachedExpenses;
+
+        if (
+          !source.length
+        ) {
+          await Swal.fire(
+            "Sin datos",
+            "No hay gastos para exportar en el rango seleccionado.",
+            "info"
+          );
+
+          return;
+        }
+
+        const headers = [
+          "Local",
+          "Número documento local",
+          "Ubicación",
+          "Nombre del contribuyente",
+          "NIT",
+          "NRC",
+          "Concepto",
+          "Categoría",
+          "Monto",
+          "Método de pago",
+          "Usuario",
+          "Fecha",
+          "Hora",
+          "Observación"
+        ];
+
+        const rows =
+          source.map(
+            item => [
+              currentLocalInfo.nombre ||
+                "",
+
+              currentLocalInfo.numeroDocumento ||
+                "",
+
+              currentLocalInfo.ubicacion ||
+                "",
+
+              currentLocalInfo.contribuyente ||
+                "",
+
+              currentLocalInfo.nit ||
+                "",
+
+              currentLocalInfo.nrc ||
+                "",
+
+              item.concept ||
+                "",
+
+              item.category ||
+                "",
+
+              numberOrZero(
+                item.amount
+              ).toFixed(
+                2
+              ),
+
+              item.paymentMethod ||
+                "",
+
+              item.userName ||
+                "",
+
+              item.dateStr ||
+                "",
+
+              item.timeStr ||
+                "",
+
+              item.notes ||
+                ""
+            ]
+          );
+
+        const {
+          from,
+          to
+        } =
+          getExportRangeTags();
+
+        const localTag =
+          sanitizeFilePart(
+            currentLocalInfo.nombre ||
+              currentLocalInfo.id ||
+              "local"
+          );
+
+        downloadCSV(
+          `${localTag}_gastos_${from}_a_${to}.csv`,
+          headers,
+          rows
+        );
+
+        await Swal.fire({
+          toast:
+            true,
+
+          position:
+            "top-end",
+
+          icon:
+            "success",
+
+          title:
+            "Gastos exportados",
+
+          showConfirmButton:
+            false,
+
+          timer:
+            1400
+        });
+      } catch (
+        error
+      ) {
+        debugError(
+          "Error exportando gastos:",
+          error
+        );
+
+        await Swal.fire(
+          "Error",
+          error.message ||
+            "No se pudo exportar los gastos.",
+          "error"
+        );
+      }
+    }
+
+    /*
+     * ==========================================================
+     * EXCEL - ESTILOS
+     * ==========================================================
+     */
+
+    function applyExcelCellStyle(
+      worksheet,
+      cellAddress,
+      style = {}
+    ) {
+      if (
+        !worksheet ||
+        !worksheet[
+          cellAddress
+        ]
+      ) {
         return;
       }
 
-      const headers = [
-        "Local",
-        "Número documento local",
-        "Ubicación local",
-        "Concepto",
-        "Categoría",
-        "Monto",
-        "Método",
-        "Usuario",
-        "Fecha",
-        "Hora",
-        "Observación"
-      ];
+      const cell =
+        worksheet[
+          cellAddress
+        ];
 
-      const rows =
-        source.map(
-          item => [
-            currentLocalInfo.nombre ||
-            "",
+      cell.s = {
+        ...(cell.s || {}),
 
-            currentLocalInfo.numeroDocumento ||
-            "",
+        ...style,
 
-            currentLocalInfo.ubicacion ||
-            "",
+        alignment: {
+          ...(cell.s?.alignment || {}),
 
-            item.concept ||
-            "",
+          ...(style.alignment || {})
+        }
+      };
+    }
 
-            item.category ||
-            "",
+    function applyExcelRangeStyle(
+      worksheet,
+      startRow,
+      endRow,
+      startCol,
+      endCol,
+      style = {}
+    ) {
+      for (
+        let row =
+          startRow;
 
-            formatMoney(
-              item.amount ||
-              0
-            ),
+        row <=
+        endRow;
 
-            item.paymentMethod ||
-            "",
+        row++
+      ) {
+        for (
+          let col =
+            startCol;
 
-            item.userName ||
-            "",
+          col <=
+          endCol;
 
-            item.dateStr ||
-            "",
+          col++
+        ) {
+          const cellAddress =
+            XLSX.utils.encode_cell(
+              {
+                r:
+                  row,
 
-            item.timeStr ||
-            "",
+                c:
+                  col
+              }
+            );
 
-            item.notes ||
-            ""
-          ]
+          if (
+            !worksheet[
+              cellAddress
+            ]
+          ) {
+            worksheet[
+              cellAddress
+            ] = {
+              t:
+                "s",
+
+              v:
+                ""
+            };
+          }
+
+          applyExcelCellStyle(
+            worksheet,
+            cellAddress,
+            style
+          );
+        }
+      }
+    }
+
+    function applyExcelNumberFormat(
+      worksheet,
+      columnLetter,
+      startRow,
+      endRow,
+      format
+    ) {
+      for (
+        let row =
+          startRow;
+
+        row <=
+        endRow;
+
+        row++
+      ) {
+        const cell =
+          worksheet[
+            `${columnLetter}${row}`
+          ];
+
+        if (
+          cell
+        ) {
+          cell.z =
+            format;
+        }
+      }
+    }
+
+    /*
+     * ==========================================================
+     * JSZIP DINÁMICO
+     * ==========================================================
+     */
+
+    let jszipLoadingPromise =
+      null;
+
+    async function ensureJSZipLoaded() {
+      if (
+        typeof JSZip !==
+        "undefined"
+      ) {
+        return window.JSZip;
+      }
+
+      if (
+        jszipLoadingPromise
+      ) {
+        return jszipLoadingPromise;
+      }
+
+      jszipLoadingPromise =
+        new Promise(
+          (
+            resolve,
+            reject
+          ) => {
+            const existingScript =
+              document.querySelector(
+                "script[data-dashboard-jszip='1']"
+              );
+
+            if (
+              existingScript
+            ) {
+              existingScript.addEventListener(
+                "load",
+                () => {
+                  if (
+                    typeof JSZip !==
+                    "undefined"
+                  ) {
+                    resolve(
+                      window.JSZip
+                    );
+                  } else {
+                    reject(
+                      new Error(
+                        "JSZip se cargó, pero no expuso la variable global JSZip."
+                      )
+                    );
+                  }
+                },
+                {
+                  once:
+                    true
+                }
+              );
+
+              existingScript.addEventListener(
+                "error",
+                () => {
+                  reject(
+                    new Error(
+                      "No se pudo cargar JSZip."
+                    )
+                  );
+                },
+                {
+                  once:
+                    true
+                }
+              );
+
+              return;
+            }
+
+            const script =
+              document.createElement(
+                "script"
+              );
+
+            script.src =
+              "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
+
+            script.async =
+              true;
+
+            script.dataset.dashboardJszip =
+              "1";
+
+            script.onload =
+              () => {
+                if (
+                  typeof JSZip !==
+                  "undefined"
+                ) {
+                  resolve(
+                    window.JSZip
+                  );
+                } else {
+                  reject(
+                    new Error(
+                      "JSZip se cargó, pero no expuso la variable global JSZip."
+                    )
+                  );
+                }
+              };
+
+            script.onerror =
+              () => {
+                reject(
+                  new Error(
+                    "No se pudo cargar JSZip desde CDN."
+                  )
+                );
+              };
+
+            document.head.appendChild(
+              script
+            );
+          }
+        )
+          .finally(
+            () => {
+              jszipLoadingPromise =
+                null;
+            }
+          );
+
+      return jszipLoadingPromise;
+    }
+
+    /*
+     * ==========================================================
+     * CONFIGURACIÓN OOXML
+     * ==========================================================
+     */
+
+    async function enforceExcelPrintSettings(
+      xlsxArrayBuffer,
+      lastDataRow
+    ) {
+      const ZipClass =
+        await ensureJSZipLoaded();
+
+      const zip =
+        await ZipClass.loadAsync(
+          xlsxArrayBuffer
         );
 
-      const {
-        from,
-        to
-      } =
-        getExportRangeTags();
+      const sheetPath =
+        "xl/worksheets/sheet1.xml";
 
-      const localTag =
-        sanitizeFilePart(
-          currentLocalInfo.nombre ||
-          currentLocalInfo.id ||
-          "local"
+      const workbookPath =
+        "xl/workbook.xml";
+
+      const sheetFile =
+        zip.file(
+          sheetPath
         );
 
-      downloadCSV(
-        `${localTag}_gastos_${from}_a_${to}.csv`,
-        headers,
-        rows
+      const workbookFile =
+        zip.file(
+          workbookPath
+        );
+
+      if (
+        !sheetFile
+      ) {
+        throw new Error(
+          "No se encontró la hoja principal dentro del XLSX."
+        );
+      }
+
+      if (
+        !workbookFile
+      ) {
+        throw new Error(
+          "No se encontró workbook.xml dentro del XLSX."
+        );
+      }
+
+      /*
+       * ========================================================
+       * SHEET.XML
+       * ========================================================
+       */
+
+      let sheetXml =
+        await sheetFile.async(
+          "string"
+        );
+
+      sheetXml =
+        sheetXml.replace(
+          /<printOptions\b[^>]*\/>/g,
+          ""
+        );
+
+      sheetXml =
+        sheetXml.replace(
+          /<pageMargins\b[^>]*\/>/g,
+          ""
+        );
+
+      sheetXml =
+        sheetXml.replace(
+          /<pageSetup\b[^>]*\/>/g,
+          ""
+        );
+
+      const printOptions =
+        `<printOptions horizontalCentered="1" verticalCentered="0"/>`;
+
+      const pageMargins =
+        `<pageMargins left="0.15" right="0.15" top="0.25" bottom="0.25" header="0.10" footer="0.10"/>`;
+
+      const pageSetup =
+        `<pageSetup orientation="landscape" paperSize="1" scale="60" horizontalDpi="300" verticalDpi="300"/>`;
+
+      const insertion =
+        [
+          printOptions,
+          pageMargins,
+          pageSetup
+        ].join("");
+
+      const mergeCellsClose =
+        "</mergeCells>";
+
+      const sheetDataClose =
+        "</sheetData>";
+
+      if (
+        sheetXml.includes(
+          mergeCellsClose
+        )
+      ) {
+        sheetXml =
+          sheetXml.replace(
+            mergeCellsClose,
+            `${mergeCellsClose}${insertion}`
+          );
+      } else if (
+        sheetXml.includes(
+          sheetDataClose
+        )
+      ) {
+        sheetXml =
+          sheetXml.replace(
+            sheetDataClose,
+            `${sheetDataClose}${insertion}`
+          );
+      } else {
+        throw new Error(
+          "No se encontró un punto válido para insertar la configuración de impresión de la hoja."
+        );
+      }
+
+      /*
+       * ========================================================
+       * WORKBOOK.XML
+       * ========================================================
+       */
+
+      let workbookXml =
+        await workbookFile.async(
+          "string"
+        );
+
+      workbookXml =
+        workbookXml.replace(
+          /<definedNames>[\s\S]*?<\/definedNames>/g,
+          ""
+        );
+
+      const definedName =
+        `<definedName name="_xlnm.Print_Area" localSheetId="0">'Movimientos'!$A$1:$M$${Number(
+          lastDataRow
+        )}</definedName>`;
+
+      const definedNamesXml =
+        `<definedNames>${definedName}</definedNames>`;
+
+      if (
+        /<calcPr\b/.test(
+          workbookXml
+        )
+      ) {
+        workbookXml =
+          workbookXml.replace(
+            /(<calcPr\b)/,
+            `${definedNamesXml}$1`
+          );
+      } else if (
+        workbookXml.includes(
+          "</workbook>"
+        )
+      ) {
+        workbookXml =
+          workbookXml.replace(
+            "</workbook>",
+            `${definedNamesXml}</workbook>`
+          );
+      } else {
+        throw new Error(
+          "No se encontró un punto válido para insertar el área de impresión en workbook.xml."
+        );
+      }
+
+      const printOptionsCount =
+        (
+          sheetXml.match(
+            /<printOptions\b/g
+          ) || []
+        ).length;
+
+      const pageMarginsCount =
+        (
+          sheetXml.match(
+            /<pageMargins\b/g
+          ) || []
+        ).length;
+
+      const pageSetupCount =
+        (
+          sheetXml.match(
+            /<pageSetup\b/g
+          ) || []
+        ).length;
+
+      const definedNamesCount =
+        (
+          workbookXml.match(
+            /<definedNames>/g
+          ) || []
+        ).length;
+
+      if (
+        printOptionsCount !==
+        1
+      ) {
+        throw new Error(
+          "La configuración XML terminó con un número inválido de printOptions."
+        );
+      }
+
+      if (
+        pageMarginsCount !==
+        1
+      ) {
+        throw new Error(
+          "La configuración XML terminó con un número inválido de pageMargins."
+        );
+      }
+
+      if (
+        pageSetupCount !==
+        1
+      ) {
+        throw new Error(
+          "La configuración XML terminó con un número inválido de pageSetup."
+        );
+      }
+
+      if (
+        definedNamesCount !==
+        1
+      ) {
+        throw new Error(
+          "La configuración XML terminó con un número inválido de definedNames."
+        );
+      }
+
+      zip.file(
+        sheetPath,
+        sheetXml
+      );
+
+      zip.file(
+        workbookPath,
+        workbookXml
+      );
+
+      return zip.generateAsync({
+        type:
+          "blob",
+
+        compression:
+          "DEFLATE"
+      });
+    }
+
+    function downloadBlob(
+      blob,
+      filename
+    ) {
+      const url =
+        URL.createObjectURL(
+          blob
+        );
+
+      const link =
+        document.createElement(
+          "a"
+        );
+
+      link.href =
+        url;
+
+      link.download =
+        filename;
+
+      document.body.appendChild(
+        link
+      );
+
+      link.click();
+
+      document.body.removeChild(
+        link
+      );
+
+      setTimeout(
+        () => {
+          URL.revokeObjectURL(
+            url
+          );
+        },
+        1000
       );
     }
 
@@ -3841,26 +4571,10 @@ document.addEventListener(
      * ==========================================================
      */
 
-    function formatPeriodForExcel() {
-      const from =
-        selectedRange.from
-          ? selectedRange.from.toLocaleDateString(
-            "es-ES"
-          )
-          : "—";
-
-      const to =
-        selectedRange.to
-          ? selectedRange.to.toLocaleDateString(
-            "es-ES"
-          )
-          : "—";
-
-      return `${from} al ${to}`;
-    }
-
-    function exportMovementsExcel() {
+    async function exportMovementsExcel() {
       try {
+        await refreshBeforeExport();
+
         const source =
           (
             visibleMovements.length
@@ -3890,11 +4604,11 @@ document.addEventListener(
 
                 return String(
                   a.id ||
-                  ""
+                    ""
                 ).localeCompare(
                   String(
                     b.id ||
-                    ""
+                      ""
                   )
                 );
               }
@@ -3903,7 +4617,7 @@ document.addEventListener(
         if (
           !source.length
         ) {
-          Swal.fire(
+          await Swal.fire(
             "Sin datos",
             "No hay movimientos de inventario para exportar.",
             "info"
@@ -3916,7 +4630,7 @@ document.addEventListener(
           typeof XLSX ===
           "undefined"
         ) {
-          Swal.fire(
+          await Swal.fire(
             "Error",
             "La librería SheetJS no está cargada.",
             "error"
@@ -3924,6 +4638,12 @@ document.addEventListener(
 
           return;
         }
+
+        /*
+         * ======================================================
+         * DATOS DEL LOCAL
+         * ======================================================
+         */
 
         const localName =
           currentLocalInfo.nombre ||
@@ -3956,6 +4676,12 @@ document.addEventListener(
         const period =
           formatPeriodForExcel();
 
+        /*
+         * ======================================================
+         * ENCABEZADOS
+         * ======================================================
+         */
+
         const headers = [
           "No.",
           "Fecha",
@@ -3978,99 +4704,201 @@ document.addEventListener(
               item,
               index
             ) => [
-                index +
+              index +
                 1,
 
-                item.dateStr ||
+              item.dateStr ||
                 "",
 
-                item.productName ||
+              item.productName ||
                 "",
 
-                item.productCode ||
+              item.productCode ||
                 "",
 
-                item.docNumber ||
+              item.docNumber ||
                 "",
 
-                item.bookReference ||
+              item.bookReference ||
                 "",
 
-                item.supplierName ||
+              item.supplierName ||
                 "—",
 
-                numberOrZero(
-                  item.unitCost
-                ),
+              numberOrZero(
+                item.unitCost
+              ),
 
-                numberOrZero(
-                  item.inventoryValue
-                ),
+              numberOrZero(
+                item.inventoryValue
+              ),
 
-                numberOrZero(
-                  item.entry
-                ),
+              numberOrZero(
+                item.entry
+              ),
 
-                numberOrZero(
-                  item.exit
-                ),
+              numberOrZero(
+                item.exit
+              ),
 
-                numberOrZero(
-                  item.balanceBefore
-                ),
+              numberOrZero(
+                item.balanceBefore
+              ),
 
-                numberOrZero(
-                  item.balanceAfter
-                )
-              ]
+              numberOrZero(
+                item.balanceAfter
+              )
+            ]
           );
 
+        /*
+         * ======================================================
+         * ESTRUCTURA CORREGIDA
+         * ======================================================
+         *
+         * MUY IMPORTANTE:
+         *
+         * Cuando existen celdas combinadas, el valor debe
+         * colocarse en la celda superior izquierda del rango.
+         *
+         * A2:C2 -> valor en A2
+         * D2:M2 -> valor en D2
+         *
+         * A3:C3 -> valor en A3
+         * D3:M3 -> valor en D3
+         *
+         * A4:B4 -> etiqueta
+         * C4:D4 -> valor
+         *
+         * E4:F4 -> etiqueta
+         * G4:H4 -> valor
+         *
+         * I4:J4 -> etiqueta
+         * K4:M4 -> valor
+         *
+         * A5:C5 -> etiqueta
+         * D5:F5 -> valor
+         *
+         * G5:H5 -> etiqueta
+         * I5:M5 -> valor
+         *
+         * A6:C6 -> etiqueta
+         * D6:M6 -> valor
+         */
+
         const sheetData = [
+          /*
+           * Fila 1
+           */
           [
             "CONTROL DE INVENTARIO"
           ],
 
+          /*
+           * Fila 2
+           *
+           * A2:C2 = etiqueta
+           * D2:M2 = valor
+           */
           [
             "Nombre del local",
+            "",
+            "",
             localName
           ],
 
+          /*
+           * Fila 3
+           *
+           * A3:C3 = etiqueta
+           * D3:M3 = valor
+           */
           [
             "Nombre del contribuyente",
+            "",
+            "",
             contributor
           ],
 
+          /*
+           * Fila 4
+           *
+           * A4:B4 = Tipo documento
+           * C4:D4 = valor
+           *
+           * E4:F4 = NIT
+           * G4:H4 = valor
+           *
+           * I4:J4 = NRC
+           * K4:M4 = valor
+           */
           [
             "Tipo de documento",
+            "",
             documentType,
             "",
-            "",
+
             "NIT",
+            "",
             nit,
             "",
-            "",
+
             "NRC",
+            "",
             nrc
           ],
 
+          /*
+           * Fila 5
+           *
+           * A5:C5 = Número documento
+           * D5:F5 = valor
+           *
+           * G5:H5 = Ubicación
+           * I5:M5 = valor
+           */
           [
             "Número de documento",
+            "",
+            "",
+
             documentNumber,
+
             "",
             "",
+
             "Ubicación",
+            "",
+
             location
           ],
 
+          /*
+           * Fila 6
+           *
+           * A6:C6 = etiqueta
+           * D6:M6 = valor
+           */
           [
             "Período",
+            "",
+            "",
             period
           ],
 
+          /*
+           * Fila 7
+           */
           [],
 
+          /*
+           * Fila 8
+           */
           headers,
 
+          /*
+           * Fila 9+
+           */
           ...rows
         ];
 
@@ -4079,97 +4907,143 @@ document.addEventListener(
             sheetData
           );
 
-        worksheet["!cols"] = [
+        /*
+         * ======================================================
+         * ANCHOS
+         * ======================================================
+         */
+
+        worksheet[
+          "!cols"
+        ] = [
           {
             wch:
-              7
+              6
           },
+
           {
             wch:
               11
           },
+
           {
             wch:
               24
           },
+
           {
             wch:
               14
           },
+
           {
             wch:
               17
           },
+
           {
             wch:
               17
           },
+
           {
             wch:
               24
           },
+
           {
             wch:
-              13
+              12
           },
+
           {
             wch:
-              15
+              14
           },
+
           {
             wch:
               10
           },
+
           {
             wch:
               10
           },
+
           {
             wch:
-              13
+              12
           },
+
           {
             wch:
               13
           }
         ];
 
-        worksheet["!rows"] = [
+        /*
+         * ======================================================
+         * ALTURAS
+         * ======================================================
+         */
+
+        worksheet[
+          "!rows"
+        ] = [
+          {
+            hpt:
+              28
+          },
+
+          {
+            hpt:
+              20
+          },
+
           {
             hpt:
               24
           },
+
           {
             hpt:
-              18
+              20
           },
+
           {
             hpt:
-              18
+              20
           },
+
           {
             hpt:
-              18
+              20
           },
+
           {
             hpt:
-              18
+              8
           },
+
           {
             hpt:
-              18
-          },
-          {
-            hpt:
-              7
-          },
-          {
-            hpt:
-              24
+              28
           }
         ];
 
-        worksheet["!merges"] = [
+        /*
+         * ======================================================
+         * COMBINACIONES
+         * ======================================================
+         */
+
+        worksheet[
+          "!merges"
+        ] = [
+          /*
+           * Título
+           */
           {
             s: {
               r:
@@ -4186,12 +5060,31 @@ document.addEventListener(
             }
           },
 
+          /*
+           * Nombre local
+           */
           {
             s: {
               r:
                 1,
               c:
-                1
+                0
+            },
+
+            e: {
+              r:
+                1,
+              c:
+                2
+            }
+          },
+
+          {
+            s: {
+              r:
+                1,
+              c:
+                3
             },
 
             e: {
@@ -4202,12 +5095,31 @@ document.addEventListener(
             }
           },
 
+          /*
+           * Contribuyente
+           */
           {
             s: {
               r:
                 2,
               c:
-                1
+                0
+            },
+
+            e: {
+              r:
+                2,
+              c:
+                2
+            }
+          },
+
+          {
+            s: {
+              r:
+                2,
+              c:
+                3
             },
 
             e: {
@@ -4215,6 +5127,25 @@ document.addEventListener(
                 2,
               c:
                 12
+            }
+          },
+
+          /*
+           * Tipo documento
+           */
+          {
+            s: {
+              r:
+                3,
+              c:
+                0
+            },
+
+            e: {
+              r:
+                3,
+              c:
+                1
             }
           },
 
@@ -4223,7 +5154,7 @@ document.addEventListener(
               r:
                 3,
               c:
-                1
+                2
             },
 
             e: {
@@ -4234,12 +5165,31 @@ document.addEventListener(
             }
           },
 
+          /*
+           * NIT
+           */
           {
             s: {
               r:
                 3,
               c:
+                4
+            },
+
+            e: {
+              r:
+                3,
+              c:
                 5
+            }
+          },
+
+          {
+            s: {
+              r:
+                3,
+              c:
+                6
             },
 
             e: {
@@ -4250,12 +5200,31 @@ document.addEventListener(
             }
           },
 
+          /*
+           * NRC
+           */
           {
             s: {
+              r:
+                3,
+              c:
+                8
+            },
+
+            e: {
               r:
                 3,
               c:
                 9
+            }
+          },
+
+          {
+            s: {
+              r:
+                3,
+              c:
+                10
             },
 
             e: {
@@ -4266,19 +5235,22 @@ document.addEventListener(
             }
           },
 
+          /*
+           * Número documento
+           */
           {
             s: {
               r:
                 4,
               c:
-                1
+                0
             },
 
             e: {
               r:
                 4,
               c:
-                3
+                2
             }
           },
 
@@ -4287,7 +5259,42 @@ document.addEventListener(
               r:
                 4,
               c:
+                3
+            },
+
+            e: {
+              r:
+                4,
+              c:
                 5
+            }
+          },
+
+          /*
+           * Ubicación
+           */
+          {
+            s: {
+              r:
+                4,
+              c:
+                6
+            },
+
+            e: {
+              r:
+                4,
+              c:
+                7
+            }
+          },
+
+          {
+            s: {
+              r:
+                4,
+              c:
+                8
             },
 
             e: {
@@ -4295,6 +5302,25 @@ document.addEventListener(
                 4,
               c:
                 12
+            }
+          },
+
+          /*
+           * Período
+           */
+          {
+            s: {
+              r:
+                5,
+              c:
+                0
+            },
+
+            e: {
+              r:
+                5,
+              c:
+                2
             }
           },
 
@@ -4303,7 +5329,7 @@ document.addEventListener(
               r:
                 5,
               c:
-                1
+                3
             },
 
             e: {
@@ -4315,86 +5341,293 @@ document.addEventListener(
           }
         ];
 
+        /*
+         * ======================================================
+         * ESTILOS
+         * ======================================================
+         */
+
+        const titleStyle = {
+          font: {
+            bold:
+              true,
+
+            sz:
+              16
+          },
+
+          alignment: {
+            horizontal:
+              "center",
+
+            vertical:
+              "center",
+
+            wrapText:
+              true
+          }
+        };
+
+        const headerStyle = {
+          font: {
+            bold:
+              true
+          },
+
+          alignment: {
+            horizontal:
+              "center",
+
+            vertical:
+              "center",
+
+            wrapText:
+              true
+          }
+        };
+
+        const labelStyle = {
+          font: {
+            bold:
+              true
+          },
+
+          alignment: {
+            horizontal:
+              "center",
+
+            vertical:
+              "center",
+
+            wrapText:
+              true
+          }
+        };
+
+        const valueStyle = {
+          alignment: {
+            horizontal:
+              "center",
+
+            vertical:
+              "center",
+
+            wrapText:
+              true
+          }
+        };
+
+        /*
+         * Centrado general de las filas institucionales.
+         */
+        applyExcelRangeStyle(
+          worksheet,
+          0,
+          5,
+          0,
+          12,
+          {
+            alignment: {
+              vertical:
+                "center",
+
+              wrapText:
+                true
+            }
+          }
+        );
+
+        /*
+         * Título
+         */
+        applyExcelCellStyle(
+          worksheet,
+          "A1",
+          titleStyle
+        );
+
+        /*
+         * Etiquetas
+         */
+        [
+          "A2",
+          "A3",
+          "A4",
+          "E4",
+          "I4",
+          "A5",
+          "G5",
+          "A6"
+        ].forEach(
+          address =>
+            applyExcelCellStyle(
+              worksheet,
+              address,
+              labelStyle
+            )
+        );
+
+        /*
+         * Valores.
+         *
+         * AQUÍ SE UTILIZAN LAS CELDAS SUPERIORES IZQUIERDAS
+         * DE LAS COMBINACIONES.
+         */
+        [
+          "D2",
+          "D3",
+          "C4",
+          "G4",
+          "K4",
+          "D5",
+          "I5",
+          "D6"
+        ].forEach(
+          address =>
+            applyExcelCellStyle(
+              worksheet,
+              address,
+              valueStyle
+            )
+        );
+
+        /*
+         * Encabezado de tabla
+         */
+        applyExcelRangeStyle(
+          worksheet,
+          7,
+          7,
+          0,
+          12,
+          headerStyle
+        );
+
+        /*
+         * ======================================================
+         * FORMATOS NUMÉRICOS
+         * ======================================================
+         */
+
         const firstDataRow =
           9;
 
         const lastDataRow =
           sheetData.length;
 
-        for (
-          let row =
-            firstDataRow;
+        applyExcelNumberFormat(
+          worksheet,
+          "H",
+          firstDataRow,
+          lastDataRow,
+          '$#,##0.00'
+        );
 
-          row <=
-          lastDataRow;
+        applyExcelNumberFormat(
+          worksheet,
+          "I",
+          firstDataRow,
+          lastDataRow,
+          '$#,##0.00'
+        );
 
-          row++
-        ) {
-          if (
-            worksheet[
-            `H${row}`
-            ]
-          ) {
-            worksheet[
-              `H${row}`
-            ].z =
-              "$#,##0.00";
-          }
+        [
+          "A",
+          "J",
+          "K",
+          "L",
+          "M"
+        ].forEach(
+          column =>
+            applyExcelNumberFormat(
+              worksheet,
+              column,
+              firstDataRow,
+              lastDataRow,
+              '#,##0.##'
+            )
+        );
 
-          if (
-            worksheet[
-            `I${row}`
-            ]
-          ) {
-            worksheet[
-              `I${row}`
-            ].z =
-              "$#,##0.00";
-          }
-        }
-
-        worksheet[
-          "!printArea"
-        ] =
-          `A1:M${lastDataRow}`;
-
-        worksheet[
-          "!pageSetup"
-        ] = {
-          paperSize:
+        /*
+         * Centrar número y fecha.
+         */
+        applyExcelRangeStyle(
+          worksheet,
+          firstDataRow -
             1,
-
-          orientation:
-            "landscape",
-
-          fitToWidth:
+          lastDataRow -
             1,
+          0,
+          1,
+          {
+            alignment: {
+              horizontal:
+                "center",
 
-          fitToHeight:
-            1
-        };
+              vertical:
+                "center",
+
+              wrapText:
+                true
+            }
+          }
+        );
+
+        /*
+         * Centrar valores numéricos.
+         */
+        applyExcelRangeStyle(
+          worksheet,
+          firstDataRow -
+            1,
+          lastDataRow -
+            1,
+          7,
+          12,
+          {
+            alignment: {
+              horizontal:
+                "center",
+
+              vertical:
+                "center"
+            }
+          }
+        );
+
+        /*
+         * ======================================================
+         * MÁRGENES
+         * ======================================================
+         */
 
         worksheet[
           "!margins"
         ] = {
           left:
-            0.20,
-
-          right:
-            0.20,
-
-          top:
-            0.35,
-
-          bottom:
-            0.35,
-
-          header:
             0.15,
 
+          right:
+            0.15,
+
+          top:
+            0.25,
+
+          bottom:
+            0.25,
+
+          header:
+            0.10,
+
           footer:
-            0.15
+            0.10
         };
+
+        /*
+         * ======================================================
+         * WORKBOOK
+         * ======================================================
+         */
 
         const workbook =
           XLSX.utils.book_new();
@@ -4423,6 +5656,12 @@ document.addEventListener(
           "Movimientos"
         );
 
+        /*
+         * ======================================================
+         * NOMBRE DEL ARCHIVO
+         * ======================================================
+         */
+
         const {
           from,
           to
@@ -4432,30 +5671,83 @@ document.addEventListener(
         const localTag =
           sanitizeFilePart(
             currentLocalInfo.nombre ||
-            currentLocalInfo.id ||
-            "local"
+              currentLocalInfo.id ||
+              "local"
           );
 
         const fileName =
           `${localTag}_movimientos_inventario_${from}_a_${to}.xlsx`;
 
-        XLSX.writeFile(
-          workbook,
-          fileName,
-          {
-            bookType:
-              "xlsx",
+        /*
+         * ======================================================
+         * GENERAR XLSX
+         * ======================================================
+         */
 
-            compression:
-              true
-          }
+        const xlsxArray =
+          XLSX.write(
+            workbook,
+            {
+              bookType:
+                "xlsx",
+
+              type:
+                "array",
+
+              compression:
+                true,
+
+              cellStyles:
+                true
+            }
+          );
+
+        /*
+         * ======================================================
+         * APLICAR CONFIGURACIÓN OOXML
+         * ======================================================
+         */
+
+        const finalBlob =
+          await enforceExcelPrintSettings(
+            xlsxArray,
+            lastDataRow
+          );
+
+        /*
+         * ======================================================
+         * DESCARGA
+         * ======================================================
+         */
+
+        downloadBlob(
+          finalBlob,
+          fileName
         );
 
-        Swal.fire(
-          "Excel generado",
-          "El reporte de movimientos fue generado correctamente.",
-          "success"
-        );
+        await Swal.fire({
+          toast:
+            true,
+
+          position:
+            "top-end",
+
+          icon:
+            "success",
+
+          title:
+            "Excel generado",
+
+          text:
+            "El reporte fue generado correctamente con los datos del local, orientación horizontal y escala de impresión del 60%.",
+
+          showConfirmButton:
+            false,
+
+          timer:
+            2200
+        });
+
       } catch (
         error
       ) {
@@ -4464,10 +5756,10 @@ document.addEventListener(
           error
         );
 
-        Swal.fire(
+        await Swal.fire(
           "Error",
           error.message ||
-          "No se pudo generar el archivo Excel.",
+            "No se pudo generar el archivo Excel.",
           "error"
         );
       }
@@ -4477,9 +5769,6 @@ document.addEventListener(
      * ==========================================================
      * CIERRE DE CAJA
      * ==========================================================
-     *
-     * Esto sigue siendo una escritura en Firestore.
-     * La lectura de ventas se realiza desde la caché.
      */
 
     async function closeDay() {
@@ -4563,9 +5852,9 @@ document.addEventListener(
 
             if (
               created <
-              start ||
+                start ||
               created >
-              end
+                end
             ) {
               return;
             }
@@ -4639,10 +5928,6 @@ document.addEventListener(
               payload
             );
 
-        /*
-         * Mantener la colección de cierres de caja consistente
-         * dentro de la caché durante esta sesión.
-         */
         if (
           typeof window.upsertSessionDocument ===
           "function"
@@ -4671,6 +5956,7 @@ document.addEventListener(
               total
             )}`
         });
+
       } catch (
         error
       ) {
@@ -4679,10 +5965,10 @@ document.addEventListener(
           error
         );
 
-        Swal.fire(
+        await Swal.fire(
           "Error",
           error.message ||
-          "No se pudo registrar el cierre.",
+            "No se pudo registrar el cierre.",
           "error"
         );
       }
@@ -4721,7 +6007,7 @@ document.addEventListener(
           from &&
           to &&
           from >
-          to
+            to
         ) {
           await Swal.fire(
             "Rango inválido",
@@ -4735,6 +6021,7 @@ document.addEventListener(
 
       try {
         await loadDashboardForRange();
+
       } catch (
         error
       ) {
@@ -4746,7 +6033,7 @@ document.addEventListener(
         await Swal.fire(
           "Error",
           error.message ||
-          "No se pudo aplicar el rango.",
+            "No se pudo aplicar el rango.",
           "error"
         );
       }
@@ -4764,6 +6051,7 @@ document.addEventListener(
 
       try {
         await loadDashboardForRange();
+
       } catch (
         error
       ) {
@@ -4775,7 +6063,7 @@ document.addEventListener(
         await Swal.fire(
           "Error",
           error.message ||
-          "No se pudo restaurar el rango.",
+            "No se pudo restaurar el rango.",
           "error"
         );
       }
@@ -4807,6 +6095,7 @@ document.addEventListener(
         setDefaultRangeToMonth();
 
         await loadDashboardForRange();
+
       } catch (
         error
       ) {
@@ -4968,36 +6257,36 @@ document.addEventListener(
 
       style.textContent = `
         .dashboard-hero {
-          display: flex;
-          justify-content: space-between;
-          gap: 16px;
-          align-items: stretch;
-          flex-wrap: wrap;
-          margin-bottom: 20px;
+          display:flex;
+          justify-content:space-between;
+          gap:16px;
+          align-items:stretch;
+          flex-wrap:wrap;
+          margin-bottom:20px;
         }
 
         .eyebrow {
-          margin: 0 0 8px;
-          text-transform: uppercase;
-          letter-spacing: .08em;
-          font-size: .8rem;
-          font-weight: 800;
-          color: #2563eb;
+          margin:0 0 8px;
+          text-transform:uppercase;
+          letter-spacing:.08em;
+          font-size:.8rem;
+          font-weight:800;
+          color:#2563eb;
         }
 
         .hero-subtitle {
-          margin: 8px 0 0;
-          color: #6b7280;
+          margin:8px 0 0;
+          color:#6b7280;
         }
 
         .hero-note {
-          background: #fff;
-          border: 1px solid #e5e7eb;
-          border-radius: 14px;
-          padding: 16px;
-          box-shadow: 0 6px 20px rgba(15,23,42,.08);
-          min-width: 280px;
-          flex: 1;
+          background:#fff;
+          border:1px solid #e5e7eb;
+          border-radius:14px;
+          padding:16px;
+          box-shadow:0 6px 20px rgba(15,23,42,.08);
+          min-width:280px;
+          flex:1;
         }
 
         .chart-card,
@@ -5005,230 +6294,233 @@ document.addEventListener(
         .table-section,
         .info-card,
         .filter-panel {
-          background: #fff;
-          border: 1px solid #e5e7eb;
-          border-radius: 16px;
-          box-shadow: 0 8px 24px rgba(15,23,42,.08);
+          background:#fff;
+          border:1px solid #e5e7eb;
+          border-radius:16px;
+          box-shadow:0 8px 24px rgba(15,23,42,.08);
         }
 
         .chart-card {
-          padding: 18px;
+          padding:18px;
         }
 
         .dashboard-grid {
-          display: grid;
-          grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1fr);
-          gap: 18px;
-          margin-bottom: 24px;
+          display:grid;
+          grid-template-columns:
+            minmax(0,1.8fr)
+            minmax(320px,1fr);
+          gap:18px;
+          margin-bottom:24px;
         }
 
         .side-panel {
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
+          display:flex;
+          flex-direction:column;
+          gap:14px;
         }
 
         .panel-card {
-          padding: 16px;
+          padding:16px;
         }
 
         .panel-actions {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
         }
 
         .panel-actions button,
         .secondary-btn,
         .filter-actions button {
-          border: 0;
-          border-radius: 10px;
-          padding: 10px 14px;
-          font: inherit;
-          font-weight: 700;
-          cursor: pointer;
+          border:0;
+          border-radius:10px;
+          padding:10px 14px;
+          font:inherit;
+          font-weight:700;
+          cursor:pointer;
         }
 
         .secondary-btn {
-          background: #eef2ff;
-          color: #1d4ed8;
+          background:#eef2ff;
+          color:#1d4ed8;
         }
 
         .table-section {
-          padding: 18px;
-          margin-bottom: 20px;
+          padding:18px;
+          margin-bottom:20px;
         }
 
         .section-header {
-          display: flex;
-          justify-content: space-between;
-          gap: 12px;
-          align-items: center;
-          flex-wrap: wrap;
-          margin-bottom: 14px;
+          display:flex;
+          justify-content:space-between;
+          gap:12px;
+          align-items:center;
+          flex-wrap:wrap;
+          margin-bottom:14px;
         }
 
         .section-header h2,
         .section-header h3 {
-          margin: 0;
+          margin:0;
         }
 
         .section-header p {
-          margin: 6px 0 0;
-          color: #6b7280;
+          margin:6px 0 0;
+          color:#6b7280;
         }
 
         .section-header.compact {
-          margin-bottom: 0;
+          margin-bottom:0;
         }
 
         .table-toolbar {
-          display: flex;
-          justify-content: space-between;
-          gap: 12px;
-          align-items: center;
-          flex-wrap: wrap;
-          margin-bottom: 12px;
+          display:flex;
+          justify-content:space-between;
+          gap:12px;
+          align-items:center;
+          flex-wrap:wrap;
+          margin-bottom:12px;
         }
 
         .filter-panel {
-          padding: 14px;
-          margin-bottom: 18px;
+          padding:14px;
+          margin-bottom:18px;
         }
 
         .filter-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
-          margin-bottom: 12px;
+          display:grid;
+          grid-template-columns:
+            repeat(3,minmax(0,1fr));
+          gap:12px;
+          margin-bottom:12px;
         }
 
         .filter-field label {
-          display: block;
-          font-size: .9rem;
-          font-weight: 700;
-          margin-bottom: 6px;
-          color: #374151;
+          display:block;
+          font-size:.9rem;
+          font-weight:700;
+          margin-bottom:6px;
+          color:#374151;
         }
 
         .filter-field input {
-          width: 100%;
+          width:100%;
         }
 
         .filter-actions {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
         }
 
         .loading,
         .no-alerts {
-          color: #6b7280;
+          color:#6b7280;
         }
 
         .status-panel__label {
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.06em;
-          opacity: 0.8;
-          margin-bottom: 6px;
-          font-weight: 700;
+          font-size:.8rem;
+          text-transform:uppercase;
+          letter-spacing:.06em;
+          opacity:.8;
+          margin-bottom:6px;
+          font-weight:700;
         }
 
         .status-panel__value {
-          font-size: 1rem;
-          font-weight: 800;
-          line-height: 1.35;
+          font-size:1rem;
+          font-weight:800;
+          line-height:1.35;
         }
 
         .status-panel--danger {
-          background: linear-gradient(135deg, #fee2e2, #fff);
-          border-color: #fecaca;
-          color: #991b1b;
+          background:linear-gradient(135deg,#fee2e2,#fff);
+          border-color:#fecaca;
+          color:#991b1b;
         }
 
         .status-panel--warning {
-          background: linear-gradient(135deg, #fef3c7, #fff);
-          border-color: #fde68a;
-          color: #92400e;
+          background:linear-gradient(135deg,#fef3c7,#fff);
+          border-color:#fde68a;
+          color:#92400e;
         }
 
         .status-panel--success {
-          background: linear-gradient(135deg, #dcfce7, #fff);
-          border-color: #bbf7d0;
-          color: #166534;
+          background:linear-gradient(135deg,#dcfce7,#fff);
+          border-color:#bbf7d0;
+          color:#166534;
         }
 
         .low-stock-item--rich {
-          display: flex;
-          justify-content: space-between;
-          gap: 14px;
-          align-items: flex-start;
-          padding: 12px 14px;
-          border: 1px solid #fde68a;
-          border-radius: 12px;
-          background: linear-gradient(135deg, #fff, #fffbeb);
-          margin-bottom: 10px;
+          display:flex;
+          justify-content:space-between;
+          gap:14px;
+          align-items:flex-start;
+          padding:12px 14px;
+          border:1px solid #fde68a;
+          border-radius:12px;
+          background:linear-gradient(135deg,#fff,#fffbeb);
+          margin-bottom:10px;
         }
 
         .low-stock-item__left {
-          min-width: 0;
+          min-width:0;
         }
 
         .low-stock-item__left strong {
-          display: block;
-          font-size: 0.98rem;
-          color: #111827;
-          margin-bottom: 4px;
+          display:block;
+          font-size:.98rem;
+          color:#111827;
+          margin-bottom:4px;
         }
 
         .low-stock-item__muted {
-          font-size: 0.85rem;
-          color: #6b7280;
+          font-size:.85rem;
+          color:#6b7280;
         }
 
         .low-stock-item__right {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 6px 12px;
-          min-width: 180px;
-          text-align: right;
+          display:grid;
+          grid-template-columns:1fr 1fr;
+          gap:6px 12px;
+          min-width:180px;
+          text-align:right;
         }
 
         .low-stock-item__right span {
-          display: block;
-          font-size: 0.72rem;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-          color: #6b7280;
+          display:block;
+          font-size:.72rem;
+          text-transform:uppercase;
+          letter-spacing:.04em;
+          color:#6b7280;
         }
 
         .low-stock-item__right strong {
-          display: block;
-          font-size: 0.95rem;
-          color: #111827;
+          display:block;
+          font-size:.95rem;
+          color:#111827;
         }
 
-        @media (max-width: 992px) {
+        @media (max-width:992px) {
           .dashboard-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns:1fr;
           }
 
           .filter-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns:1fr;
           }
         }
 
-        @media (max-width: 768px) {
+        @media (max-width:768px) {
           .low-stock-item--rich {
-            flex-direction: column;
+            flex-direction:column;
           }
 
           .low-stock-item__right {
-            width: 100%;
-            min-width: 0;
-            text-align: left;
-            grid-template-columns: 1fr 1fr;
+            width:100%;
+            min-width:0;
+            text-align:left;
+            grid-template-columns:1fr 1fr;
           }
         }
       `;

@@ -28,9 +28,46 @@
 //      fecha de operación.
 //      Esa fecha se utiliza para registrar:
 //          stock_movimientos.createdAt
+//          stock_movimientos.fechaOperacion
 //          gastos.createdAt
 //          gastos.dayKey
 //          caché de sesión
+//
+// - NUEVO:
+//      La edición de inventario NO modifica directamente
+//      el stock actual.
+//
+//      El botón "Entradas" abre los movimientos históricos
+//      de tipo "entrada".
+//
+//      Al modificar una entrada:
+//
+//          diferencia = nuevaEntrada - entradaAnterior
+//
+//      y:
+//
+//          stockNuevo = stockActual + diferencia
+//
+//      De esta forma se conserva el inventario actual y
+//      únicamente se corrige el efecto histórico de la entrada.
+//
+// - NUEVO:
+//      Las entradas tienen:
+//
+//          entradaPagada
+//          entradaBono
+//          costoTotal
+//          expenseId
+//
+//      para poder relacionarlas correctamente con el gasto
+//      generado automáticamente.
+//
+// - NUEVO:
+//      Los movimientos de entrada pueden filtrarse por:
+//
+//          fecha inicial
+//          fecha final
+//          producto
 //
 // - Producto existente:
 //      se suma al stock actual.
@@ -47,8 +84,6 @@
 // - No se utilizan <select> para productos ni proveedores.
 //
 // - No usa onSnapshot().
-// - No vuelve a leer productos después de guardar.
-// - Mantiene los datos actualizados en memoria.
 //
 // - Las lecturas normales utilizan la caché de sesión
 //   administrada por app.js.
@@ -56,37 +91,35 @@
 // - Al registrar productos se genera automáticamente
 //   un gasto en la colección "gastos" con el costo total
 //   de las cantidades pagadas.
-// - Las cantidades bono no generan costo.
+//
 // - Una carga múltiple genera un solo gasto consolidado.
 //
 // - Los movimientos de inventario guardan:
 //      costoUnitario
-//   correspondiente al costo por unidad vigente
-//   en el momento de la operación.
+//      entradaPagada
+//      entradaBono
+//      costoTotal
+//      expenseId
+//
+// - IMPORTANTE:
+//
+//   El producto ya NO se edita para cambiar el stock.
+//   Los movimientos son la fuente operativa para corregir
+//   entradas históricas.
 //
 
 (function () {
   "use strict";
 
-  if (
-    typeof firebase ===
-    "undefined"
-  ) {
+  if (typeof firebase === "undefined") {
     console.error(
       "Firebase no se ha cargado correctamente."
     );
 
-    if (
-      typeof Swal !==
-      "undefined"
-    ) {
+    if (typeof Swal !== "undefined") {
       Swal.fire({
-        icon:
-          "error",
-
-        title:
-          "Error",
-
+        icon: "error",
+        title: "Error",
         text:
           "Firebase no se cargó. Revisa la conexión o los scripts."
       });
@@ -101,26 +134,19 @@
    * ============================================================
    */
 
-  const PRODUCTS_COLLECTION =
-    "productos";
+  const PRODUCTS_COLLECTION = "productos";
 
-  const SALES_COLLECTION =
-    "ventas";
+  const SALES_COLLECTION = "ventas";
 
-  const MOVEMENTS_COLLECTION =
-    "stock_movimientos";
+  const MOVEMENTS_COLLECTION = "stock_movimientos";
 
-  const PROVIDERS_COLLECTION =
-    "proveedores";
+  const PROVIDERS_COLLECTION = "proveedores";
 
-  const EXPENSES_COLLECTION =
-    "gastos";
+  const EXPENSES_COLLECTION = "gastos";
 
-  const LOW_STOCK_THRESHOLD =
-    5;
+  const LOW_STOCK_THRESHOLD = 5;
 
-  const SAFETY_STOCK_DEFAULT =
-    10;
+  const SAFETY_STOCK_DEFAULT = 10;
 
   /*
    * ============================================================
@@ -128,76 +154,46 @@
    * ============================================================
    */
 
-  let currentRole =
-    "";
+  let currentRole = "";
 
-  let canEditInventory =
-    false;
+  let canEditInventory = false;
 
-  let currentLocalId =
-    "";
+  let currentLocalId = "";
 
   let currentLocalInfo = {
-    id_local:
-      "",
-
-    nombre:
-      "",
-
-    numeroDocumento:
-      "",
-
-    ubicacion:
-      "",
-
-    contribuyente:
-      "",
-
-    tipoDocumento:
-      "",
-
-    nit:
-      "",
-
-    nrc:
-      ""
+    id_local: "",
+    nombre: "",
+    numeroDocumento: "",
+    ubicacion: "",
+    contribuyente: "",
+    tipoDocumento: "",
+    nit: "",
+    nrc: ""
   };
 
-  let currentUserInventoryContext =
-    null;
+  let currentUserInventoryContext = null;
 
-  let currentProductsList =
-    [];
+  let currentProductsList = [];
 
-  let currentProvidersList =
-    [];
+  let currentProvidersList = [];
 
-  let currentMonthlySalesMap =
-    {};
+  let currentMonthlySalesMap = {};
 
-  let currentMonthlyBoxesMap =
-    {};
+  let currentMonthlyBoxesMap = {};
 
-  let inventoryDT =
-    null;
+  let inventoryDT = null;
 
-  let inventoryLoadPromise =
-    null;
+  let inventoryLoadPromise = null;
 
-  let inventoryInitialized =
-    false;
+  let inventoryInitialized = false;
 
   /*
    * Caché local de movimientos.
-   *
-   * Estos datos se obtienen de app.js y ya no desde
-   * db.collection("stock_movimientos") directamente.
    */
-  const productStockMovementsCache =
-    new Map();
 
-  const productStockMovementsPending =
-    new Map();
+  const productStockMovementsCache = new Map();
+
+  const productStockMovementsPending = new Map();
 
   /*
    * ============================================================
@@ -251,81 +247,43 @@
    * ============================================================
    */
 
-  function numberOrZero(
-    value
-  ) {
-    const number =
-      Number(
-        value
-      );
+  function numberOrZero(value) {
+    const number = Number(value);
 
-    return Number.isFinite(
-      number
-    )
+    return Number.isFinite(number)
       ? number
       : 0;
   }
 
-  function integerOrZero(
-    value
-  ) {
+  function integerOrZero(value) {
     return Math.max(
       0,
       Math.floor(
-        numberOrZero(
-          value
-        )
+        numberOrZero(value)
       )
     );
   }
 
-  function currency(
-    value
-  ) {
+  function currency(value) {
     return `$${numberOrZero(
       value
     ).toFixed(2)}`;
   }
 
-  function escapeHtml(
-    value
-  ) {
-    return String(
-      value ?? ""
-    )
-      .replace(
-        /&/g,
-        "&amp;"
-      )
-      .replace(
-        /</g,
-        "&lt;"
-      )
-      .replace(
-        />/g,
-        "&gt;"
-      )
-      .replace(
-        /"/g,
-        "&quot;"
-      )
-      .replace(
-        /'/g,
-        "&#039;"
-      );
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
-  function normalizeText(
-    value
-  ) {
-    return String(
-      value || ""
-    )
+  function normalizeText(value) {
+    return String(value || "")
       .trim()
       .toLowerCase()
-      .normalize(
-        "NFD"
-      )
+      .normalize("NFD")
       .replace(
         /[\u0300-\u036f]/g,
         ""
@@ -462,9 +420,7 @@
   async function ensureInventorySessionData(
     user
   ) {
-    if (
-      !user
-    ) {
+    if (!user) {
       throw new Error(
         "No existe un usuario autenticado."
       );
@@ -490,14 +446,10 @@
    * ============================================================
    */
 
-  function getTimestampMs(
-    value
-  ) {
+  function getTimestampMs(value) {
     if (
-      value ===
-        null ||
-      value ===
-        undefined
+      value === null ||
+      value === undefined
     ) {
       return 0;
     }
@@ -534,16 +486,13 @@
     }
 
     if (
-      value instanceof
-      Date
+      value instanceof Date
     ) {
       return value.getTime();
     }
 
     const date =
-      new Date(
-        value
-      );
+      new Date(value);
 
     return isNaN(
       date.getTime()
@@ -552,26 +501,13 @@
       : date.getTime();
   }
 
-  /*
-   * ============================================================
-   * NUEVO: FECHA DE OPERACIÓN
-   * ============================================================
-   *
-   * La fecha se toma de un <input type="date">.
-   *
-   * Se construye en hora local para evitar desfases de zona
-   * horaria cuando Firestore convierta el Timestamp a UTC.
-   */
-
   function getLocalDateInputValue(
     date = new Date()
   ) {
     const value =
       date instanceof Date
         ? date
-        : new Date(
-            date
-          );
+        : new Date(date);
 
     if (
       isNaN(
@@ -586,20 +522,13 @@
 
     const month =
       String(
-        value.getMonth() +
-          1
-      ).padStart(
-        2,
-        "0"
-      );
+        value.getMonth() + 1
+      ).padStart(2, "0");
 
     const day =
       String(
         value.getDate()
-      ).padStart(
-        2,
-        "0"
-      );
+      ).padStart(2, "0");
 
     return `${year}-${month}-${day}`;
   }
@@ -609,13 +538,10 @@
   ) {
     const text =
       String(
-        value ||
-          ""
+        value || ""
       ).trim();
 
-    if (
-      !text
-    ) {
+    if (!text) {
       return null;
     }
 
@@ -624,26 +550,18 @@
         text
       );
 
-    if (
-      !match
-    ) {
+    if (!match) {
       return null;
     }
 
     const year =
-      Number(
-        match[1]
-      );
+      Number(match[1]);
 
     const month =
-      Number(
-        match[2]
-      );
+      Number(match[2]);
 
     const day =
-      Number(
-        match[3]
-      );
+      Number(match[3]);
 
     const date =
       new Date(
@@ -673,9 +591,7 @@
   function formatOperationDate(
     date
   ) {
-    if (
-      !date
-    ) {
+    if (!date) {
       return "—";
     }
 
@@ -704,11 +620,6 @@
       );
     }
 
-    /*
-     * Se fija el timestamp al mediodía local.
-     * Así se evita que la conversión UTC pueda mover
-     * la fecha al día anterior.
-     */
     return firebase.firestore.Timestamp.fromDate(
       new Date(
         date.getFullYear(),
@@ -719,6 +630,87 @@
         0,
         0
       )
+    );
+  }
+
+  function getMovementOperationDateValue(
+    movement
+  ) {
+    if (
+      movement?.fechaOperacion
+    ) {
+      const parsed =
+        parseOperationDate(
+          movement.fechaOperacion
+        );
+
+      if (parsed) {
+        return movement.fechaOperacion;
+      }
+    }
+
+    const timestampMs =
+      getTimestampMs(
+        movement?.createdAt
+      );
+
+    if (!timestampMs) {
+      return "";
+    }
+
+    return getLocalDateInputValue(
+      new Date(timestampMs)
+    );
+  }
+
+  function getMovementOperationDate(
+    movement
+  ) {
+    const value =
+      getMovementOperationDateValue(
+        movement
+      );
+
+    return value
+      ? parseOperationDate(
+          value
+        )
+      : null;
+  }
+
+  function getInventoryDayKey(
+    date = new Date()
+  ) {
+    try {
+      if (
+        typeof window.getTodayBounds ===
+        "function"
+      ) {
+        const bounds =
+          window.getTodayBounds(
+            date
+          );
+
+        if (
+          bounds &&
+          bounds.dayKey
+        ) {
+          return String(
+            bounds.dayKey
+          );
+        }
+      }
+    } catch (
+      error
+    ) {
+      console.warn(
+        "No se pudo obtener dayKey mediante getTodayBounds:",
+        error
+      );
+    }
+
+    return getLocalDateInputValue(
+      date
     );
   }
 
@@ -843,9 +835,7 @@
       }
     );
 
-    if (
-      btnAdd
-    ) {
+    if (btnAdd) {
       btnAdd.style.display =
         canEditInventory &&
         currentLocalId
@@ -892,9 +882,7 @@
     provider,
     fallbackId = ""
   ) {
-    if (
-      !provider
-    ) {
+    if (!provider) {
       return null;
     }
 
@@ -917,10 +905,7 @@
           ""
       ).trim();
 
-    if (
-      !id &&
-      !nombre
-    ) {
+    if (!id && !nombre) {
       return null;
     }
 
@@ -936,8 +921,7 @@
       auth.currentUser
     );
 
-    currentProvidersList =
-      [];
+    currentProvidersList = [];
 
     try {
       const providerDocs =
@@ -945,14 +929,10 @@
           PROVIDERS_COLLECTION
         );
 
-      const providers =
-        [];
+      const providers = [];
 
       providerDocs.forEach(
-        ({
-          id,
-          data
-        }) => {
+        ({ id, data }) => {
           if (
             !matchesCurrentLocal(
               data
@@ -969,9 +949,7 @@
               }
             );
 
-          if (
-            provider
-          ) {
+          if (provider) {
             providers.push(
               provider
             );
@@ -980,10 +958,7 @@
       );
 
       providers.sort(
-        (
-          a,
-          b
-        ) =>
+        (a, b) =>
           normalizeText(
             a.nombre
           ).localeCompare(
@@ -1006,8 +981,7 @@
         error
       );
 
-      currentProvidersList =
-        [];
+      currentProvidersList = [];
 
       return [];
     }
@@ -1022,9 +996,7 @@
           ""
       ).trim();
 
-    if (
-      !target
-    ) {
+    if (!target) {
       return null;
     }
 
@@ -1035,8 +1007,7 @@
             provider.id
           ).trim() ===
           target
-      ) ||
-      null
+      ) || null
     );
   }
 
@@ -1048,9 +1019,7 @@
         value
       );
 
-    if (
-      !text
-    ) {
+    if (!text) {
       return null;
     }
 
@@ -1059,16 +1028,13 @@
         provider =>
           normalizeText(
             provider.nombre
-          ) ===
-          text
+          ) === text
       ) ||
       currentProvidersList.find(
         provider =>
           normalizeText(
             provider.nombre
-          ).includes(
-            text
-          )
+          ).includes(text)
       ) ||
       null
     );
@@ -1140,8 +1106,7 @@
         product?.unitsPerBox
       );
 
-    return value >
-      0
+    return value > 0
       ? value
       : 1;
   }
@@ -1161,9 +1126,7 @@
   function getCurrentStockUnits(
     product
   ) {
-    if (
-      !product
-    ) {
+    if (!product) {
       return 0;
     }
 
@@ -1242,10 +1205,7 @@
         product?.lastCostPerUnit
       );
 
-    if (
-      direct >
-      0
-    ) {
+    if (direct > 0) {
       return direct;
     }
 
@@ -1260,10 +1220,8 @@
       );
 
     if (
-      costPerBox >
-        0 &&
-      unitsPerBox >
-        0
+      costPerBox > 0 &&
+      unitsPerBox > 0
     ) {
       return (
         costPerBox /
@@ -1276,7 +1234,7 @@
 
   /*
    * ============================================================
-   * COSTO DE LA ENTRADA
+   * COSTO
    * ============================================================
    */
 
@@ -1290,8 +1248,7 @@
       );
 
     if (
-      costPerBox <=
-        0 &&
+      costPerBox <= 0 &&
       product
     ) {
       costPerBox =
@@ -1310,9 +1267,7 @@
     line,
     product = null
   ) {
-    if (
-      !line
-    ) {
+    if (!line) {
       return 0;
     }
 
@@ -1335,8 +1290,7 @@
                 product
               )
             : line.unitsPerBox
-        ) ||
-          1
+        ) || 1
       );
 
     const costPerBox =
@@ -1346,97 +1300,32 @@
       );
 
     const costPerUnit =
-      unitsPerBox >
-        0
+      unitsPerBox > 0
         ? costPerBox /
           unitsPerBox
         : 0;
 
-    const costFromBoxes =
-      paidBoxes *
-      costPerBox;
-
-    const costFromUnits =
-      paidUnits *
-      costPerUnit;
-
     return Math.max(
       0,
-      costFromBoxes +
-        costFromUnits
+      paidBoxes *
+        costPerBox +
+        paidUnits *
+        costPerUnit
     );
   }
 
-  function getInventoryDayKey(
-    date = new Date()
-  ) {
-    try {
-      if (
-        typeof window.getTodayBounds ===
-        "function"
-      ) {
-        const bounds =
-          window.getTodayBounds(
-            date
-          );
-
-        if (
-          bounds &&
-          bounds.dayKey
-        ) {
-          return String(
-            bounds.dayKey
-          );
-        }
-      }
-    } catch (
-      error
-    ) {
-      console.warn(
-        "No se pudo obtener dayKey mediante getTodayBounds:",
-        error
-      );
-    }
-
-    const operationDate =
-      date instanceof Date
-        ? date
-        : new Date(
-            date
-          );
-
-    const year =
-      operationDate.getFullYear();
-
-    const month =
-      String(
-        operationDate.getMonth() +
-          1
-      ).padStart(
-        2,
-        "0"
-      );
-
-    const day =
-      String(
-        operationDate.getDate()
-      ).padStart(
-        2,
-        "0"
-      );
-
-    return `${year}-${month}-${day}`;
-  }
+  /*
+   * ============================================================
+   * GASTO AUTOMÁTICO
+   * ============================================================
+   */
 
   function buildInventoryExpenseDetails(
     lines
   ) {
     return lines
       .map(
-        (
-          line,
-          index
-        ) => {
+        (line, index) => {
           const product =
             line.product ||
             null;
@@ -1482,8 +1371,7 @@
                       product
                     )
                   : line.unitsPerBox
-              ) ||
-                1
+              ) || 1
             );
 
           return [
@@ -1492,21 +1380,14 @@
               line.productText ||
               "Producto"
             }`,
-
             `Cajas pagadas: ${paidBoxes}`,
-
             `Unidades pagadas: ${paidUnits}`,
-
             `Cajas bono: ${bonusBoxes}`,
-
             `Unidades bono: ${bonusUnits}`,
-
             `Unidades por caja: ${unitsPerBox}`,
-
             `Costo por caja: ${currency(
               costPerBox
             )}`,
-
             `Costo línea: ${currency(
               cost
             )}`
@@ -1519,15 +1400,6 @@
         "\n"
       );
   }
-
-  /*
-   * ============================================================
-   * GASTO AUTOMÁTICO DE INVENTARIO
-   * ============================================================
-   *
-   * NUEVO:
-   * operationDate determina createdAt y dayKey.
-   */
 
   async function registerInventoryExpense(
     totalAmount,
@@ -1543,19 +1415,11 @@
         )
       );
 
-    if (
-      amount <=
-      0
-    ) {
+    if (amount <= 0) {
       return {
-        created:
-          false,
-
-        amount:
-          0,
-
-        id:
-          ""
+        created: false,
+        amount: 0,
+        id: ""
       };
     }
 
@@ -1566,9 +1430,7 @@
             operationDate
           );
 
-    if (
-      !validOperationDate
-    ) {
+    if (!validOperationDate) {
       throw new Error(
         "La fecha de operación no es válida para registrar el gasto."
       );
@@ -1588,21 +1450,14 @@
       {};
 
     const productCount =
-      Array.isArray(
-        lines
-      )
+      Array.isArray(lines)
         ? lines.length
         : 0;
 
     const totalUnits =
-      Array.isArray(
-        lines
-      )
+      Array.isArray(lines)
         ? lines.reduce(
-            (
-              sum,
-              line
-            ) => {
+            (sum, line) => {
               const product =
                 line.product ||
                 null;
@@ -1616,8 +1471,7 @@
                           product
                         )
                       : line.unitsPerBox
-                  ) ||
-                    1
+                  ) || 1
                 );
 
               const totalLineUnits =
@@ -1656,8 +1510,7 @@
         .doc();
 
     const concept =
-      productCount ===
-      1
+      productCount === 1
         ? `Compra de inventario - ${
             lines[0]?.name ||
             lines[0]?.productText ||
@@ -1673,23 +1526,15 @@
     const notes =
       [
         "Gasto generado automáticamente desde Inventario.",
-
         "Las cantidades bono no generan costo.",
-
         `Fecha de operación: ${formatOperationDate(
           validOperationDate
         )}`,
-
         `Productos ingresados: ${productCount}`,
-
         `Unidades totales ingresadas: ${totalUnits}`,
-
         "",
-
         details
-      ].join(
-        "\n"
-      );
+      ].join("\n");
 
     const expenseData = {
       concept,
@@ -1773,10 +1618,6 @@
     await expenseRef.set({
       ...expenseData,
 
-      /*
-       * La fecha elegida en el formulario es la fecha
-       * histórica de la operación.
-       */
       createdAt:
         operationTimestamp
     });
@@ -1793,14 +1634,101 @@
     );
 
     return {
-      created:
-        true,
-
+      created: true,
       amount,
-
-      id:
-        expenseRef.id
+      id: expenseRef.id
     };
+  }
+
+  /*
+   * ============================================================
+   * VINCULAR GASTO A MOVIMIENTOS
+   * ============================================================
+   */
+
+  async function attachExpenseToMovements(
+    expenseId,
+    results
+  ) {
+    const movementIds =
+      Array.from(
+        new Set(
+          (results || [])
+            .map(
+              result =>
+                String(
+                  result?.movementId ||
+                    ""
+                ).trim()
+            )
+            .filter(
+              Boolean
+            )
+        )
+      );
+
+    if (
+      !expenseId ||
+      !movementIds.length
+    ) {
+      return;
+    }
+
+    const batch =
+      db.batch();
+
+    movementIds.forEach(
+      movementId => {
+        batch.update(
+          db
+            .collection(
+              MOVEMENTS_COLLECTION
+            )
+            .doc(
+              movementId
+            ),
+          {
+            expenseId,
+            updatedAt:
+              firebase.firestore
+                .FieldValue
+                .serverTimestamp()
+          }
+        );
+      }
+    );
+
+    await batch.commit();
+
+    movementIds.forEach(
+      movementId => {
+        const current =
+          getSessionCollection(
+            MOVEMENTS_COLLECTION
+          ).find(
+            item =>
+              String(
+                item.id
+              ) ===
+              movementId
+          );
+
+        if (current) {
+          upsertSessionDocument(
+            MOVEMENTS_COLLECTION,
+            movementId,
+            {
+              ...(current.data || {}),
+              expenseId,
+              updatedAt:
+                Date.now()
+            }
+          );
+        }
+      }
+    );
+
+    productStockMovementsCache.clear();
   }
 
   /*
@@ -1824,9 +1752,7 @@
   function matchesCurrentLocal(
     data = {}
   ) {
-    if (
-      !currentLocalId
-    ) {
+    if (!currentLocalId) {
       return false;
     }
 
@@ -1846,14 +1772,24 @@
    * ============================================================
    */
 
+  function getSaleProductId(
+    product
+  ) {
+    return String(
+      product?.productId ||
+        product?.productID ||
+        product?.product_id ||
+        product?.id ||
+        ""
+    ).trim();
+  }
+
   function aggregateMonthlySales(
     documents
   ) {
-    const unitsMap =
-      {};
+    const unitsMap = {};
 
-    const boxesMap =
-      {};
+    const boxesMap = {};
 
     const now =
       new Date();
@@ -1872,8 +1808,7 @@
     const nextMonthStart =
       new Date(
         now.getFullYear(),
-        now.getMonth() +
-          1,
+        now.getMonth() + 1,
         1,
         0,
         0,
@@ -1912,9 +1847,7 @@
           return;
         }
 
-        if (
-          !createdAtMs
-        ) {
+        if (!createdAtMs) {
           return;
         }
 
@@ -1932,9 +1865,7 @@
                 product
               );
 
-            if (
-              !productId
-            ) {
+            if (!productId) {
               return;
             }
 
@@ -1965,24 +1896,20 @@
                   product.totalUnits
               );
 
-            let soldUnits =
-              0;
+            let soldUnits = 0;
 
-            let soldBoxes =
-              0;
+            let soldBoxes = 0;
 
             if (
               mode ===
               "box"
             ) {
               soldBoxes =
-                quantity >
-                  0
+                quantity > 0
                   ? Math.floor(
                       quantity
                     )
-                  : totalUnits >
-                      0
+                  : totalUnits > 0
                     ? Math.floor(
                         totalUnits /
                           unitsPerBox
@@ -1990,8 +1917,7 @@
                     : 0;
 
               soldUnits =
-                totalUnits >
-                  0
+                totalUnits > 0
                   ? totalUnits
                   : soldBoxes *
                     unitsPerBox;
@@ -2000,21 +1926,18 @@
               "unit"
             ) {
               soldUnits =
-                totalUnits >
-                  0
+                totalUnits > 0
                   ? totalUnits
                   : quantity;
             } else if (
-              totalUnits >
-              0
+              totalUnits > 0
             ) {
               soldUnits =
                 totalUnits;
             } else if (
               numberOrZero(
                 product.boxes
-              ) >
-              0
+              ) > 0
             ) {
               soldBoxes =
                 integerOrZero(
@@ -2035,8 +1958,7 @@
               (
                 unitsMap[
                   productId
-                ] ||
-                0
+                ] || 0
               ) +
               soldUnits;
 
@@ -2046,8 +1968,7 @@
               (
                 boxesMap[
                   productId
-                ] ||
-                0
+                ] || 0
               ) +
               soldBoxes;
           }
@@ -2061,18 +1982,6 @@
     };
   }
 
-  function getSaleProductId(
-    product
-  ) {
-    return String(
-      product?.productId ||
-        product?.productID ||
-        product?.product_id ||
-        product?.id ||
-        ""
-    ).trim();
-  }
-
   /*
    * ============================================================
    * PRODUCTO
@@ -2084,8 +1993,7 @@
   ) {
     const target =
       String(
-        id ||
-          ""
+        id || ""
       ).trim();
 
     return (
@@ -2095,8 +2003,7 @@
             product.id
           ).trim() ===
           target
-      ) ||
-      null
+      ) || null
     );
   }
 
@@ -2108,9 +2015,7 @@
         value
       );
 
-    if (
-      !text
-    ) {
+    if (!text) {
       return null;
     }
 
@@ -2119,19 +2024,15 @@
         product =>
           normalizeText(
             product.name
-          ) ===
-            text ||
+          ) === text ||
           normalizeText(
             getProductCode(
               product
             )
-          ) ===
-            text
+          ) === text
       );
 
-    if (
-      exact
-    ) {
+    if (exact) {
       return exact;
     }
 
@@ -2140,18 +2041,13 @@
         product =>
           normalizeText(
             product.name
-          ).includes(
-            text
-          ) ||
+          ).includes(text) ||
           normalizeText(
             getProductCode(
               product
             )
-          ).includes(
-            text
-          )
-      ) ||
-      null
+          ).includes(text)
+      ) || null
     );
   }
 
@@ -2178,21 +2074,11 @@
           const display =
             [
               name,
-
-              code
-                ? code
-                : "",
-
-              provider
-                ? provider
-                : ""
+              code || "",
+              provider || ""
             ]
-              .filter(
-                Boolean
-              )
-              .join(
-                " — "
-              );
+              .filter(Boolean)
+              .join(" — ");
 
           return `
             <option
@@ -2267,8 +2153,7 @@
       );
 
     const suggestedBoxes =
-      unitsPerBox >
-        1
+      unitsPerBox > 1
         ? Math.ceil(
             suggestedUnits /
               unitsPerBox
@@ -2279,8 +2164,7 @@
       "OK";
 
     if (
-      suggestedUnits >
-      0
+      suggestedUnits > 0
     ) {
       status =
         "Reponer";
@@ -2294,21 +2178,13 @@
 
     return {
       stockUnits,
-
       stockBoxes,
-
       unitsPerBox,
-
       soldUnits,
-
       soldBoxes,
-
       costPerUnit,
-
       suggestedUnits,
-
       suggestedBoxes,
-
       status
     };
   }
@@ -2428,8 +2304,7 @@
     row
   ) {
     if (
-      row.unitsPerBox >
-      1
+      row.unitsPerBox > 1
     ) {
       return `
         ${row.stockUnits}
@@ -2448,9 +2323,7 @@
   function renderActions(
     row
   ) {
-    if (
-      !canEditInventory
-    ) {
+    if (!canEditInventory) {
       return `
         <span class="small">
           Solo lectura
@@ -2468,13 +2341,14 @@
       <button
         type="button"
         class="btn-outline"
-        data-action="edit"
+        data-action="movements"
         data-id="${escapeHtml(
           row.id
         )}"
+        title="Editar entradas de este producto"
       >
-        <i class="fas fa-edit"></i>
-        Editar
+        <i class="fas fa-history"></i>
+        Entradas
       </button>
 
       <button
@@ -2501,9 +2375,7 @@
   }
 
   function ensureInventoryDataTable() {
-    if (
-      inventoryDT
-    ) {
+    if (inventoryDT) {
       return inventoryDT;
     }
 
@@ -2522,24 +2394,21 @@
     inventoryDT =
       $("#inventoryTable")
         .DataTable({
-          data:
-            [],
+          data: [],
 
           columns: [
             {
               data:
                 "name",
-
               title:
                 "Nombre",
-
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                    "display"
+                  "display"
                     ? escapeHtml(
                         data
                       )
@@ -2549,17 +2418,15 @@
             {
               data:
                 "providerName",
-
               title:
                 "Proveedor",
-
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                    "display"
+                  "display"
                     ? escapeHtml(
                         data ||
                           "Sin proveedor"
@@ -2570,10 +2437,8 @@
             {
               data:
                 "stockUnits",
-
               title:
                 "Stock",
-
               render:
                 (
                   data,
@@ -2581,7 +2446,7 @@
                   row
                 ) =>
                   type ===
-                    "display"
+                  "display"
                     ? renderStockDisplay(
                         row
                       )
@@ -2591,17 +2456,15 @@
             {
               data:
                 "price",
-
               title:
                 "Precio",
-
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                    "display"
+                  "display"
                     ? currency(
                         data
                       )
@@ -2611,17 +2474,15 @@
             {
               data:
                 "soldMonthUnits",
-
               title:
                 "Vendido Mes (Unid.)",
-
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                    "display"
+                  "display"
                     ? numberOrZero(
                         data
                       )
@@ -2631,17 +2492,15 @@
             {
               data:
                 "soldMonthBoxes",
-
               title:
                 "Vendido Mes (Cajas)",
-
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                    "display"
+                  "display"
                     ? integerOrZero(
                         data
                       )
@@ -2651,17 +2510,15 @@
             {
               data:
                 "costPerUnit",
-
               title:
                 "Costo por unidad",
-
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                    "display"
+                  "display"
                     ? currency(
                         data
                       )
@@ -2671,17 +2528,15 @@
             {
               data:
                 "suggestedPurchaseUnits",
-
               title:
                 "Sugerido Compra (Unid.)",
-
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                    "display"
+                  "display"
                     ? numberOrZero(
                         data
                       )
@@ -2691,17 +2546,15 @@
             {
               data:
                 "suggestedPurchaseBoxes",
-
               title:
                 "Sugerido Compra (Cajas)",
-
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                    "display"
+                  "display"
                     ? integerOrZero(
                         data
                       )
@@ -2711,17 +2564,15 @@
             {
               data:
                 "status",
-
               title:
                 "Estado",
-
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                    "display"
+                  "display"
                     ? renderStatusChip(
                         data
                       )
@@ -2731,16 +2582,12 @@
             {
               data:
                 null,
-
               title:
                 "Acciones",
-
               orderable:
                 false,
-
               searchable:
                 false,
-
               render:
                 (
                   data,
@@ -2748,7 +2595,7 @@
                   row
                 ) =>
                   type ===
-                    "display"
+                  "display"
                     ? renderActions(
                         row
                       )
@@ -2808,7 +2655,6 @@
             paginate: {
               previous:
                 "‹",
-
               next:
                 "›"
             }
@@ -2817,7 +2663,7 @@
 
     $("#inventoryTable tbody").on(
       "click",
-      "button[data-action='edit']",
+      "button[data-action='movements']",
       function () {
         if (
           !canEditInventory
@@ -2825,7 +2671,7 @@
           return;
         }
 
-        openEditModal(
+        openMovementManagerModal(
           String(
             $(this).data(
               "id"
@@ -2851,7 +2697,6 @@
               "id"
             )
           ),
-
           String(
             $(this).data(
               "name"
@@ -2938,9 +2783,7 @@
     const dt =
       ensureInventoryDataTable();
 
-    if (
-      dt
-    ) {
+    if (dt) {
       const searchValue =
         searchInput
           ? searchInput.value.trim()
@@ -2952,15 +2795,11 @@
         rows
       );
 
-      dt.draw(
-        false
-      );
+      dt.draw(false);
 
       dt.search(
         searchValue
-      ).draw(
-        false
-      );
+      ).draw(false);
 
       return;
     }
@@ -2973,18 +2812,14 @@
   function renderInventoryFallback(
     rows
   ) {
-    if (
-      !inventoryTbody
-    ) {
+    if (!inventoryTbody) {
       return;
     }
 
     inventoryTbody.innerHTML =
       "";
 
-    if (
-      !rows.length
-    ) {
+    if (!rows.length) {
       inventoryTbody.innerHTML =
         `
           <tr>
@@ -3075,15 +2910,11 @@
   function renderLowStockPanel(
     list
   ) {
-    if (
-      !lowStockPanel
-    ) {
+    if (!lowStockPanel) {
       return;
     }
 
-    if (
-      !list.length
-    ) {
+    if (!list.length) {
       lowStockPanel.style.display =
         "none";
 
@@ -3157,7 +2988,7 @@
 
   /*
    * ============================================================
-   * CARGA DEL INVENTARIO DESDE APP.JS
+   * CARGA DESDE CACHÉ
    * ============================================================
    */
 
@@ -3170,9 +3001,7 @@
 
     inventoryLoadPromise =
       (async () => {
-        if (
-          !currentLocalId
-        ) {
+        if (!currentLocalId) {
           currentProductsList =
             [];
 
@@ -3192,8 +3021,7 @@
             PRODUCTS_COLLECTION
           );
 
-        const products =
-          [];
+        const products = [];
 
         productDocuments.forEach(
           ({
@@ -3229,9 +3057,7 @@
                   providerId
                 );
 
-              if (
-                provider
-              ) {
+              if (provider) {
                 providerName =
                   String(
                     provider.nombre ||
@@ -3306,8 +3132,7 @@
                   1,
                   numberOrZero(
                     data.unitsPerBox
-                  ) ||
-                    1
+                  ) || 1
                 )
             });
           }
@@ -3387,13 +3212,157 @@
           ""
       ).trim();
 
-    if (
-      target
-    ) {
+    if (target) {
       productStockMovementsCache.delete(
         target
       );
     }
+  }
+
+  function invalidateAllMovementsCache() {
+    productStockMovementsCache.clear();
+  }
+
+  function normalizeMovementDocument(
+    id,
+    data
+  ) {
+    const source =
+      data || {};
+
+    const entrada =
+      numberOrZero(
+        source.entrada
+      );
+
+    const salida =
+      numberOrZero(
+        source.salida
+      );
+
+    const costoUnitario =
+      Math.max(
+        0,
+        numberOrZero(
+          source.costoUnitario
+        )
+      );
+
+    const costoTotal =
+      source.costoTotal !==
+        undefined &&
+      source.costoTotal !==
+        null
+        ? Math.max(
+            0,
+            numberOrZero(
+              source.costoTotal
+            )
+          )
+        : Math.max(
+            0,
+            entrada *
+              costoUnitario
+          );
+
+    return {
+      id,
+
+      ...source,
+
+      productId:
+        String(
+          source.productId ||
+            source.productID ||
+            source.product_id ||
+            ""
+        ).trim(),
+
+      productName:
+        String(
+          source.productName ||
+            ""
+        ).trim(),
+
+      codigoProducto:
+        String(
+          source.codigoProducto ||
+            source.productCode ||
+            ""
+        ).trim(),
+
+      tipoMovimiento:
+        String(
+          source.tipoMovimiento ||
+            ""
+        ).trim()
+        .toLowerCase(),
+
+      referenciaLibro:
+        String(
+          source.referenciaLibro ||
+            source.referenceBook ||
+            source.bookReference ||
+            ""
+        ).trim(),
+
+      numeroDocumento:
+        String(
+          source.numeroDocumento ||
+            source.documentNumber ||
+            ""
+        ).trim(),
+
+      entrada,
+
+      salida,
+
+      saldoAnterior:
+        numberOrZero(
+          source.saldoAnterior
+        ),
+
+      saldoActual:
+        numberOrZero(
+          source.saldoActual
+        ),
+
+      costoUnitario,
+
+      costoTotal,
+
+      entradaPagada:
+        Math.max(
+          0,
+          numberOrZero(
+            source.entradaPagada
+          )
+        ),
+
+      entradaBono:
+        Math.max(
+          0,
+          numberOrZero(
+            source.entradaBono
+          )
+        ),
+
+      expenseId:
+        String(
+          source.expenseId ||
+            ""
+        ).trim(),
+
+      fechaOperacion:
+        getMovementOperationDateValue(
+          source
+        ),
+
+      createdAtMs:
+        getTimestampMs(
+          source.createdAt
+        )
+    };
   }
 
   async function loadProductStockMovements(
@@ -3405,9 +3374,7 @@
           ""
       ).trim();
 
-    if (
-      !target
-    ) {
+    if (!target) {
       return [];
     }
 
@@ -3428,10 +3395,8 @@
         target
       )
     ) {
-      return (
-        productStockMovementsPending.get(
-          target
-        )
+      return productStockMovementsPending.get(
+        target
       );
     }
 
@@ -3443,8 +3408,7 @@
               MOVEMENTS_COLLECTION
             );
 
-          const movements =
-            [];
+          const movements = [];
 
           movementDocuments.forEach(
             ({
@@ -3474,40 +3438,15 @@
                 return;
               }
 
-              movements.push({
-                id,
+              const movement =
+                normalizeMovementDocument(
+                  id,
+                  data
+                );
 
-                referenciaLibro:
-                  String(
-                    data.referenciaLibro ||
-                      data.referenceBook ||
-                      data.bookReference ||
-                      ""
-                  ).trim(),
-
-                numeroDocumento:
-                  String(
-                    data.numeroDocumento ||
-                      data.documentNumber ||
-                      ""
-                  ).trim(),
-
-                tipoMovimiento:
-                  String(
-                    data.tipoMovimiento ||
-                      ""
-                  ).trim(),
-
-                costoUnitario:
-                  numberOrZero(
-                    data.costoUnitario
-                  ),
-
-                createdAtMs:
-                  getTimestampMs(
-                    data.createdAt
-                  )
-              });
+              movements.push(
+                movement
+              );
             }
           );
 
@@ -3516,12 +3455,19 @@
               a,
               b
             ) =>
+              getMovementOperationDateValue(
+                b
+              ).localeCompare(
+                getMovementOperationDateValue(
+                  a
+                )
+              ) ||
               numberOrZero(
                 b.createdAtMs
               ) -
-              numberOrZero(
-                a.createdAtMs
-              )
+                numberOrZero(
+                  a.createdAtMs
+                )
           );
 
           productStockMovementsCache.set(
@@ -3556,14 +3502,95 @@
     }
   }
 
+  async function loadAllEntryMovements() {
+    const movementDocuments =
+      getSessionCollection(
+        MOVEMENTS_COLLECTION
+      );
+
+    const movements = [];
+
+    movementDocuments.forEach(
+      ({
+        id,
+        data
+      }) => {
+        if (
+          !matchesCurrentLocal(
+            data
+          )
+        ) {
+          return;
+        }
+
+        const movement =
+          normalizeMovementDocument(
+            id,
+            data
+          );
+
+        if (
+          movement.tipoMovimiento !==
+          "entrada"
+        ) {
+          return;
+        }
+
+        if (
+          !movement.productId
+        ) {
+          return;
+        }
+
+        const product =
+          findProductById(
+            movement.productId
+          );
+
+        movement.productCurrentName =
+          product?.name ||
+          movement.productName ||
+          "Producto";
+
+        movement.productCurrentStock =
+          product
+            ? getCurrentStockUnits(
+                product
+              )
+            : movement.saldoActual;
+
+        movements.push(
+          movement
+        );
+      }
+    );
+
+    movements.sort(
+      (
+        a,
+        b
+      ) =>
+        getMovementOperationDateValue(
+          b
+        ).localeCompare(
+          getMovementOperationDateValue(
+            a
+          )
+        ) ||
+        b.createdAtMs -
+          a.createdAtMs
+    );
+
+    return movements;
+  }
+
   function getUniqueBookReferences(
     movements
   ) {
     const seen =
       new Set();
 
-    const result =
-      [];
+    const result = [];
 
     movements.forEach(
       movement => {
@@ -3571,13 +3598,10 @@
           [
             movement.referenciaLibro ||
               "",
-
             movement.numeroDocumento ||
               ""
           ]
-            .join(
-              "|"
-            )
+            .join("|")
             .toLowerCase();
 
         if (
@@ -3619,9 +3643,13 @@
     saldoAnterior,
     saldoActual,
     costoUnitario,
+    costoTotal,
+    entradaPagada,
+    entradaBono,
     detalle,
     user,
-    operationDate
+    operationDate,
+    expenseId = ""
   }) {
     const context =
       currentUserInventoryContext ||
@@ -3696,6 +3724,36 @@
             costoUnitario
           )
         ),
+
+      costoTotal:
+        Math.max(
+          0,
+          numberOrZero(
+            costoTotal
+          )
+        ),
+
+      entradaPagada:
+        Math.max(
+          0,
+          numberOrZero(
+            entradaPagada
+          )
+        ),
+
+      entradaBono:
+        Math.max(
+          0,
+          numberOrZero(
+            entradaBono
+          )
+        ),
+
+      expenseId:
+        String(
+          expenseId ||
+            ""
+        ).trim(),
 
       detalle:
         detalle ||
@@ -3788,21 +3846,26 @@
         1,
         integerOrZero(
           line.unitsPerBox
-        ) ||
-          1
+        ) || 1
       );
 
-    const totalBoxes =
-      paidBoxes +
-      bonusBoxes;
-
-    const totalUnits =
+    const totalPaidUnits =
       (
-        totalBoxes *
+        paidBoxes *
         unitsPerBox
       ) +
-      paidUnits +
+      paidUnits;
+
+    const totalBonusUnits =
+      (
+        bonusBoxes *
+        unitsPerBox
+      ) +
       bonusUnits;
+
+    const totalUnits =
+      totalPaidUnits +
+      totalBonusUnits;
 
     if (
       totalUnits <=
@@ -3849,11 +3912,19 @@
       );
 
     const lastCostPerUnit =
-      unitsPerBox >
-        0
+      unitsPerBox > 0
         ? lastCostPerBox /
           unitsPerBox
         : 0;
+
+    const totalPurchaseCost =
+      calculateLinePurchaseCost(
+        line,
+        {
+          ...line,
+          unitsPerBox
+        }
+      );
 
     const productData = {
       name:
@@ -3890,8 +3961,7 @@
             unitsPerBox
         ),
 
-      unitsPerBox:
-        unitsPerBox,
+      unitsPerBox,
 
       lastCostPerBox:
         lastCostPerBox,
@@ -4000,20 +4070,29 @@
         costoUnitario:
           lastCostPerUnit,
 
+        costoTotal:
+          totalPurchaseCost,
+
+        entradaPagada:
+          totalPaidUnits,
+
+        entradaBono:
+          totalBonusUnits,
+
         detalle:
           [
             `Cajas: ${paidBoxes}`,
-
             `Cajas bono: ${bonusBoxes}`,
-
             `Unidades: ${paidUnits}`,
-
             `Unidades bono: ${bonusUnits}`,
-
+            `Entrada pagada: ${totalPaidUnits}`,
+            `Entrada bono: ${totalBonusUnits}`,
+            `Costo total: ${currency(
+              totalPurchaseCost
+            )}`,
             `Costo unitario: ${currency(
               lastCostPerUnit
             )}`,
-
             `Fecha de operación: ${formatOperationDate(
               validOperationDate
             )}`
@@ -4035,10 +4114,6 @@
       {
         ...productData,
 
-        /*
-         * Para un producto nuevo la fecha de creación
-         * representa la fecha de operación seleccionada.
-         */
         createdAt:
           operationTimestamp,
 
@@ -4060,12 +4135,6 @@
     );
 
     await batch.commit();
-
-    /*
-     * ==========================================================
-     * SINCRONIZACIÓN DE CACHÉ
-     * ==========================================================
-     */
 
     upsertSessionDocument(
       PRODUCTS_COLLECTION,
@@ -4105,6 +4174,8 @@
         Date.now()
     });
 
+    invalidateAllMovementsCache();
+
     return {
       type:
         "new",
@@ -4112,7 +4183,13 @@
       productId:
         productRef.id,
 
-      totalUnits
+      totalUnits,
+
+      movementId:
+        movementRef.id,
+
+      movementCostTotal:
+        totalPurchaseCost
     };
   }
 
@@ -4153,16 +4230,23 @@
         line.bonusUnits
       );
 
-    const totalUnits =
+    const totalPaidUnits =
       (
-        (
-          paidBoxes +
-          bonusBoxes
-        ) *
+        paidBoxes *
         unitsPerBox
       ) +
-      paidUnits +
+      paidUnits;
+
+    const totalBonusUnits =
+      (
+        bonusBoxes *
+        unitsPerBox
+      ) +
       bonusUnits;
+
+    const totalUnits =
+      totalPaidUnits +
+      totalBonusUnits;
 
     if (
       totalUnits <=
@@ -4226,6 +4310,12 @@
     let movementData =
       null;
 
+    const totalPurchaseCost =
+      calculateLinePurchaseCost(
+        line,
+        product
+      );
+
     const transactionResult =
       await db.runTransaction(
         async transaction => {
@@ -4234,9 +4324,7 @@
               productRef
             );
 
-          if (
-            !snap.exists
-          ) {
+          if (!snap.exists) {
             throw new Error(
               `El producto "${product.name}" ya no existe.`
             );
@@ -4272,7 +4360,7 @@
 
           nextCostPerBox =
             costPerBoxInput >
-              0
+            0
               ? costPerBoxInput
               : numberOrZero(
                   data.lastCostPerBox
@@ -4280,7 +4368,7 @@
 
           nextCostPerUnit =
             unitsPerBox >
-              0
+            0
               ? nextCostPerBox /
                 unitsPerBox
               : 0;
@@ -4288,8 +4376,7 @@
           nextPrice =
             numberOrZero(
               line.price
-            ) >
-              0
+            ) > 0
               ? numberOrZero(
                   line.price
                 )
@@ -4368,20 +4455,29 @@
               costoUnitario:
                 nextCostPerUnit,
 
+              costoTotal:
+                totalPurchaseCost,
+
+              entradaPagada:
+                totalPaidUnits,
+
+              entradaBono:
+                totalBonusUnits,
+
               detalle:
                 [
                   `Cajas: ${paidBoxes}`,
-
                   `Cajas bono: ${bonusBoxes}`,
-
                   `Unidades: ${paidUnits}`,
-
                   `Unidades bono: ${bonusUnits}`,
-
+                  `Entrada pagada: ${totalPaidUnits}`,
+                  `Entrada bono: ${totalBonusUnits}`,
+                  `Costo total: ${currency(
+                    totalPurchaseCost
+                  )}`,
                   `Costo unitario: ${currency(
                     nextCostPerUnit
                   )}`,
-
                   `Fecha de operación: ${formatOperationDate(
                     validOperationDate
                   )}`
@@ -4436,8 +4532,7 @@
                     unitsPerBox
                 ),
 
-              unitsPerBox:
-                unitsPerBox,
+              unitsPerBox,
 
               lastCostPerBox:
                 nextCostPerBox,
@@ -4493,23 +4588,13 @@
         }
       );
 
-    /*
-     * ==========================================================
-     * ACTUALIZAR CACHÉ DE PRODUCTO
-     * ==========================================================
-     */
-
     const localProduct =
       findProductById(
         product.id
       );
 
     const updatedProductData = {
-      name:
-        localProduct?.name ||
-        product.name ||
-        line.name ||
-        "",
+      ...(localProduct || product),
 
       codigoProducto:
         line.codigoProducto ||
@@ -4552,8 +4637,7 @@
             unitsPerBox
         ),
 
-      unitsPerBox:
-        unitsPerBox,
+      unitsPerBox,
 
       lastCostPerBox:
         nextCostPerBox,
@@ -4621,9 +4705,7 @@
       updatedProductData
     );
 
-    if (
-      localProduct
-    ) {
+    if (localProduct) {
       Object.assign(
         localProduct,
         updatedProductData
@@ -4668,13 +4750,16 @@
 
       nextStock,
 
-      movementId
+      movementId,
+
+      movementCostTotal:
+        totalPurchaseCost
     };
   }
 
   /*
    * ============================================================
-   * COMBOBOX DE PRODUCTO
+   * COMBOBOX
    * ============================================================
    */
 
@@ -4709,9 +4794,7 @@
         ".batch-product-list"
       );
 
-    if (
-      !list
-    ) {
+    if (!list) {
       return;
     }
 
@@ -4737,14 +4820,12 @@
    * ============================================================
    */
 
-  let batchLineCounter =
-    0;
+  let batchLineCounter = 0;
 
   function createBatchLineData(
     values = {}
   ) {
-    batchLineCounter +=
-      1;
+    batchLineCounter += 1;
 
     return {
       id:
@@ -4799,8 +4880,7 @@
           1,
           integerOrZero(
             values.unitsPerBox
-          ) ||
-            1
+          ) || 1
         ),
 
       lastCostPerBox:
@@ -5204,8 +5284,7 @@
           row.querySelector(
             ".batch-units-per-box"
           )?.value
-        ) ||
-          1
+        ) || 1
       );
 
     const lastCostPerBox =
@@ -5398,9 +5477,7 @@
       data.boxes +
       data.bonusBoxes;
 
-    if (
-      totalElement
-    ) {
+    if (totalElement) {
       totalElement.textContent =
         String(
           totalUnits
@@ -5438,12 +5515,8 @@
       mode ===
       "existing"
     ) {
-      if (
-        product
-      ) {
-        if (
-          status
-        ) {
+      if (product) {
+        if (status) {
           status.innerHTML = `
             <span class="batch-status success">
               Producto encontrado:
@@ -5458,9 +5531,7 @@
           `;
         }
 
-        if (
-          codeInput
-        ) {
+        if (codeInput) {
           codeInput.value =
             getProductCode(
               product
@@ -5490,8 +5561,7 @@
           costBoxInput &&
           numberOrZero(
             costBoxInput.value
-          ) <=
-            0
+          ) <= 0
         ) {
           costBoxInput.value =
             String(
@@ -5505,8 +5575,7 @@
           priceInput &&
           numberOrZero(
             priceInput.value
-          ) <=
-            0
+          ) <= 0
         ) {
           priceInput.value =
             String(
@@ -5530,9 +5599,7 @@
         row.dataset.providerAutofilled =
           "1";
       } else {
-        if (
-          status
-        ) {
+        if (status) {
           status.innerHTML = `
             <span class="batch-status warning">
               Escribe o selecciona un producto existente.
@@ -5548,9 +5615,7 @@
         }
       }
     } else {
-      if (
-        status
-      ) {
+      if (status) {
         status.innerHTML = `
           <span class="batch-status info">
             Producto nuevo
@@ -5574,9 +5639,7 @@
             data.name
           )
       ) {
-        if (
-          status
-        ) {
+        if (status) {
           status.innerHTML = `
             <span class="batch-status danger">
               Ese producto ya existe. Usa "Existente".
@@ -5706,13 +5769,10 @@
               ".batch-row-header strong"
             );
 
-          if (
-            title
-          ) {
+          if (title) {
             title.textContent =
               `Producto ${
-                index +
-                1
+                index + 1
               }`;
           }
 
@@ -5754,15 +5814,14 @@
 
   /*
    * ============================================================
-   * VALIDACIÓN DE LÍNEAS
+   * VALIDACIÓN
    * ============================================================
    */
 
   function validateBatchLines(
     rows
   ) {
-    const errors =
-      [];
+    const errors = [];
 
     const parsed =
       rows.map(
@@ -5782,9 +5841,7 @@
             index + 1
           }`;
 
-        if (
-          !line.productText
-        ) {
+        if (!line.productText) {
           errors.push(
             `${label}: debes indicar el producto.`
           );
@@ -5796,9 +5853,7 @@
           line.mode ===
           "existing"
         ) {
-          if (
-            !line.product
-          ) {
+          if (!line.product) {
             errors.push(
               `${label}: no se encontró el producto existente "${line.productText}".`
             );
@@ -5811,9 +5866,7 @@
           line.mode ===
           "new"
         ) {
-          if (
-            !line.name
-          ) {
+          if (!line.name) {
             errors.push(
               `${label}: el nombre es obligatorio.`
             );
@@ -5869,8 +5922,7 @@
           line.bonusUnits;
 
         if (
-          totalUnits <=
-          0
+          totalUnits <= 0
         ) {
           errors.push(
             `${label}: debes ingresar cajas, cajas bono, unidades o unidades bono.`
@@ -5878,8 +5930,7 @@
         }
 
         if (
-          line.unitsPerBox <=
-          0
+          line.unitsPerBox <= 0
         ) {
           errors.push(
             `${label}: las unidades por caja deben ser mayores que cero.`
@@ -5923,16 +5974,11 @@
       );
     }
 
-    const results =
-      [];
+    const results = [];
 
     for (
-      let index =
-        0;
-
-      index <
-      lines.length;
-
+      let index = 0;
+      index < lines.length;
       index++
     ) {
       const line =
@@ -5950,9 +5996,7 @@
         const product =
           line.product;
 
-        if (
-          !product
-        ) {
+        if (!product) {
           throw new Error(
             `${label}: producto existente no encontrado.`
           );
@@ -5966,13 +6010,11 @@
             validOperationDate
           );
 
-        results.push(
-          {
-            ...result,
-            name:
-              product.name
-          }
-        );
+        results.push({
+          ...result,
+          name:
+            product.name
+        });
 
         continue;
       }
@@ -5984,13 +6026,11 @@
           validOperationDate
         );
 
-      results.push(
-        {
-          ...result,
-          name:
-            line.name
-        }
-      );
+      results.push({
+        ...result,
+        name:
+          line.name
+      });
     }
 
     return results;
@@ -6058,7 +6098,6 @@
       </button>
 
       <div class="batch-info-box">
-
         <strong>
           Operación múltiple
         </strong>
@@ -6071,9 +6110,7 @@
 
         <p>
           Las cajas bono y unidades bono aumentan el stock
-          igual que las cantidades normales, pero se conservan
-          identificadas dentro del detalle del movimiento
-          y no generan costo.
+          pero no generan costo.
         </p>
 
         <p>
@@ -6085,6 +6122,10 @@
           automáticamente como gasto de inventario.
         </p>
 
+        <p>
+          Las futuras entradas quedan vinculadas al gasto
+          para permitir correcciones posteriores.
+        </p>
       </div>
     `;
   }
@@ -6102,9 +6143,7 @@
       return;
     }
 
-    if (
-      !currentLocalId
-    ) {
+    if (!currentLocalId) {
       await Swal.fire(
         "Sin local",
         "No se pudo identificar el local actual.",
@@ -6150,193 +6189,183 @@
             "inventory-batch-modal"
         },
 
-        didOpen:
-          () => {
-            const container =
-              document.getElementById(
-                "batch-products-container"
-              );
-
-            const addButton =
-              document.getElementById(
-                "batch-add-row"
-              );
-
-            const dateInput =
-              document.getElementById(
-                "batch-operation-date"
-              );
-
-            const datePreview =
-              document.getElementById(
-                "batch-operation-date-preview"
-              );
-
-            if (
-              !container ||
-              !addButton
-            ) {
-              return;
-            }
-
-            addBatchLine(
-              container,
-              initialRow
+        didOpen: () => {
+          const container =
+            document.getElementById(
+              "batch-products-container"
             );
 
-            addButton.addEventListener(
-              "click",
-              () => {
-                addBatchLine(
-                  container,
-                  {
-                    mode:
-                      currentProductsList.length
-                        ? "existing"
-                        : "new"
-                  }
-                );
-              }
+          const addButton =
+            document.getElementById(
+              "batch-add-row"
             );
 
-            if (
-              dateInput &&
-              datePreview
-            ) {
-              dateInput.addEventListener(
-                "change",
-                () => {
-                  const selectedDate =
-                    parseOperationDate(
-                      dateInput.value
-                    );
+          const dateInput =
+            document.getElementById(
+              "batch-operation-date"
+            );
 
-                  if (
-                    selectedDate
-                  ) {
-                    datePreview.innerHTML = `
-                      Fecha seleccionada:
-                      <strong>
-                        ${escapeHtml(
-                          formatOperationDate(
-                            selectedDate
-                          )
-                        )}
-                      </strong>
-                    `;
-                  } else {
-                    datePreview.innerHTML = `
-                      <span
-                        style="
-                          color:#b91c1c;
-                          font-weight:700;
-                        "
-                      >
-                        Fecha no válida.
-                      </span>
-                    `;
-                  }
+          const datePreview =
+            document.getElementById(
+              "batch-operation-date-preview"
+            );
+
+          if (
+            !container ||
+            !addButton
+          ) {
+            return;
+          }
+
+          addBatchLine(
+            container,
+            initialRow
+          );
+
+          addButton.addEventListener(
+            "click",
+            () => {
+              addBatchLine(
+                container,
+                {
+                  mode:
+                    currentProductsList.length
+                      ? "existing"
+                      : "new"
                 }
               );
             }
-          },
+          );
 
-        preConfirm:
-          () => {
-            const container =
-              document.getElementById(
-                "batch-products-container"
-              );
+          if (
+            dateInput &&
+            datePreview
+          ) {
+            dateInput.addEventListener(
+              "change",
+              () => {
+                const selectedDate =
+                  parseOperationDate(
+                    dateInput.value
+                  );
 
-            const dateInput =
-              document.getElementById(
-                "batch-operation-date"
-              );
-
-            if (
-              !container
-            ) {
-              Swal.showValidationMessage(
-                "No se pudo construir el formulario."
-              );
-
-              return;
-            }
-
-            if (
-              !dateInput
-            ) {
-              Swal.showValidationMessage(
-                "No se pudo obtener la fecha de operación."
-              );
-
-              return;
-            }
-
-            const operationDate =
-              parseOperationDate(
-                dateInput.value
-              );
-
-            if (
-              !operationDate
-            ) {
-              Swal.showValidationMessage(
-                "Debes seleccionar una fecha de operación válida."
-              );
-
-              return;
-            }
-
-            const rows =
-              Array.from(
-                container.querySelectorAll(
-                  ".batch-product-row"
-                )
-              );
-
-            if (
-              !rows.length
-            ) {
-              Swal.showValidationMessage(
-                "Debes agregar al menos un producto."
-              );
-
-              return;
-            }
-
-            const validation =
-              validateBatchLines(
-                rows
-              );
-
-            if (
-              validation.errors.length
-            ) {
-              Swal.showValidationMessage(
-                validation.errors
-                  .slice(
-                    0,
-                    5
-                  )
-                  .join(
-                    "<br>"
-                  )
-              );
-
-              return;
-            }
-
-            return {
-              operationDate,
-
-              operationDateValue:
-                dateInput.value,
-
-              lines:
-                validation.parsed
-            };
+                if (
+                  selectedDate
+                ) {
+                  datePreview.innerHTML = `
+                    Fecha seleccionada:
+                    <strong>
+                      ${escapeHtml(
+                        formatOperationDate(
+                          selectedDate
+                        )
+                      )}
+                    </strong>
+                  `;
+                } else {
+                  datePreview.innerHTML = `
+                    <span
+                      style="
+                        color:#b91c1c;
+                        font-weight:700;
+                      "
+                    >
+                      Fecha no válida.
+                    </span>
+                  `;
+                }
+              }
+            );
           }
+        },
+
+        preConfirm: () => {
+          const container =
+            document.getElementById(
+              "batch-products-container"
+            );
+
+          const dateInput =
+            document.getElementById(
+              "batch-operation-date"
+            );
+
+          if (!container) {
+            Swal.showValidationMessage(
+              "No se pudo construir el formulario."
+            );
+
+            return;
+          }
+
+          if (!dateInput) {
+            Swal.showValidationMessage(
+              "No se pudo obtener la fecha de operación."
+            );
+
+            return;
+          }
+
+          const operationDate =
+            parseOperationDate(
+              dateInput.value
+            );
+
+          if (!operationDate) {
+            Swal.showValidationMessage(
+              "Debes seleccionar una fecha de operación válida."
+            );
+
+            return;
+          }
+
+          const rows =
+            Array.from(
+              container.querySelectorAll(
+                ".batch-product-row"
+              )
+            );
+
+          if (!rows.length) {
+            Swal.showValidationMessage(
+              "Debes agregar al menos un producto."
+            );
+
+            return;
+          }
+
+          const validation =
+            validateBatchLines(
+              rows
+            );
+
+          if (
+            validation.errors.length
+          ) {
+            Swal.showValidationMessage(
+              validation.errors
+                .slice(
+                  0,
+                  5
+                )
+                .join(
+                  "<br>"
+                )
+            );
+
+            return;
+          }
+
+          return {
+            operationDate,
+
+            operationDateValue:
+              dateInput.value,
+
+            lines:
+              validation.parsed
+          };
+        }
       });
 
     if (
@@ -6363,15 +6392,11 @@
             payload.operationDateValue
           );
 
-    if (
-      !lines.length
-    ) {
+    if (!lines.length) {
       return;
     }
 
-    if (
-      !operationDate
-    ) {
+    if (!operationDate) {
       await Swal.fire(
         "Fecha inválida",
         "La fecha de operación seleccionada no es válida.",
@@ -6410,10 +6435,9 @@
         allowEscapeKey:
           false,
 
-        didOpen:
-          () => {
-            Swal.showLoading();
-          }
+        didOpen: () => {
+          Swal.showLoading();
+        }
       });
 
       const results =
@@ -6479,6 +6503,15 @@
               null,
             operationDate
           );
+
+        if (
+          expenseResult?.id
+        ) {
+          await attachExpenseToMovements(
+            expenseResult.id,
+            results
+          );
+        }
       } catch (
         error
       ) {
@@ -6507,11 +6540,9 @@
                 Advertencia:
                 el inventario se guardó correctamente,
                 pero el gasto automático no pudo registrarse.
-                Debes revisar la colección "gastos".
               </p>
             `
-          : totalPurchaseCost >
-              0
+          : totalPurchaseCost > 0
             ? `
                 <p>
                   Gasto registrado:
@@ -6528,10 +6559,6 @@
                   <strong>
                     $0.00
                   </strong>
-                  <br>
-                  No se creó un registro de gasto porque
-                  el costo total de las cantidades pagadas
-                  fue cero.
                 </p>
               `;
 
@@ -6593,7 +6620,7 @@
               </p>
 
               <p>
-                Costo total de productos:
+                Costo total:
                 <strong>
                   ${currency(
                     totalPurchaseCost
@@ -6629,523 +6656,695 @@
 
   /*
    * ============================================================
-   * EDICIÓN INDIVIDUAL
+   * EDICIÓN DE MOVIMIENTO
    * ============================================================
+   *
+   * YA NO SE EDITA stockCurrentUnits DIRECTAMENTE.
    */
 
-  function buildEditFormHtml(
+  function buildMovementEditFormHtml(
+    movement,
     product
   ) {
+    const operationDate =
+      getMovementOperationDateValue(
+        movement
+      );
+
+    const currentEntry =
+      numberOrZero(
+        movement.entrada
+      );
+
+    const currentCost =
+      numberOrZero(
+        movement.costoUnitario
+      );
+
+    const currentCostTotal =
+      numberOrZero(
+        movement.costoTotal
+      );
+
     return `
       <div
-        style="
-          text-align:left;
-        "
+        class="movement-edit-form"
       >
 
-        <div class="inv-field">
-          <label>
-            Nombre
-          </label>
+        <div
+          class="movement-edit-header"
+        >
+          <div>
+            <strong>
+              ${escapeHtml(
+                product?.name ||
+                  movement.productName ||
+                  "Producto"
+              )}
+            </strong>
 
-          <input
-            id="edit-name"
-            type="text"
-            value="${escapeHtml(
-              product.name ||
-                ""
-            )}"
-          >
-        </div>
-
-        <div class="inv-field">
-          <label>
-            Código
-          </label>
-
-          <input
-            id="edit-code"
-            type="text"
-            value="${escapeHtml(
-              getProductCode(
-                product
-              )
-            )}"
-          >
-        </div>
-
-        <div class="inv-field">
-          <label>
-            Proveedor
-          </label>
-
-          ${getProviderComboboxHtml(
-            "edit-provider",
-            "edit-provider-list",
-            getProductProviderName(
-              product
-            )
-          )}
-
-          <small>
-            Opcional.
-          </small>
-        </div>
-
-        <div class="edit-stock-grid">
-
-          <div class="inv-field">
-            <label>
-              Cajas
-            </label>
-
-            <input
-              id="edit-boxes"
-              type="number"
-              min="0"
-              step="1"
-              value="${getStockBoxes(
-                product
-              )}"
-            >
-          </div>
-
-          <div class="inv-field">
-            <label>
-              Unidades por caja
-            </label>
-
-            <input
-              id="edit-upb"
-              type="number"
-              min="1"
-              step="1"
-              value="${getUnitsPerBox(
-                product
-              )}"
-            >
-          </div>
-
-          <div class="inv-field">
-            <label>
-              Unidades sueltas
-            </label>
-
-            <input
-              id="edit-extra"
-              type="number"
-              min="0"
-              step="1"
-              value="${
-                getCurrentStockUnits(
+            <span>
+              Stock actual:
+              <strong>
+                ${getCurrentStockUnits(
                   product
-                ) -
-                (
-                  getStockBoxes(
-                    product
-                  ) *
-                  getUnitsPerBox(
-                    product
-                  )
-                )
-              }"
+                )}
+              </strong>
+            </span>
+          </div>
+        </div>
+
+        <div
+          class="movement-edit-grid"
+        >
+
+          <div class="inv-field">
+            <label>
+              Fecha de operación
+            </label>
+
+            <input
+              id="movement-edit-date"
+              type="date"
+              value="${escapeHtml(
+                operationDate
+              )}"
+            >
+          </div>
+
+          <div class="inv-field">
+            <label>
+              Entrada total (unidades)
+            </label>
+
+            <input
+              id="movement-edit-entry"
+              type="number"
+              min="0"
+              step="1"
+              value="${currentEntry}"
+            >
+
+            <small>
+              Esta cantidad reemplaza únicamente
+              la cantidad de este movimiento.
+            </small>
+          </div>
+
+          <div class="inv-field">
+            <label>
+              Costo por unidad
+            </label>
+
+            <input
+              id="movement-edit-cost"
+              type="number"
+              min="0"
+              step="0.0001"
+              value="${currentCost}"
+            >
+          </div>
+
+          <div class="inv-field">
+            <label>
+              Costo total
+            </label>
+
+            <input
+              id="movement-edit-total-cost"
+              type="text"
+              value="${currency(
+                currentCostTotal
+              )}"
+              readonly
+            >
+          </div>
+
+          <div class="inv-field movement-edit-full">
+            <label>
+              Referencia de libro
+            </label>
+
+            <input
+              id="movement-edit-reference"
+              type="text"
+              value="${escapeHtml(
+                movement.referenciaLibro ||
+                  ""
+              )}"
+            >
+          </div>
+
+          <div class="inv-field movement-edit-full">
+            <label>
+              Documento
+            </label>
+
+            <input
+              id="movement-edit-document"
+              type="text"
+              value="${escapeHtml(
+                movement.numeroDocumento ||
+                  ""
+              )}"
             >
           </div>
 
         </div>
 
-        <div class="inv-field">
-          <label>
-            Costo por caja
-          </label>
+        <div
+          id="movement-edit-preview"
+          class="movement-edit-preview"
+        >
+          <div>
+            Entrada anterior:
+            <strong>
+              ${currentEntry}
+            </strong>
+          </div>
 
-          <input
-            id="edit-cost"
-            type="number"
-            min="0"
-            step="0.01"
-            value="${numberOrZero(
-              product.lastCostPerBox
-            )}"
-          >
+          <div>
+            Nueva entrada:
+            <strong>
+              ${currentEntry}
+            </strong>
+          </div>
+
+          <div>
+            Diferencia:
+            <strong>
+              0
+            </strong>
+          </div>
+
+          <div>
+            Stock resultante:
+            <strong>
+              ${getCurrentStockUnits(
+                product
+              )}
+            </strong>
+          </div>
         </div>
 
-        <div class="inv-field">
-          <label>
-            Precio
-          </label>
+        <div
+          class="movement-edit-warning"
+        >
+          <strong>
+            Importante:
+          </strong>
 
-          <input
-            id="edit-price"
-            type="number"
-            min="0"
-            step="0.01"
-            value="${numberOrZero(
-              product.price
-            )}"
-          >
+          El sistema no sustituirá el stock actual
+          del producto. Aplicará solamente la diferencia
+          de esta entrada sobre el stock vigente.
+
+          <br><br>
+
+          Si la entrada se reduce, el nuevo stock no puede
+          quedar por debajo de cero.
         </div>
 
-        <div class="inv-field">
-          <label>
-            Referencia libro
-          </label>
-
-          <input
-            id="edit-reference"
-            type="text"
-            value="${escapeHtml(
-              product.referenciaLibro ||
-                product.referenceBook ||
-                ""
-            )}"
-          >
-        </div>
-
-        <div class="inv-field">
-          <label>
-            Documento
-          </label>
-
-          <input
-            id="edit-document"
-            type="text"
-            value="${escapeHtml(
-              product.numeroDocumento ||
-                ""
-            )}"
-          >
-        </div>
+        ${
+          movement.expenseId
+            ? `
+              <div
+                class="movement-edit-linked"
+              >
+                <i class="fas fa-link"></i>
+                Esta entrada está vinculada a un gasto
+                de inventario. El importe del gasto se
+                actualizará si cambia el costo de la entrada.
+              </div>
+            `
+            : `
+              <div
+                class="movement-edit-warning"
+              >
+                <i class="fas fa-info-circle"></i>
+                Este movimiento no tiene un gasto vinculado.
+                La edición modificará inventario y movimiento,
+                pero no puede ajustar un gasto histórico que
+                no esté relacionado con este movimiento.
+              </div>
+            `
+        }
 
       </div>
     `;
   }
 
-  async function openEditModal(
-    productId
+  function updateMovementEditPreview(
+    product,
+    movement
   ) {
-    if (
-      !canEditInventory
-    ) {
-      await Swal.fire(
-        "Sin permisos",
-        "No puedes editar productos desde este rol.",
-        "warning"
+    const entryInput =
+      document.getElementById(
+        "movement-edit-entry"
       );
 
-      return;
-    }
-
-    const product =
-      findProductById(
-        productId
+    const costInput =
+      document.getElementById(
+        "movement-edit-cost"
       );
 
-    if (
-      !product
-    ) {
-      await Swal.fire(
-        "No encontrado",
-        "El producto ya no está disponible.",
-        "warning"
+    const totalCostInput =
+      document.getElementById(
+        "movement-edit-total-cost"
       );
 
-      return;
-    }
-
-    const movements =
-      await loadProductStockMovements(
-        productId
+    const preview =
+      document.getElementById(
+        "movement-edit-preview"
       );
-
-    const references =
-      getUniqueBookReferences(
-        movements
-      );
-
-    const result =
-      await Swal.fire({
-        title:
-          `Editar: ${
-            product.name ||
-            ""
-          }`,
-
-        html:
-          buildEditFormHtml(
-            product
-          ),
-
-        width:
-          "700px",
-
-        showCancelButton:
-          true,
-
-        confirmButtonText:
-          "Actualizar",
-
-        cancelButtonText:
-          "Cancelar",
-
-        focusConfirm:
-          false,
-
-        preConfirm:
-          () => {
-            const name =
-              String(
-                document.getElementById(
-                  "edit-name"
-                )?.value ||
-                  ""
-              ).trim();
-
-            const code =
-              String(
-                document.getElementById(
-                  "edit-code"
-                )?.value ||
-                  ""
-              ).trim();
-
-            const providerText =
-              String(
-                document.getElementById(
-                  "edit-provider"
-                )?.value ||
-                  ""
-              ).trim();
-
-            const provider =
-              findProviderByText(
-                providerText
-              );
-
-            const boxes =
-              integerOrZero(
-                document.getElementById(
-                  "edit-boxes"
-                )?.value
-              );
-
-            const unitsPerBox =
-              Math.max(
-                1,
-                integerOrZero(
-                  document.getElementById(
-                    "edit-upb"
-                  )?.value
-                ) ||
-                  1
-              );
-
-            const extraUnits =
-              integerOrZero(
-                document.getElementById(
-                  "edit-extra"
-                )?.value
-              );
-
-            const totalUnits =
-              (
-                boxes *
-                unitsPerBox
-              ) +
-              extraUnits;
-
-            const lastCostPerBox =
-              Math.max(
-                0,
-                numberOrZero(
-                  document.getElementById(
-                    "edit-cost"
-                  )?.value
-                )
-              );
-
-            const price =
-              Math.max(
-                0,
-                numberOrZero(
-                  document.getElementById(
-                    "edit-price"
-                  )?.value
-                )
-              );
-
-            const reference =
-              String(
-                document.getElementById(
-                  "edit-reference"
-                )?.value ||
-                  ""
-              ).trim();
-
-            const documentNumber =
-              String(
-                document.getElementById(
-                  "edit-document"
-                )?.value ||
-                  ""
-              ).trim();
-
-            if (
-              !name
-            ) {
-              Swal.showValidationMessage(
-                "El nombre es obligatorio."
-              );
-
-              return;
-            }
-
-            if (
-              !code
-            ) {
-              Swal.showValidationMessage(
-                "El código es obligatorio."
-              );
-
-              return;
-            }
-
-            if (
-              totalUnits <
-              0
-            ) {
-              Swal.showValidationMessage(
-                "El stock no puede ser negativo."
-              );
-
-              return;
-            }
-
-            return {
-              name,
-
-              codigoProducto:
-                code,
-
-              proveedorId:
-                provider
-                  ? String(
-                      provider.id
-                    ).trim()
-                  : "",
-
-              proveedorNombre:
-                provider
-                  ? String(
-                      provider.nombre ||
-                        ""
-                    ).trim()
-                  : "",
-
-              boxes,
-
-              unitsPerBox,
-
-              extraUnits,
-
-              totalUnits,
-
-              lastCostPerBox,
-
-              lastCostPerUnit:
-                unitsPerBox >
-                  0
-                  ? lastCostPerBox /
-                    unitsPerBox
-                  : 0,
-
-              price,
-
-              referenciaLibro:
-                reference,
-
-              numeroDocumento:
-                documentNumber,
-
-              references
-            };
-          }
-      });
 
     if (
-      !result.isConfirmed
+      !entryInput ||
+      !costInput ||
+      !preview
     ) {
       return;
     }
 
-    const values =
-      result.value;
+    const oldEntry =
+      numberOrZero(
+        movement.entrada
+      );
+
+    const newEntry =
+      integerOrZero(
+        entryInput.value
+      );
+
+    const newCost =
+      Math.max(
+        0,
+        numberOrZero(
+          costInput.value
+        )
+      );
 
     const oldStock =
       getCurrentStockUnits(
         product
       );
 
-    const newStock =
-      values.totalUnits;
+    const difference =
+      newEntry -
+      oldEntry;
 
-    try {
-      await db
+    const resultingStock =
+      oldStock +
+      difference;
+
+    const newTotalCost =
+      newEntry *
+      newCost;
+
+    if (
+      totalCostInput
+    ) {
+      totalCostInput.value =
+        currency(
+          newTotalCost
+        );
+    }
+
+    preview.innerHTML = `
+      <div>
+        Entrada anterior:
+        <strong>
+          ${oldEntry}
+        </strong>
+      </div>
+
+      <div>
+        Nueva entrada:
+        <strong>
+          ${newEntry}
+        </strong>
+      </div>
+
+      <div>
+        Diferencia:
+        <strong
+          style="
+            color:${
+              difference > 0
+                ? "#166534"
+                : difference < 0
+                  ? "#b91c1c"
+                  : "#374151"
+            };
+          "
+        >
+          ${
+            difference > 0
+              ? "+"
+              : ""
+          }${difference}
+        </strong>
+      </div>
+
+      <div>
+        Stock resultante:
+        <strong
+          style="
+            color:${
+              resultingStock < 0
+                ? "#b91c1c"
+                : "#1d4ed8"
+            };
+          "
+        >
+          ${resultingStock}
+        </strong>
+      </div>
+    `;
+  }
+
+  async function updateEntryMovement(
+    movementId,
+    values
+  ) {
+    const movementRef =
+      db
         .collection(
-          PRODUCTS_COLLECTION
+          MOVEMENTS_COLLECTION
         )
         .doc(
-          productId
-        )
-        .update({
-          name:
-            values.name,
+          movementId
+        );
 
-          codigoProducto:
-            values.codigoProducto,
+    const user =
+      auth.currentUser ||
+      null;
 
-          productCode:
-            values.codigoProducto,
+    const operationDate =
+      parseOperationDate(
+        values.fechaOperacion
+      );
 
-          proveedorId:
-            values.proveedorId ||
-            null,
+    if (!operationDate) {
+      throw new Error(
+        "La fecha de operación no es válida."
+      );
+    }
 
-          proveedorNombre:
-            values.proveedorNombre ||
-            "",
+    const operationTimestamp =
+      buildOperationTimestamp(
+        operationDate
+      );
 
-          quantity:
-            newStock,
+    let updatedMovement = null;
 
-          stockCurrentUnits:
-            newStock,
+    let updatedProduct = null;
 
-          stockBaseUnits:
+    let updatedExpense = null;
+
+    await db.runTransaction(
+      async transaction => {
+        const movementSnap =
+          await transaction.get(
+            movementRef
+          );
+
+        if (
+          !movementSnap.exists
+        ) {
+          throw new Error(
+            "El movimiento ya no existe."
+          );
+        }
+
+        const oldMovement =
+          movementSnap.data() ||
+          {};
+
+        if (
+          String(
+            oldMovement.tipoMovimiento ||
+              ""
+          ).trim().toLowerCase() !==
+          "entrada"
+        ) {
+          throw new Error(
+            "Solo se pueden editar movimientos de tipo entrada."
+          );
+        }
+
+        if (
+          !matchesCurrentLocal(
+            oldMovement
+          )
+        ) {
+          throw new Error(
+            "El movimiento no pertenece al local actual."
+          );
+        }
+
+        const productId =
+          String(
+            oldMovement.productId ||
+              ""
+          ).trim();
+
+        if (!productId) {
+          throw new Error(
+            "El movimiento no tiene un producto asociado."
+          );
+        }
+
+        const productRef =
+          db
+            .collection(
+              PRODUCTS_COLLECTION
+            )
+            .doc(
+              productId
+            );
+
+        const productSnap =
+          await transaction.get(
+            productRef
+          );
+
+        if (
+          !productSnap.exists
+        ) {
+          throw new Error(
+            "El producto asociado al movimiento ya no existe."
+          );
+        }
+
+        const productData =
+          productSnap.data() ||
+          {};
+
+        if (
+          !matchesCurrentLocal(
+            productData
+          )
+        ) {
+          throw new Error(
+            "El producto no pertenece al local actual."
+          );
+        }
+
+        const oldEntry =
+          numberOrZero(
+            oldMovement.entrada
+          );
+
+        const newEntry =
+          integerOrZero(
+            values.entrada
+          );
+
+        const oldCostUnit =
+          Math.max(
+            0,
             numberOrZero(
-              product.stockBaseUnits
-            ) ||
-            oldStock,
+              oldMovement.costoUnitario
+            )
+          );
 
-          boxes:
-            values.boxes,
+        const newCostUnit =
+          Math.max(
+            0,
+            numberOrZero(
+              values.costoUnitario
+            )
+          );
 
-          unitsPerBox:
-            values.unitsPerBox,
+        const currentStock =
+          getCurrentStockUnits(
+            productData
+          );
 
-          lastCostPerBox:
-            values.lastCostPerBox,
+        const difference =
+          newEntry -
+          oldEntry;
 
-          lastCostPerUnit:
-            values.lastCostPerUnit,
+        const nextStock =
+          currentStock +
+          difference;
 
-          price:
-            values.price,
+        if (
+          nextStock < 0
+        ) {
+          throw new Error(
+            `No se puede reducir la entrada a ${newEntry} unidades porque el stock actual (${currentStock}) quedaría en ${nextStock}.`
+          );
+        }
+
+        const oldCostTotal =
+          oldMovement.costoTotal !==
+            undefined &&
+          oldMovement.costoTotal !==
+            null
+            ? Math.max(
+                0,
+                numberOrZero(
+                  oldMovement.costoTotal
+                )
+              )
+            : Math.max(
+                0,
+                oldEntry *
+                  oldCostUnit
+              );
+
+        const newCostTotal =
+          Math.max(
+            0,
+            newEntry *
+              newCostUnit
+          );
+
+        let expenseData = null;
+
+        const expenseId =
+          String(
+            oldMovement.expenseId ||
+              ""
+          ).trim();
+
+        if (expenseId) {
+          const expenseRef =
+            db
+              .collection(
+                EXPENSES_COLLECTION
+              )
+              .doc(
+                expenseId
+              );
+
+          const expenseSnap =
+            await transaction.get(
+              expenseRef
+            );
+
+          if (
+            expenseSnap.exists
+          ) {
+            const oldExpense =
+              expenseSnap.data() ||
+              {};
+
+            const oldExpenseAmount =
+              Math.max(
+                0,
+                numberOrZero(
+                  oldExpense.amount
+                )
+              );
+
+            /*
+             * Se sustituye dentro del gasto únicamente
+             * la parte correspondiente a este movimiento.
+             */
+            const expenseDifference =
+              newCostTotal -
+              oldCostTotal;
+
+            const nextExpenseAmount =
+              Math.max(
+                0,
+                oldExpenseAmount +
+                  expenseDifference
+              );
+
+            expenseData = {
+              expenseRef,
+              data:
+                oldExpense,
+              amount:
+                nextExpenseAmount
+            };
+
+            transaction.update(
+              expenseRef,
+              {
+                amount:
+                  nextExpenseAmount,
+
+                dayKey:
+                  getInventoryDayKey(
+                    operationDate
+                  ),
+
+                inventoryOperationDate:
+                  getLocalDateInputValue(
+                    operationDate
+                  ),
+
+                updatedAt:
+                  firebase.firestore
+                    .FieldValue
+                    .serverTimestamp()
+              }
+            );
+          }
+        }
+
+        const nextMovementData = {
+          ...oldMovement,
+
+          entrada:
+            newEntry,
+
+          saldoAnterior:
+            numberOrZero(
+              oldMovement.saldoAnterior
+            ),
+
+          saldoActual:
+            numberOrZero(
+              oldMovement.saldoAnterior
+            ) +
+            newEntry,
+
+          costoUnitario:
+            newCostUnit,
+
+          costoTotal:
+            newCostTotal,
+
+          fechaOperacion:
+            getLocalDateInputValue(
+              operationDate
+            ),
+
+          createdAt:
+            operationTimestamp,
 
           referenciaLibro:
             values.referenciaLibro,
 
           referenceBook:
+            values.referenciaLibro,
+
+          bookReference:
             values.referenciaLibro,
 
           numeroDocumento:
@@ -7154,253 +7353,522 @@
           updatedAt:
             firebase.firestore
               .FieldValue
-              .serverTimestamp()
-        });
+              .serverTimestamp(),
 
-      const difference =
-        newStock -
-        oldStock;
+          editado:
+            true,
 
-      let movementId =
-        "";
+          fechaUltimaEdicion:
+            firebase.firestore
+              .FieldValue
+              .serverTimestamp(),
 
-      let movementData =
-        null;
-
-      if (
-        difference !==
-        0
-      ) {
-        const user =
-          auth.currentUser ||
-          null;
-
-        const movementRef =
-          db
-            .collection(
-              MOVEMENTS_COLLECTION
-            )
-            .doc();
-
-        movementId =
-          movementRef.id;
-
-        movementData =
-          buildMovementData({
-            productId,
-
-            productName:
-              values.name,
-
-            codigoProducto:
-              values.codigoProducto,
-
-            tipoMovimiento:
-              "ajuste",
-
-            referenciaLibro:
-              values.referenciaLibro ||
-              "Ajuste manual",
-
-            numeroDocumento:
-              values.numeroDocumento ||
-              "",
-
-            entrada:
-              difference >
-                0
-                ? difference
-                : 0,
-
-            salida:
-              difference <
-                0
-                ? Math.abs(
-                    difference
-                  )
-                : 0,
-
-            saldoAnterior:
-              oldStock,
-
-            saldoActual:
-              newStock,
-
-            costoUnitario:
-              values.lastCostPerUnit,
-
-            detalle:
-              [
-                "Ajuste manual de inventario",
-
-                `Costo unitario: ${currency(
-                  values.lastCostPerUnit
-                )}`
-              ].join(
-                " | "
-              ),
-
+          usuarioUltimaEdicion:
             user
-          });
+              ? user.uid
+              : null,
 
-        await movementRef.set({
-          ...movementData,
+          usuarioUltimaEdicionNombre:
+            currentUserInventoryContext?.name ||
+            user?.email ||
+            ""
+        };
 
-          createdAt:
+        transaction.update(
+          movementRef,
+          nextMovementData
+        );
+
+        const unitsPerBox =
+          Math.max(
+            1,
+            integerOrZero(
+              productData.unitsPerBox
+            ) || 1
+          );
+
+        const nextProductData = {
+          quantity:
+            nextStock,
+
+          stockCurrentUnits:
+            nextStock,
+
+          boxes:
+            Math.floor(
+              nextStock /
+                unitsPerBox
+            ),
+
+          updatedAt:
             firebase.firestore
               .FieldValue
               .serverTimestamp()
-        });
-      }
+        };
 
-      const updatedProductData = {
-        ...product,
-
-        name:
-          values.name,
-
-        codigoProducto:
-          values.codigoProducto,
-
-        productCode:
-          values.codigoProducto,
-
-        proveedorId:
-          values.proveedorId ||
-          null,
-
-        proveedorNombre:
-          values.proveedorNombre ||
-          "",
-
-        quantity:
-          newStock,
-
-        stockCurrentUnits:
-          newStock,
-
-        stockBaseUnits:
-          numberOrZero(
-            product.stockBaseUnits
-          ) ||
-          oldStock,
-
-        boxes:
-          values.boxes,
-
-        unitsPerBox:
-          values.unitsPerBox,
-
-        lastCostPerBox:
-          values.lastCostPerBox,
-
-        lastCostPerUnit:
-          values.lastCostPerUnit,
-
-        price:
-          values.price,
-
-        referenciaLibro:
-          values.referenciaLibro,
-
-        referenceBook:
-          values.referenciaLibro,
-
-        numeroDocumento:
-          values.numeroDocumento,
-
-        id_local:
-          currentLocalId,
-
-        localNombre:
-          currentLocalInfo.nombre,
-
-        localNumeroDocumento:
-          currentLocalInfo.numeroDocumento,
-
-        localUbicacion:
-          currentLocalInfo.ubicacion,
-
-        localContribuyente:
-          currentLocalInfo.contribuyente,
-
-        localTipoDocumento:
-          currentLocalInfo.tipoDocumento,
-
-        localNIT:
-          currentLocalInfo.nit,
-
-        localNRC:
-          currentLocalInfo.nrc,
-
-        updatedAt:
-          Date.now()
-      };
-
-      upsertSessionDocument(
-        PRODUCTS_COLLECTION,
-        productId,
-        updatedProductData
-      );
-
-      Object.assign(
-        product,
-        updatedProductData
-      );
-
-      if (
-        movementId &&
-        movementData
-      ) {
-        upsertSessionDocument(
-          MOVEMENTS_COLLECTION,
-          movementId,
-          {
-            ...movementData,
-
-            createdAt:
-              Date.now()
-          }
+        transaction.update(
+          productRef,
+          nextProductData
         );
-      }
 
-      invalidateProductStockMovementsCache(
-        productId
+        updatedMovement = {
+          ...oldMovement,
+          ...nextMovementData,
+
+          id:
+            movementId,
+
+          createdAt:
+            operationTimestamp.toMillis(),
+
+          updatedAt:
+            Date.now()
+        };
+
+        updatedProduct = {
+          ...productData,
+          ...nextProductData,
+
+          id:
+            productId,
+
+          quantity:
+            nextStock,
+
+          stockCurrentUnits:
+            nextStock,
+
+          boxes:
+            Math.floor(
+              nextStock /
+                unitsPerBox
+            ),
+
+          updatedAt:
+            Date.now()
+        };
+
+        if (
+          expenseData
+        ) {
+          updatedExpense = {
+            ...expenseData.data,
+
+            amount:
+              expenseData.amount,
+
+            dayKey:
+              getInventoryDayKey(
+                operationDate
+              ),
+
+            inventoryOperationDate:
+              getLocalDateInputValue(
+                operationDate
+              ),
+
+            updatedAt:
+              Date.now()
+          };
+        }
+      }
+    );
+
+    if (
+      !updatedMovement ||
+      !updatedProduct
+    ) {
+      throw new Error(
+        "No se pudo construir la actualización del movimiento."
       );
+    }
+
+    upsertSessionDocument(
+      PRODUCTS_COLLECTION,
+      updatedProduct.id,
+      updatedProduct
+    );
+
+    const localProduct =
+      findProductById(
+        updatedProduct.id
+      );
+
+    if (localProduct) {
+      Object.assign(
+        localProduct,
+        updatedProduct
+      );
+    }
+
+    upsertSessionDocument(
+      MOVEMENTS_COLLECTION,
+      movementId,
+      updatedMovement
+    );
+
+    if (
+      updatedExpense &&
+      updatedMovement.expenseId
+    ) {
+      upsertSessionDocument(
+        EXPENSES_COLLECTION,
+        updatedMovement.expenseId,
+        updatedExpense
+      );
+    }
+
+    invalidateProductStockMovementsCache(
+      updatedProduct.id
+    );
+
+    return {
+      movement:
+        updatedMovement,
+
+      product:
+        updatedProduct,
+
+      expense:
+        updatedExpense
+    };
+  }
+
+  async function openEditMovementModal(
+    movement
+  ) {
+    if (
+      !canEditInventory
+    ) {
+      await Swal.fire(
+        "Sin permisos",
+        "No puedes editar movimientos.",
+        "warning"
+      );
+
+      return;
+    }
+
+    if (
+      movement?.tipoMovimiento !==
+      "entrada"
+    ) {
+      await Swal.fire(
+        "Movimiento no válido",
+        "Solo se pueden editar entradas.",
+        "warning"
+      );
+
+      return;
+    }
+
+    const product =
+      findProductById(
+        movement.productId
+      );
+
+    if (!product) {
+      await Swal.fire(
+        "Producto no encontrado",
+        "El producto asociado al movimiento ya no está disponible.",
+        "warning"
+      );
+
+      return;
+    }
+
+    const result =
+      await Swal.fire({
+        title:
+          "Editar entrada",
+
+        html:
+          buildMovementEditFormHtml(
+            movement,
+            product
+          ),
+
+        width:
+          "760px",
+
+        showCancelButton:
+          true,
+
+        confirmButtonText:
+          "Guardar cambios",
+
+        cancelButtonText:
+          "Cancelar",
+
+        focusConfirm:
+          false,
+
+        customClass: {
+          popup:
+            "inventory-movement-edit-modal"
+        },
+
+        didOpen: () => {
+          const entryInput =
+            document.getElementById(
+              "movement-edit-entry"
+            );
+
+          const costInput =
+            document.getElementById(
+              "movement-edit-cost"
+            );
+
+          if (
+            entryInput
+          ) {
+            entryInput.addEventListener(
+              "input",
+              () =>
+                updateMovementEditPreview(
+                  product,
+                  movement
+                )
+            );
+          }
+
+          if (
+            costInput
+          ) {
+            costInput.addEventListener(
+              "input",
+              () =>
+                updateMovementEditPreview(
+                  product,
+                  movement
+                )
+            );
+          }
+
+          updateMovementEditPreview(
+            product,
+            movement
+          );
+        },
+
+        preConfirm: () => {
+          const fechaOperacion =
+            String(
+              document.getElementById(
+                "movement-edit-date"
+              )?.value ||
+                ""
+            ).trim();
+
+          const entrada =
+            integerOrZero(
+              document.getElementById(
+                "movement-edit-entry"
+              )?.value
+            );
+
+          const costoUnitario =
+            Math.max(
+              0,
+              numberOrZero(
+                document.getElementById(
+                  "movement-edit-cost"
+                )?.value
+              )
+            );
+
+          const referenciaLibro =
+            String(
+              document.getElementById(
+                "movement-edit-reference"
+              )?.value ||
+                ""
+            ).trim();
+
+          const numeroDocumento =
+            String(
+              document.getElementById(
+                "movement-edit-document"
+              )?.value ||
+                ""
+            ).trim();
+
+          const operationDate =
+            parseOperationDate(
+              fechaOperacion
+            );
+
+          if (
+            !operationDate
+          ) {
+            Swal.showValidationMessage(
+              "Debes seleccionar una fecha válida."
+            );
+
+            return;
+          }
+
+          if (
+            entrada < 0
+          ) {
+            Swal.showValidationMessage(
+              "La entrada no puede ser negativa."
+            );
+
+            return;
+          }
+
+          return {
+            fechaOperacion,
+
+            entrada,
+
+            costoUnitario,
+
+            referenciaLibro,
+
+            numeroDocumento
+          };
+        }
+      });
+
+    if (
+      !result.isConfirmed
+    ) {
+      return;
+    }
+
+    try {
+      Swal.fire({
+        title:
+          "Actualizando entrada",
+
+        text:
+          "Calculando la diferencia y actualizando el stock.",
+
+        allowOutsideClick:
+          false,
+
+        allowEscapeKey:
+          false,
+
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      const resultData =
+        await updateEntryMovement(
+          movement.id,
+          result.value
+        );
+
+      Swal.close();
 
       refreshInventoryView();
 
       await Swal.fire({
-        toast:
-          true,
-
-        position:
-          "top-end",
-
         icon:
           "success",
 
         title:
-          "Producto actualizado",
+          "Entrada actualizada",
 
-        showConfirmButton:
-          false,
+        html:
+          `
+            <div style="text-align:left;">
+              <p>
+                Producto:
+                <strong>
+                  ${escapeHtml(
+                    resultData.product.name ||
+                      product.name ||
+                      ""
+                  )}
+                </strong>
+              </p>
 
-        timer:
-          1500
+              <p>
+                Nueva entrada:
+                <strong>
+                  ${numberOrZero(
+                    resultData.movement.entrada
+                  )}
+                  unidades
+                </strong>
+              </p>
+
+              <p>
+                Nuevo stock:
+                <strong>
+                  ${numberOrZero(
+                    resultData.product.stockCurrentUnits
+                  )}
+                  unidades
+                </strong>
+              </p>
+
+              <p>
+                Costo total de la entrada:
+                <strong>
+                  ${currency(
+                    resultData.movement.costoTotal
+                  )}
+                </strong>
+              </p>
+
+              ${
+                resultData.expense
+                  ? `
+                    <p>
+                      Gasto actualizado:
+                      <strong>
+                        ${currency(
+                          resultData.expense.amount
+                        )}
+                      </strong>
+                    </p>
+                  `
+                  : `
+                    <p
+                      style="
+                        color:#92400e;
+                      "
+                    >
+                      Esta entrada no estaba vinculada
+                      a un gasto, por lo que no se modificó
+                      ningún gasto histórico.
+                    </p>
+                  `
+              }
+            </div>
+          `,
+
+        confirmButtonText:
+          "Aceptar"
       });
+
+      /*
+       * Reabrimos el administrador de movimientos
+       * para conservar el flujo de trabajo.
+       */
+      await openMovementManagerModal(
+        movement.productId
+      );
     } catch (
       error
     ) {
+      Swal.close();
+
       console.error(
-        "Error actualizando producto:",
+        "Error actualizando entrada:",
         error
       );
 
       await Swal.fire(
         "Error",
         error.message ||
-          "No se pudo actualizar el producto.",
+          "No se pudo actualizar la entrada.",
         "error"
       );
     }
@@ -7408,7 +7876,759 @@
 
   /*
    * ============================================================
-   * ELIMINAR
+   * ADMINISTRADOR DE MOVIMIENTOS
+   * ============================================================
+   */
+
+  function buildMovementManagerHtml(
+    productId,
+    movements
+  ) {
+    const product =
+      productId
+        ? findProductById(
+            productId
+          )
+        : null;
+
+    const defaultDateTo =
+      getLocalDateInputValue();
+
+    const defaultDateFrom =
+      getLocalDateInputValue(
+        new Date(
+          new Date().getFullYear(),
+          new Date().getMonth(),
+          1
+        )
+      );
+
+    return `
+      <div
+        class="movement-manager"
+        id="movement-manager"
+        data-product-id="${escapeHtml(
+          productId || ""
+        )}"
+      >
+
+        <div
+          class="movement-manager-title"
+        >
+          <div>
+            <strong>
+              ${
+                product
+                  ? `Entradas de ${escapeHtml(
+                      product.name
+                    )}`
+                  : "Entradas de inventario"
+              }
+            </strong>
+
+            <small>
+              ${
+                product
+                  ? "Historial de entradas de este producto."
+                  : "Historial general del local."
+              }
+            </small>
+          </div>
+
+          <div
+            class="movement-manager-summary"
+            id="movement-summary"
+          >
+            ${movements.length}
+            entradas
+          </div>
+        </div>
+
+        <div
+          class="movement-filters"
+        >
+
+          <div class="inv-field">
+            <label>
+              Fecha desde
+            </label>
+
+            <input
+              id="movement-filter-from"
+              type="date"
+              value="${defaultDateFrom}"
+            >
+          </div>
+
+          <div class="inv-field">
+            <label>
+              Fecha hasta
+            </label>
+
+            <input
+              id="movement-filter-to"
+              type="date"
+              value="${defaultDateTo}"
+            >
+          </div>
+
+          ${
+            product
+              ? ""
+              : `
+                <div class="inv-field">
+                  <label>
+                    Producto
+                  </label>
+
+                  <input
+                    id="movement-filter-product"
+                    type="text"
+                    list="movement-filter-product-list"
+                    placeholder="Buscar producto..."
+                    autocomplete="off"
+                  >
+
+                  <datalist id="movement-filter-product-list">
+                    ${currentProductsList
+                      .map(
+                        item =>
+                          `
+                          <option
+                            value="${escapeHtml(
+                              item.name ||
+                                ""
+                            )}"
+                          ></option>
+                        `
+                      )
+                      .join("")}
+                  </datalist>
+                </div>
+              `
+          }
+
+          <div
+            class="movement-filter-actions"
+          >
+            <button
+              type="button"
+              class="btn-primary"
+              id="movement-filter-apply"
+            >
+              <i class="fas fa-filter"></i>
+              Filtrar
+            </button>
+
+            <button
+              type="button"
+              class="btn-outline"
+              id="movement-filter-clear"
+            >
+              Limpiar
+            </button>
+          </div>
+
+        </div>
+
+        <div
+          id="movement-table-wrapper"
+          class="movement-table-wrapper"
+        >
+          ${renderMovementTableHtml(
+            movements
+          )}
+        </div>
+
+      </div>
+    `;
+  }
+
+  function renderMovementTableHtml(
+    movements
+  ) {
+    if (!movements.length) {
+      return `
+        <div
+          class="movement-empty"
+        >
+          <i class="fas fa-box-open"></i>
+
+          <strong>
+            No hay entradas
+          </strong>
+
+          <span>
+            No se encontraron movimientos de tipo entrada
+            con los filtros actuales.
+          </span>
+        </div>
+      `;
+    }
+
+    return `
+      <div
+        class="movement-table-scroll"
+      >
+        <table
+          class="movement-table"
+        >
+          <thead>
+            <tr>
+              <th>
+                Fecha
+              </th>
+
+              <th>
+                Producto
+              </th>
+
+              <th>
+                Entrada
+              </th>
+
+              <th>
+                Costo unitario
+              </th>
+
+              <th>
+                Costo total
+              </th>
+
+              <th>
+                Referencia
+              </th>
+
+              <th>
+                Documento
+              </th>
+
+              <th>
+                Saldo
+              </th>
+
+              <th>
+                Acción
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            ${movements
+              .map(
+                movement => `
+                  <tr>
+                    <td>
+                      ${escapeHtml(
+                        getMovementOperationDateValue(
+                          movement
+                        ) ||
+                          "—"
+                      )}
+                    </td>
+
+                    <td>
+                      <strong>
+                        ${escapeHtml(
+                          movement.productCurrentName ||
+                            movement.productName ||
+                            "Producto"
+                        )}
+                      </strong>
+
+                      ${
+                        movement.codigoProducto
+                          ? `
+                            <small>
+                              ${escapeHtml(
+                                movement.codigoProducto
+                              )}
+                            </small>
+                          `
+                          : ""
+                      }
+                    </td>
+
+                    <td>
+                      <strong>
+                        ${integerOrZero(
+                          movement.entrada
+                        )}
+                      </strong>
+                      <small>
+                        unidades
+                      </small>
+                    </td>
+
+                    <td>
+                      ${currency(
+                        movement.costoUnitario
+                      )}
+                    </td>
+
+                    <td>
+                      <strong>
+                        ${currency(
+                          movement.costoTotal
+                        )}
+                      </strong>
+                    </td>
+
+                    <td>
+                      ${escapeHtml(
+                        movement.referenciaLibro ||
+                          "—"
+                      )}
+                    </td>
+
+                    <td>
+                      ${escapeHtml(
+                        movement.numeroDocumento ||
+                          "—"
+                      )}
+                    </td>
+
+                    <td>
+                      ${integerOrZero(
+                        movement.saldoActual
+                      )}
+                    </td>
+
+                    <td>
+                      <button
+                        type="button"
+                        class="btn-outline movement-edit-button"
+                        data-movement-id="${escapeHtml(
+                          movement.id
+                        )}"
+                      >
+                        <i class="fas fa-edit"></i>
+                        Editar
+                      </button>
+                    </td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function filterMovements(
+    movements,
+    {
+      productId = "",
+      dateFrom = "",
+      dateTo = "",
+      productText = ""
+    } = {}
+  ) {
+    const normalizedProductText =
+      normalizeText(
+        productText
+      );
+
+    return movements.filter(
+      movement => {
+        if (
+          productId &&
+          String(
+            movement.productId
+          ).trim() !==
+            String(
+              productId
+            ).trim()
+        ) {
+          return false;
+        }
+
+        const date =
+          getMovementOperationDateValue(
+            movement
+          );
+
+        if (
+          dateFrom &&
+          date &&
+          date <
+            dateFrom
+        ) {
+          return false;
+        }
+
+        if (
+          dateTo &&
+          date &&
+          date >
+            dateTo
+        ) {
+          return false;
+        }
+
+        if (
+          normalizedProductText
+        ) {
+          const productName =
+            normalizeText(
+              movement.productCurrentName ||
+                movement.productName
+            );
+
+          const code =
+            normalizeText(
+              movement.codigoProducto
+            );
+
+          if (
+            !productName.includes(
+              normalizedProductText
+            ) &&
+            !code.includes(
+              normalizedProductText
+            )
+          ) {
+            return false;
+          }
+        }
+
+        return true;
+      }
+    );
+  }
+
+  async function openMovementManagerModal(
+    productId = ""
+  ) {
+    if (
+      !canEditInventory
+    ) {
+      await Swal.fire(
+        "Sin permisos",
+        "No puedes editar movimientos de inventario.",
+        "warning"
+      );
+
+      return;
+    }
+
+    let movements =
+      productId
+        ? await loadProductStockMovements(
+            productId
+          )
+        : await loadAllEntryMovements();
+
+    movements =
+      movements.filter(
+        movement =>
+          movement.tipoMovimiento ===
+          "entrada"
+      );
+
+    const result =
+      await Swal.fire({
+        title:
+          productId
+            ? "Historial de entradas"
+            : "Entradas de inventario",
+
+        html:
+          buildMovementManagerHtml(
+            productId,
+            movements
+          ),
+
+        width:
+          "1280px",
+
+        showCancelButton:
+          true,
+
+        confirmButtonText:
+          "Cerrar",
+
+        cancelButtonText:
+          "Cerrar",
+
+        showConfirmButton:
+          false,
+
+        focusConfirm:
+          false,
+
+        customClass: {
+          popup:
+            "inventory-movement-manager-modal"
+        },
+
+        didOpen: () => {
+          const applyButton =
+            document.getElementById(
+              "movement-filter-apply"
+            );
+
+          const clearButton =
+            document.getElementById(
+              "movement-filter-clear"
+            );
+
+          const renderFiltered =
+            () => {
+              const dateFrom =
+                String(
+                  document.getElementById(
+                    "movement-filter-from"
+                  )?.value ||
+                    ""
+                ).trim();
+
+              const dateTo =
+                String(
+                  document.getElementById(
+                    "movement-filter-to"
+                  )?.value ||
+                    ""
+                ).trim();
+
+              const productText =
+                String(
+                  document.getElementById(
+                    "movement-filter-product"
+                  )?.value ||
+                    ""
+                ).trim();
+
+              if (
+                dateFrom &&
+                dateTo &&
+                dateFrom >
+                  dateTo
+              ) {
+                Swal.fire(
+                  "Filtro inválido",
+                  "La fecha inicial no puede ser posterior a la fecha final.",
+                  "warning"
+                );
+
+                return;
+              }
+
+              const filtered =
+                filterMovements(
+                  movements,
+                  {
+                    productId,
+                    dateFrom,
+                    dateTo,
+                    productText
+                  }
+                );
+
+              const summary =
+                document.getElementById(
+                  "movement-summary"
+                );
+
+              const wrapper =
+                document.getElementById(
+                  "movement-table-wrapper"
+                );
+
+              if (summary) {
+                summary.textContent =
+                  `${filtered.length} entrada${
+                    filtered.length ===
+                    1
+                      ? ""
+                      : "s"
+                  }`;
+              }
+
+              if (wrapper) {
+                wrapper.innerHTML =
+                  renderMovementTableHtml(
+                    filtered
+                  );
+              }
+
+              bindMovementEditButtons();
+            };
+
+          if (
+            applyButton
+          ) {
+            applyButton.addEventListener(
+              "click",
+              renderFiltered
+            );
+          }
+
+          if (
+            clearButton
+          ) {
+            clearButton.addEventListener(
+              "click",
+              () => {
+                const from =
+                  document.getElementById(
+                    "movement-filter-from"
+                  );
+
+                const to =
+                  document.getElementById(
+                    "movement-filter-to"
+                  );
+
+                const product =
+                  document.getElementById(
+                    "movement-filter-product"
+                  );
+
+                if (from) {
+                  from.value = "";
+                }
+
+                if (to) {
+                  to.value = "";
+                }
+
+                if (product) {
+                  product.value = "";
+                }
+
+                renderFiltered();
+              }
+            );
+          }
+
+          bindMovementEditButtons();
+        }
+      });
+
+    return result;
+  }
+
+  function bindMovementEditButtons() {
+    document
+      .querySelectorAll(
+        ".movement-edit-button"
+      )
+      .forEach(
+        button => {
+          if (
+            button.dataset.bound ===
+            "1"
+          ) {
+            return;
+          }
+
+          button.dataset.bound =
+            "1";
+
+          button.addEventListener(
+            "click",
+            async () => {
+              const movementId =
+                String(
+                  button.dataset
+                    .movementId ||
+                    ""
+                ).trim();
+
+              if (!movementId) {
+                return;
+              }
+
+              const movement =
+                await findMovementById(
+                  movementId
+                );
+
+              if (!movement) {
+                await Swal.fire(
+                  "Movimiento no encontrado",
+                  "El movimiento ya no está disponible en la caché de sesión.",
+                  "warning"
+                );
+
+                return;
+              }
+
+              await openEditMovementModal(
+                movement
+              );
+            }
+          );
+        }
+      );
+  }
+
+  async function findMovementById(
+    movementId
+  ) {
+    const target =
+      String(
+        movementId ||
+          ""
+      ).trim();
+
+    if (!target) {
+      return null;
+    }
+
+    const cached =
+      getSessionCollection(
+        MOVEMENTS_COLLECTION
+      ).find(
+        item =>
+          String(
+            item.id
+          ).trim() ===
+          target
+      );
+
+    if (
+      cached &&
+      matchesCurrentLocal(
+        cached.data
+      )
+    ) {
+      const movement =
+        normalizeMovementDocument(
+          cached.id,
+          cached.data
+        );
+
+      movement.productCurrentName =
+        findProductById(
+          movement.productId
+        )?.name ||
+        movement.productName ||
+        "Producto";
+
+      return movement;
+    }
+
+    return null;
+  }
+
+  /*
+   * Mantengo este nombre como alias de compatibilidad
+   * con cualquier referencia existente.
+   */
+  async function openEditModal(
+    productId
+  ) {
+    return openMovementManagerModal(
+      productId
+    );
+  }
+
+  /*
+   * ============================================================
+   * ELIMINAR PRODUCTO
    * ============================================================
    */
 
@@ -7529,14 +8749,77 @@
 
   /*
    * ============================================================
+   * BOTÓN GENERAL DE MOVIMIENTOS
+   * ============================================================
+   */
+
+  function ensureGlobalMovementsButton() {
+    if (
+      document.getElementById(
+        "btnMovements"
+      )
+    ) {
+      return document.getElementById(
+        "btnMovements"
+      );
+    }
+
+    if (!btnAdd) {
+      return null;
+    }
+
+    if (
+      !canEditInventory
+    ) {
+      return null;
+    }
+
+    const button =
+      document.createElement(
+        "button"
+      );
+
+    button.id =
+      "btnMovements";
+
+    button.type =
+      "button";
+
+    button.className =
+      "btn-outline";
+
+    button.innerHTML = `
+      <i class="fas fa-history"></i>
+      Movimientos de entrada
+    `;
+
+    button.style.marginLeft =
+      "8px";
+
+    button.addEventListener(
+      "click",
+      () =>
+        openMovementManagerModal(
+          ""
+        )
+    );
+
+    btnAdd.parentNode?.insertBefore(
+      button,
+      btnAdd.nextSibling
+    );
+
+    return button;
+  }
+
+  /*
+   * ============================================================
    * BÚSQUEDA
    * ============================================================
    */
 
   function applySearch() {
-    if (
-      !inventoryDT
-    ) {
+    if (!inventoryDT) {
       return;
     }
 
@@ -7573,14 +8856,18 @@
       "inventoryBatchStyles";
 
     style.textContent = `
-      .inventory-batch-modal {
-        max-height: 94vh !important;
-        overflow-y: auto !important;
+      .inventory-batch-modal,
+      .inventory-movement-manager-modal,
+      .inventory-movement-edit-modal {
+        max-height:94vh !important;
+        overflow-y:auto !important;
       }
 
       .batch-operation-date-box {
         display:grid;
-        grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-columns:
+          minmax(0,1fr)
+          minmax(0,1fr);
         gap:12px;
         margin-bottom:14px;
         padding:12px;
@@ -7659,7 +8946,7 @@
       .batch-grid {
         display:grid;
         grid-template-columns:
-          repeat(4, minmax(0, 1fr));
+          repeat(4,minmax(0,1fr));
         gap:10px;
       }
 
@@ -7763,11 +9050,240 @@
         margin:5px 0;
       }
 
-      .edit-stock-grid {
+      /*
+       * ========================================================
+       * MOVIMIENTOS
+       * ========================================================
+       */
+
+      .movement-manager {
+        text-align:left;
+      }
+
+      .movement-manager-title {
+        display:flex;
+        justify-content:space-between;
+        gap:12px;
+        align-items:center;
+        margin-bottom:14px;
+        padding:12px;
+        border-radius:12px;
+        background:#f8fafc;
+        border:1px solid #e5e7eb;
+      }
+
+      .movement-manager-title > div:first-child {
+        display:flex;
+        flex-direction:column;
+        gap:4px;
+      }
+
+      .movement-manager-title strong {
+        color:#111827;
+        font-size:1rem;
+      }
+
+      .movement-manager-title small {
+        color:#6b7280;
+      }
+
+      .movement-manager-summary {
+        font-weight:700;
+        color:#1d4ed8;
+        white-space:nowrap;
+      }
+
+      .movement-filters {
         display:grid;
         grid-template-columns:
-          repeat(3, minmax(0, 1fr));
+          repeat(4,minmax(0,1fr));
         gap:10px;
+        padding:12px;
+        margin-bottom:12px;
+        border:1px solid #dbeafe;
+        border-radius:12px;
+        background:#eff6ff;
+      }
+
+      .movement-filter-actions {
+        display:flex;
+        align-items:end;
+        gap:8px;
+        padding-bottom:0;
+      }
+
+      .movement-filter-actions button {
+        min-height:40px;
+      }
+
+      .movement-table-wrapper {
+        width:100%;
+      }
+
+      .movement-table-scroll {
+        overflow-x:auto;
+        max-height:58vh;
+        overflow-y:auto;
+        border:1px solid #e5e7eb;
+        border-radius:12px;
+      }
+
+      .movement-table {
+        width:100%;
+        border-collapse:collapse;
+        font-size:.78rem;
+        background:#ffffff;
+      }
+
+      .movement-table th,
+      .movement-table td {
+        padding:10px;
+        border-bottom:1px solid #e5e7eb;
+        text-align:left;
+        vertical-align:middle;
+        white-space:nowrap;
+      }
+
+      .movement-table th {
+        position:sticky;
+        top:0;
+        z-index:1;
+        background:#f8fafc;
+        color:#374151;
+        font-weight:700;
+      }
+
+      .movement-table td small {
+        display:block;
+        margin-top:3px;
+        color:#6b7280;
+      }
+
+      .movement-empty {
+        min-height:200px;
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        gap:8px;
+        color:#6b7280;
+        border:1px dashed #cbd5e1;
+        border-radius:12px;
+        background:#f8fafc;
+      }
+
+      .movement-empty i {
+        font-size:2rem;
+        color:#94a3b8;
+      }
+
+      /*
+       * ========================================================
+       * EDICIÓN DE MOVIMIENTO
+       * ========================================================
+       */
+
+      .movement-edit-form {
+        text-align:left;
+      }
+
+      .movement-edit-header {
+        display:flex;
+        justify-content:space-between;
+        gap:12px;
+        padding:12px;
+        margin-bottom:12px;
+        border-radius:12px;
+        background:#eff6ff;
+        border:1px solid #bfdbfe;
+      }
+
+      .movement-edit-header > div {
+        display:flex;
+        flex-direction:column;
+        gap:5px;
+      }
+
+      .movement-edit-header strong {
+        color:#111827;
+      }
+
+      .movement-edit-header span {
+        color:#475569;
+        font-size:.82rem;
+      }
+
+      .movement-edit-header span strong {
+        color:#1d4ed8;
+      }
+
+      .movement-edit-grid {
+        display:grid;
+        grid-template-columns:
+          repeat(2,minmax(0,1fr));
+        gap:10px;
+      }
+
+      .movement-edit-full {
+        grid-column:span 2;
+      }
+
+      .movement-edit-preview {
+        display:grid;
+        grid-template-columns:
+          repeat(4,minmax(0,1fr));
+        gap:10px;
+        margin-top:14px;
+        padding:12px;
+        border-radius:12px;
+        background:#f8fafc;
+        border:1px solid #e5e7eb;
+      }
+
+      .movement-edit-preview > div {
+        display:flex;
+        flex-direction:column;
+        gap:4px;
+        font-size:.78rem;
+        color:#64748b;
+      }
+
+      .movement-edit-preview strong {
+        font-size:1rem;
+        color:#111827;
+      }
+
+      .movement-edit-warning,
+      .movement-edit-linked {
+        margin-top:12px;
+        padding:11px 12px;
+        border-radius:10px;
+        font-size:.78rem;
+        line-height:1.45;
+      }
+
+      .movement-edit-warning {
+        background:#fff7ed;
+        border:1px solid #fed7aa;
+        color:#9a3412;
+      }
+
+      .movement-edit-linked {
+        background:#ecfdf5;
+        border:1px solid #bbf7d0;
+        color:#166534;
+      }
+
+      @media (max-width:1000px) {
+        .movement-filters {
+          grid-template-columns:
+            repeat(2,minmax(0,1fr));
+        }
+
+        .movement-edit-preview {
+          grid-template-columns:
+            repeat(2,minmax(0,1fr));
+        }
       }
 
       @media (max-width:900px) {
@@ -7777,7 +9293,7 @@
 
         .batch-grid {
           grid-template-columns:
-            repeat(2, minmax(0, 1fr));
+            repeat(2,minmax(0,1fr));
         }
 
         .batch-product-field {
@@ -7785,9 +9301,34 @@
         }
       }
 
+      @media (max-width:700px) {
+        .movement-filters {
+          grid-template-columns:1fr;
+        }
+
+        .movement-edit-grid {
+          grid-template-columns:1fr;
+        }
+
+        .movement-edit-full {
+          grid-column:span 1;
+        }
+
+        .movement-edit-preview {
+          grid-template-columns:1fr;
+        }
+
+        .movement-filter-actions {
+          align-items:stretch;
+        }
+
+        .movement-filter-actions button {
+          flex:1;
+        }
+      }
+
       @media (max-width:600px) {
-        .batch-grid,
-        .edit-stock-grid {
+        .batch-grid {
           grid-template-columns:1fr;
         }
 
@@ -7797,6 +9338,11 @@
 
         .batch-products-container {
           max-height:55vh;
+        }
+
+        .movement-manager-title {
+          flex-direction:column;
+          align-items:flex-start;
         }
       }
     `;
@@ -7831,9 +9377,7 @@
         user
       );
 
-      if (
-        !currentLocalId
-      ) {
+      if (!currentLocalId) {
         throw new Error(
           "El usuario no tiene un local asignado."
         );
@@ -7850,6 +9394,8 @@
       }
 
       ensureInventoryDataTable();
+
+      ensureGlobalMovementsButton();
 
       await loadInventoryProviders();
 
@@ -7890,18 +9436,14 @@
     () => {
       injectInventoryStyles();
 
-      if (
-        btnAdd
-      ) {
+      if (btnAdd) {
         btnAdd.addEventListener(
           "click",
           openBatchAddModal
         );
       }
 
-      if (
-        searchInput
-      ) {
+      if (searchInput) {
         searchInput.addEventListener(
           "input",
           applySearch
@@ -7924,9 +9466,7 @@
           .pop()
           .toLowerCase();
 
-      if (
-        !user
-      ) {
+      if (!user) {
         if (
           currentPage !==
             "index.html" &&

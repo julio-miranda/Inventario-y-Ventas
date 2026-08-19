@@ -3,57 +3,45 @@
 
 <head>
   <meta charset="UTF-8" />
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>Dashboard - Sistema de Gestión</title>
+  <title>
+    Dashboard - Sistema de Gestión
+  </title>
 
-  <link
-    rel="stylesheet"
-    href="assets/css/styles.css"
-  >
+  <link rel="stylesheet" href="assets/css/styles.css">
 
-  <link
-    rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
-  >
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
-  <link
-    href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
-    rel="stylesheet"
-  >
+  <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
 
-  <script
-    src="https://cdn.jsdelivr.net/npm/chart.js"
-  ></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-  <script
-    src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
-  ></script>
+  <!-- SheetJS -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 
 <body>
 
-  <nav
-    class="navbar"
-    role="navigation"
-    aria-label="Barra principal"
-  >
+  <nav class="navbar" role="navigation" aria-label="Barra principal">
 
     <div class="navbar-logo">
+
       <a href="dashboard.html">
         MiEmpresa
       </a>
+
     </div>
 
     <div class="navbar-right">
 
       <div class="navbar-links">
+
         <ul>
+
           <li>
-            <a
-              href="dashboard.html"
-              class="active"
-            >
+            <a href="dashboard.html" class="active">
               Inicio
             </a>
           </li>
@@ -87,7 +75,9 @@
               Empleados
             </a>
           </li>
+
         </ul>
+
       </div>
 
       <div class="navbar-user">
@@ -96,10 +86,7 @@
           Hola, Usuario
         </span>
 
-        <button
-          id="logoutButton"
-          type="button"
-        >
+        <button id="logoutButton" type="button">
           Cerrar sesión
         </button>
 
@@ -107,47 +94,27 @@
 
     </div>
 
-    <button
-      class="menu-toggle"
-      id="menuToggle"
-      type="button"
-      aria-controls="fullscreenMenu"
-      aria-expanded="false"
-      aria-label="Abrir menú"
-    >
-      <i
-        class="fas fa-bars"
-        aria-hidden="true"
-      ></i>
+    <button class="menu-toggle" id="menuToggle" type="button" aria-controls="fullscreenMenu" aria-expanded="false"
+      aria-label="Abrir menú">
+
+      <i class="fas fa-bars" aria-hidden="true"></i>
+
     </button>
 
   </nav>
 
-  <div
-    class="fullscreen-menu"
-    id="fullscreenMenu"
-    aria-hidden="true"
-  >
+  <div class="fullscreen-menu" id="fullscreenMenu" aria-hidden="true">
 
-    <button
-      class="close-menu"
-      id="closeMenu"
-      type="button"
-      aria-label="Cerrar menú"
-    >
-      <i
-        class="fas fa-times"
-        aria-hidden="true"
-      ></i>
+    <button class="close-menu" id="closeMenu" type="button" aria-label="Cerrar menú">
+
+      <i class="fas fa-times" aria-hidden="true"></i>
+
     </button>
 
     <ul class="menu-links">
 
       <li>
-        <a
-          href="dashboard.html"
-          class="active"
-        >
+        <a href="dashboard.html" class="active">
           Inicio
         </a>
       </li>
@@ -190,10 +157,7 @@
         Hola, Usuario
       </span>
 
-      <button
-        id="logoutButtonMobile"
-        type="button"
-      >
+      <button id="logoutButtonMobile" type="button">
         Cerrar sesión
       </button>
 
@@ -260,10 +224,7 @@
             Desde
           </label>
 
-          <input
-            type="date"
-            id="rangeFrom"
-          >
+          <input type="date" id="rangeFrom">
 
         </div>
 
@@ -273,10 +234,7 @@
             Hasta
           </label>
 
-          <input
-            type="date"
-            id="rangeTo"
-          >
+          <input type="date" id="rangeTo">
 
         </div>
 
@@ -286,11 +244,7 @@
             Buscar en tablas
           </label>
 
-          <input
-            type="text"
-            id="rangeSearch"
-            placeholder="Producto, concepto, documento, monto..."
-          >
+          <input type="text" id="rangeSearch" placeholder="Producto, concepto, documento, monto...">
 
         </div>
 
@@ -298,43 +252,23 @@
 
       <div class="filter-actions">
 
-        <button
-          id="btnApplyRange"
-          type="button"
-          class="btn-primary"
-        >
+        <button id="btnApplyRange" type="button" class="btn-primary">
           Aplicar filtro
         </button>
 
-        <button
-          id="btnResetRange"
-          type="button"
-          class="btn-outline"
-        >
+        <button id="btnResetRange" type="button" class="btn-outline">
           Mes actual
         </button>
 
-        <button
-          id="btnExportSalesCSV"
-          type="button"
-          class="secondary-btn"
-        >
+        <button id="btnExportSalesCSV" type="button" class="secondary-btn">
           Exportar ventas CSV
         </button>
 
-        <button
-          id="btnExportExpensesCSV"
-          type="button"
-          class="secondary-btn"
-        >
+        <button id="btnExportExpensesCSV" type="button" class="secondary-btn">
           Exportar gastos CSV
         </button>
 
-        <button
-          id="btnExportMovementsExcel"
-          type="button"
-          class="secondary-btn"
-        >
+        <button id="btnExportMovementsExcel" type="button" class="secondary-btn">
           Exportar inventario Excel
         </button>
 
@@ -345,33 +279,75 @@
     <section class="stats-container">
 
       <div class="stat-card">
-        <h3>Ventas del período</h3>
-        <p id="statSales">$0.00</p>
+
+        <h3>
+          Ventas del período
+        </h3>
+
+        <p id="statSales">
+          $0.00
+        </p>
+
       </div>
 
       <div class="stat-card">
-        <h3>Gastos del período</h3>
-        <p id="statExpenses">$0.00</p>
+
+        <h3>
+          Gastos del período
+        </h3>
+
+        <p id="statExpenses">
+          $0.00
+        </p>
+
       </div>
 
       <div class="stat-card">
-        <h3>Resultado neto</h3>
-        <p id="statNet">$0.00</p>
+
+        <h3>
+          Resultado neto
+        </h3>
+
+        <p id="statNet">
+          $0.00
+        </p>
+
       </div>
 
       <div class="stat-card">
-        <h3>Unidades vendidas</h3>
-        <p id="statUnitsSold">0</p>
+
+        <h3>
+          Unidades vendidas
+        </h3>
+
+        <p id="statUnitsSold">
+          0
+        </p>
+
       </div>
 
       <div class="stat-card">
-        <h3>Productos vendidos</h3>
-        <p id="statProductsSold">0</p>
+
+        <h3>
+          Productos vendidos
+        </h3>
+
+        <p id="statProductsSold">
+          0
+        </p>
+
       </div>
 
       <div class="stat-card">
-        <h3>Stock bajo</h3>
-        <p id="statLowStock">0</p>
+
+        <h3>
+          Stock bajo
+        </h3>
+
+        <p id="statLowStock">
+          0
+        </p>
+
       </div>
 
     </section>
@@ -398,7 +374,9 @@
         </div>
 
         <div class="chart-container">
+
           <canvas id="salesChart"></canvas>
+
         </div>
 
       </article>
@@ -423,39 +401,29 @@
 
           </div>
 
-          <div
-            id="lowStockPanel"
-            class="low-stock-panel"
-          >
+          <div id="lowStockPanel" class="low-stock-panel">
+
             <div class="loading">
               Cargando...
             </div>
+
           </div>
 
         </div>
 
         <div class="panel-actions">
 
-          <button
-            id="btnGoInventory"
-            type="button"
-          >
+          <button id="btnGoInventory" type="button">
             Ir a Inventario
           </button>
 
-          <button
-            id="btnCloseDay"
-            type="button"
-          >
+          <button id="btnCloseDay" type="button">
             Cierre de Caja (Hoy)
           </button>
 
         </div>
 
-        <div
-          id="profitStatus"
-          class="info-card"
-        ></div>
+        <div id="profitStatus" class="info-card"></div>
 
       </aside>
 
@@ -482,17 +450,11 @@
 
       <div class="table-toolbar">
 
-        <div
-          class="small"
-          id="salesRangeLabel"
-        >
+        <div class="small" id="salesRangeLabel">
           Mostrando el mes actual.
         </div>
 
-        <div
-          class="small"
-          id="salesCountLabel"
-        >
+        <div class="small" id="salesCountLabel">
           0 registros
         </div>
 
@@ -505,11 +467,27 @@
           <thead>
 
             <tr>
-              <th>Productos</th>
-              <th>Total</th>
-              <th>Usuario</th>
-              <th>Fecha</th>
-              <th>Hora</th>
+
+              <th>
+                Productos
+              </th>
+
+              <th>
+                Total
+              </th>
+
+              <th>
+                Usuario
+              </th>
+
+              <th>
+                Fecha
+              </th>
+
+              <th>
+                Hora
+              </th>
+
             </tr>
 
           </thead>
@@ -517,9 +495,11 @@
           <tbody>
 
             <tr>
+
               <td colspan="5">
                 Cargando ventas...
               </td>
+
             </tr>
 
           </tbody>
@@ -551,17 +531,11 @@
 
       <div class="table-toolbar">
 
-        <div
-          class="small"
-          id="expenseRangeLabel"
-        >
+        <div class="small" id="expenseRangeLabel">
           Mostrando el mes actual.
         </div>
 
-        <div
-          class="small"
-          id="expenseCountLabel"
-        >
+        <div class="small" id="expenseCountLabel">
           0 registros
         </div>
 
@@ -574,14 +548,39 @@
           <thead>
 
             <tr>
-              <th>Concepto</th>
-              <th>Categoría</th>
-              <th>Monto</th>
-              <th>Método</th>
-              <th>Usuario</th>
-              <th>Fecha</th>
-              <th>Hora</th>
-              <th>Observación</th>
+
+              <th>
+                Concepto
+              </th>
+
+              <th>
+                Categoría
+              </th>
+
+              <th>
+                Monto
+              </th>
+
+              <th>
+                Método
+              </th>
+
+              <th>
+                Usuario
+              </th>
+
+              <th>
+                Fecha
+              </th>
+
+              <th>
+                Hora
+              </th>
+
+              <th>
+                Observación
+              </th>
+
             </tr>
 
           </thead>
@@ -589,9 +588,11 @@
           <tbody>
 
             <tr>
+
               <td colspan="8">
                 Cargando gastos...
               </td>
+
             </tr>
 
           </tbody>
@@ -623,17 +624,11 @@
 
       <div class="table-toolbar">
 
-        <div
-          class="small"
-          id="movementRangeLabel"
-        >
+        <div class="small" id="movementRangeLabel">
           Mostrando el mes actual.
         </div>
 
-        <div
-          class="small"
-          id="movementCountLabel"
-        >
+        <div class="small" id="movementCountLabel">
           0 registros
         </div>
 
@@ -646,19 +641,59 @@
           <thead>
 
             <tr>
-              <th>Fecha</th>
-              <th>Hora</th>
-              <th>Producto</th>
-              <th>Código producto</th>
-              <th>Número documento</th>
-              <th>Referencia libro</th>
-              <th>Costo Unitario</th>
-              <th>Valor Actual</th>
-              <th>Entrada</th>
-              <th>Salida</th>
-              <th>Saldo anterior</th>
-              <th>Saldo actual</th>
-              <th>Detalle</th>
+
+              <th>
+                Fecha
+              </th>
+
+              <th>
+                Hora
+              </th>
+
+              <th>
+                Producto
+              </th>
+
+              <th>
+                Código producto
+              </th>
+
+              <th>
+                Número documento
+              </th>
+
+              <th>
+                Referencia libro
+              </th>
+
+              <th>
+                Costo Unitario
+              </th>
+
+              <th>
+                Valor Actual
+              </th>
+
+              <th>
+                Entrada
+              </th>
+
+              <th>
+                Salida
+              </th>
+
+              <th>
+                Saldo anterior
+              </th>
+
+              <th>
+                Saldo actual
+              </th>
+
+              <th>
+                Detalle
+              </th>
+
             </tr>
 
           </thead>
@@ -666,9 +701,11 @@
           <tbody>
 
             <tr>
+
               <td colspan="13">
                 Cargando movimientos...
               </td>
+
             </tr>
 
           </tbody>
@@ -681,14 +718,23 @@
 
   </main>
 
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
+  <!-- SweetAlert -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
+  <!-- Aplicación -->
   <script src="assets/js/app.js"></script>
+
+  <!-- Gráficos -->
   <script src="assets/js/chart-utils.js"></script>
+
+  <!-- Dashboard -->
   <script src="assets/js/dashboard.js"></script>
 
 </body>
