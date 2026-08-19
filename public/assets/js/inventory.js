@@ -18,10 +18,17 @@
 //      unidades
 //      unidades bono
 //      proveedor
-//      costo
+//      costo por caja
+//      costo por unidad
 //      precio
 //      referencia
 //      documento
+//
+// - RELACIÓN DE COSTOS:
+//
+//      costoPorCaja = costoPorUnidad * unidadesPorCaja
+//
+//      costoPorUnidad = costoPorCaja / unidadesPorCaja
 //
 // - NUEVO:
 //      La carga múltiple permite seleccionar una
@@ -54,8 +61,16 @@
 // - NUEVO:
 //      Las entradas tienen:
 //
+//          cajas
+//          cajasBono
+//          unidades
+//          unidadesBono
+//          unidadesPorCaja
 //          entradaPagada
 //          entradaBono
+//          costoUnitario
+//          costoPorCaja
+//          precioVenta
 //          costoTotal
 //          expenseId
 //
@@ -93,13 +108,6 @@
 //   de las cantidades pagadas.
 //
 // - Una carga múltiple genera un solo gasto consolidado.
-//
-// - Los movimientos de inventario guardan:
-//      costoUnitario
-//      entradaPagada
-//      entradaBono
-//      costoTotal
-//      expenseId
 //
 // - IMPORTANTE:
 //
@@ -1234,33 +1242,136 @@
 
   /*
    * ============================================================
-   * COSTO
+   * COSTOS
    * ============================================================
+   *
+   * Regla única:
+   *
+   *   costoPorCaja = costoPorUnidad * unidadesPorCaja
+   *
+   *   costoPorUnidad = costoPorCaja / unidadesPorCaja
    */
+
+  function getEffectiveUnitsPerBox(
+    line,
+    product = null
+  ) {
+    return Math.max(
+      1,
+      integerOrZero(
+        product
+          ? getUnitsPerBox(
+              product
+            )
+          : line?.unitsPerBox
+      ) || 1
+    );
+  }
 
   function getEffectiveCostPerBoxForLine(
     line,
     product = null
   ) {
-    let costPerBox =
+    const unitsPerBox =
+      getEffectiveUnitsPerBox(
+        line,
+        product
+      );
+
+    const explicitCostPerBox =
       numberOrZero(
-        line?.lastCostPerBox
+        line?.lastCostPerBox ??
+          line?.costoPorCaja ??
+          line?.costPerBox
       );
 
     if (
-      costPerBox <= 0 &&
+      explicitCostPerBox > 0
+    ) {
+      return explicitCostPerBox;
+    }
+
+    const explicitCostPerUnit =
+      numberOrZero(
+        line?.lastCostPerUnit ??
+          line?.costoUnitario ??
+          line?.costPerUnit
+      );
+
+    if (
+      explicitCostPerUnit > 0
+    ) {
+      return (
+        explicitCostPerUnit *
+        unitsPerBox
+      );
+    }
+
+    if (
       product
     ) {
-      costPerBox =
+      const productBoxCost =
         numberOrZero(
           product.lastCostPerBox
         );
+
+      if (
+        productBoxCost > 0
+      ) {
+        return productBoxCost;
+      }
+
+      const productUnitCost =
+        numberOrZero(
+          product.lastCostPerUnit
+        );
+
+      if (
+        productUnitCost > 0
+      ) {
+        return (
+          productUnitCost *
+          unitsPerBox
+        );
+      }
     }
 
-    return Math.max(
-      0,
-      costPerBox
-    );
+    return 0;
+  }
+
+  function getEffectiveCostPerUnitForLine(
+    line,
+    product = null
+  ) {
+    const unitsPerBox =
+      getEffectiveUnitsPerBox(
+        line,
+        product
+      );
+
+    const explicitCostPerUnit =
+      numberOrZero(
+        line?.lastCostPerUnit ??
+          line?.costoUnitario ??
+          line?.costPerUnit
+      );
+
+    if (
+      explicitCostPerUnit > 0
+    ) {
+      return explicitCostPerUnit;
+    }
+
+    const costPerBox =
+      getEffectiveCostPerBoxForLine(
+        line,
+        product
+      );
+
+    return unitsPerBox > 0
+      ? costPerBox /
+          unitsPerBox
+      : 0;
   }
 
   function calculateLinePurchaseCost(
@@ -1282,34 +1393,33 @@
       );
 
     const unitsPerBox =
-      Math.max(
-        1,
-        integerOrZero(
-          product
-            ? getUnitsPerBox(
-                product
-              )
-            : line.unitsPerBox
-        ) || 1
-      );
-
-    const costPerBox =
-      getEffectiveCostPerBoxForLine(
+      getEffectiveUnitsPerBox(
         line,
         product
       );
 
     const costPerUnit =
-      unitsPerBox > 0
-        ? costPerBox /
-          unitsPerBox
-        : 0;
+      getEffectiveCostPerUnitForLine(
+        line,
+        product
+      );
 
+    /*
+     * Las cajas pagadas se valoran como:
+     *
+     * cajas * unidadesPorCaja * costoPorUnidad
+     *
+     * y las unidades sueltas como:
+     *
+     * unidades * costoPorUnidad
+     */
     return Math.max(
       0,
-      paidBoxes *
-        costPerBox +
-        paidUnits *
+      (
+        paidBoxes *
+          unitsPerBox +
+        paidUnits
+      ) *
         costPerUnit
     );
   }
@@ -1356,23 +1466,21 @@
               line.bonusUnits
             );
 
-          const costPerBox =
-            getEffectiveCostPerBoxForLine(
+          const unitsPerBox =
+            getEffectiveUnitsPerBox(
               line,
               product
             );
 
-          const unitsPerBox =
-            Math.max(
-              1,
-              integerOrZero(
-                product
-                  ? getUnitsPerBox(
-                      product
-                    )
-                  : line.unitsPerBox
-              ) || 1
+          const costPerUnit =
+            getEffectiveCostPerUnitForLine(
+              line,
+              product
             );
+
+          const costPerBox =
+            costPerUnit *
+            unitsPerBox;
 
           return [
             `${index + 1}. ${
@@ -1385,6 +1493,9 @@
             `Cajas bono: ${bonusBoxes}`,
             `Unidades bono: ${bonusUnits}`,
             `Unidades por caja: ${unitsPerBox}`,
+            `Costo por unidad: ${currency(
+              costPerUnit
+            )}`,
             `Costo por caja: ${currency(
               costPerBox
             )}`,
@@ -1463,29 +1574,21 @@
                 null;
 
               const unitsPerBox =
-                Math.max(
-                  1,
-                  integerOrZero(
-                    product
-                      ? getUnitsPerBox(
-                          product
-                        )
-                      : line.unitsPerBox
-                  ) || 1
+                getEffectiveUnitsPerBox(
+                  line,
+                  product
                 );
 
               const totalLineUnits =
                 (
-                  (
-                    integerOrZero(
-                      line.boxes
-                    ) +
-                    integerOrZero(
-                      line.bonusBoxes
-                    )
-                  ) *
-                  unitsPerBox
-                ) +
+                  integerOrZero(
+                    line.boxes
+                  ) +
+                  integerOrZero(
+                    line.bonusBoxes
+                  )
+                ) *
+                  unitsPerBox +
                 integerOrZero(
                   line.units
                 ) +
@@ -1527,6 +1630,7 @@
       [
         "Gasto generado automáticamente desde Inventario.",
         "Las cantidades bono no generan costo.",
+        "El costo por caja equivale al costo por unidad multiplicado por las unidades por caja.",
         `Fecha de operación: ${formatOperationDate(
           validOperationDate
         )}`,
@@ -3223,6 +3327,174 @@
     productStockMovementsCache.clear();
   }
 
+  /*
+   * ------------------------------------------------------------
+   * DESGLOSE DE ENTRADA
+   * ------------------------------------------------------------
+   *
+   * Los movimientos nuevos guardan:
+   *
+   *   cajas
+   *   cajasBono
+   *   unidades
+   *   unidadesBono
+   *   unidadesPorCaja
+   *
+   * Los movimientos antiguos pueden no tener esos campos.
+   * En ese caso se utiliza entradaPagada / entradaBono como
+   * respaldo.
+   */
+
+  function getMovementUnitsPerBox(
+    movement,
+    product = null
+  ) {
+    const movementValue =
+      integerOrZero(
+        movement?.unidadesPorCaja ??
+          movement?.unitsPerBox
+      );
+
+    if (
+      movementValue > 0
+    ) {
+      return movementValue;
+    }
+
+    const productValue =
+      product
+        ? integerOrZero(
+            product.unitsPerBox
+          )
+        : 0;
+
+    return Math.max(
+      1,
+      productValue || 1
+    );
+  }
+
+  function getMovementBreakdown(
+    movement,
+    product = null
+  ) {
+    const unitsPerBox =
+      getMovementUnitsPerBox(
+        movement,
+        product
+      );
+
+    const hasExplicitBreakdown =
+      movement?.cajas !== undefined ||
+      movement?.cajasBono !== undefined ||
+      movement?.unidades !== undefined ||
+      movement?.unidadesBono !== undefined ||
+      movement?.boxes !== undefined ||
+      movement?.bonusBoxes !== undefined ||
+      movement?.units !== undefined ||
+      movement?.bonusUnits !== undefined;
+
+    let cajas =
+      integerOrZero(
+        movement?.cajas ??
+          movement?.boxes
+      );
+
+    let cajasBono =
+      integerOrZero(
+        movement?.cajasBono ??
+          movement?.bonusBoxes
+      );
+
+    let unidades =
+      integerOrZero(
+        movement?.unidades ??
+          movement?.units
+      );
+
+    let unidadesBono =
+      integerOrZero(
+        movement?.unidadesBono ??
+          movement?.bonusUnits
+      );
+
+    if (
+      !hasExplicitBreakdown
+    ) {
+      let paidUnits =
+        integerOrZero(
+          movement?.entradaPagada
+        );
+
+      let bonusUnits =
+        integerOrZero(
+          movement?.entradaBono
+        );
+
+      /*
+       * Si un movimiento antiguo no tiene entradaPagada /
+       * entradaBono, se considera toda la entrada como pagada.
+       */
+      if (
+        paidUnits <= 0 &&
+        bonusUnits <= 0
+      ) {
+        paidUnits =
+          Math.max(
+            0,
+            integerOrZero(
+              movement?.entrada
+            )
+          );
+      }
+
+      cajas =
+        Math.floor(
+          paidUnits /
+            unitsPerBox
+        );
+
+      unidades =
+        paidUnits %
+        unitsPerBox;
+
+      cajasBono =
+        Math.floor(
+          bonusUnits /
+            unitsPerBox
+        );
+
+      unidadesBono =
+        bonusUnits %
+        unitsPerBox;
+    }
+
+    const paidUnits =
+      cajas *
+        unitsPerBox +
+      unidades;
+
+    const bonusUnits =
+      cajasBono *
+        unitsPerBox +
+      unidadesBono;
+
+    const totalUnits =
+      paidUnits +
+      bonusUnits;
+
+    return {
+      cajas,
+      cajasBono,
+      unidades,
+      unidadesBono,
+      unitsPerBox,
+      paidUnits,
+      bonusUnits,
+      totalUnits
+    };
+  }
+
   function normalizeMovementDocument(
     id,
     data
@@ -3230,10 +3502,37 @@
     const source =
       data || {};
 
-    const entrada =
-      numberOrZero(
-        source.entrada
+    const productId =
+      String(
+        source.productId ||
+          source.productID ||
+          source.product_id ||
+          ""
+      ).trim();
+
+    const product =
+      findProductById(
+        productId
       );
+
+    const unitsPerBox =
+      getMovementUnitsPerBox(
+        source,
+        product
+      );
+
+    const breakdown =
+      getMovementBreakdown(
+        source,
+        product
+      );
+
+    const entrada =
+      breakdown.totalUnits > 0
+        ? breakdown.totalUnits
+        : numberOrZero(
+            source.entrada
+          );
 
     const salida =
       numberOrZero(
@@ -3241,18 +3540,37 @@
       );
 
     const costoUnitario =
-      Math.max(
-        0,
-        numberOrZero(
-          source.costoUnitario
-        )
+      numberOrZero(
+        source.costoUnitario
+      ) > 0
+        ? numberOrZero(
+            source.costoUnitario
+          )
+        : numberOrZero(
+            source.costoPorUnidad
+          );
+
+    const costoPorCaja =
+      numberOrZero(
+        source.costoPorCaja
+      ) > 0
+        ? numberOrZero(
+            source.costoPorCaja
+          )
+        : costoUnitario *
+          unitsPerBox;
+
+    const precioVenta =
+      numberOrZero(
+        source.precioVenta ??
+          source.price
       );
 
     const costoTotal =
       source.costoTotal !==
-        undefined &&
-      source.costoTotal !==
-        null
+          undefined &&
+        source.costoTotal !==
+          null
         ? Math.max(
             0,
             numberOrZero(
@@ -3261,7 +3579,7 @@
           )
         : Math.max(
             0,
-            entrada *
+            breakdown.paidUnits *
               costoUnitario
           );
 
@@ -3270,17 +3588,12 @@
 
       ...source,
 
-      productId:
-        String(
-          source.productId ||
-            source.productID ||
-            source.product_id ||
-            ""
-        ).trim(),
+      productId,
 
       productName:
         String(
           source.productName ||
+            product?.name ||
             ""
         ).trim(),
 
@@ -3288,6 +3601,9 @@
         String(
           source.codigoProducto ||
             source.productCode ||
+            getProductCode(
+              product
+            ) ||
             ""
         ).trim(),
 
@@ -3295,8 +3611,9 @@
         String(
           source.tipoMovimiento ||
             ""
-        ).trim()
-        .toLowerCase(),
+        )
+          .trim()
+          .toLowerCase(),
 
       referenciaLibro:
         String(
@@ -3327,31 +3644,81 @@
           source.saldoActual
         ),
 
-      costoUnitario,
+      /*
+       * Desglose
+       */
+      cajas:
+        breakdown.cajas,
 
-      costoTotal,
+      boxes:
+        breakdown.cajas,
+
+      cajasBono:
+        breakdown.cajasBono,
+
+      bonusBoxes:
+        breakdown.cajasBono,
+
+      unidades:
+        breakdown.unidades,
+
+      units:
+        breakdown.unidades,
+
+      unidadesBono:
+        breakdown.unidadesBono,
+
+      bonusUnits:
+        breakdown.unidadesBono,
+
+      unidadesPorCaja:
+        unitsPerBox,
+
+      unitsPerBox,
 
       entradaPagada:
-        Math.max(
-          0,
-          numberOrZero(
-            source.entradaPagada
-          )
-        ),
+        breakdown.paidUnits,
 
       entradaBono:
-        Math.max(
-          0,
-          numberOrZero(
-            source.entradaBono
-          )
-        ),
+        breakdown.bonusUnits,
+
+      /*
+       * Costos
+       */
+      costoUnitario,
+
+      unitCost:
+        costoUnitario,
+
+      costoPorUnidad:
+        costoUnitario,
+
+      costoPorCaja,
+
+      lastCostPerBox:
+        costoPorCaja,
+
+      /*
+       * Precio de venta
+       */
+      precioVenta,
+
+      price:
+        precioVenta,
+
+      costoTotal,
 
       expenseId:
         String(
           source.expenseId ||
             ""
         ).trim(),
+
+      detalle:
+        String(
+          source.detalle ||
+            ""
+        ),
 
       fechaOperacion:
         getMovementOperationDateValue(
@@ -3443,6 +3810,37 @@
                   id,
                   data
                 );
+
+              const product =
+                findProductById(
+                  target
+                );
+
+              movement.productCurrentName =
+                product?.name ||
+                movement.productName ||
+                "Producto";
+
+              movement.productCurrentStock =
+                product
+                  ? getCurrentStockUnits(
+                      product
+                    )
+                  : movement.saldoActual;
+
+              movement.productCurrentPrice =
+                product
+                  ? numberOrZero(
+                      product.price
+                    )
+                  : movement.precioVenta;
+
+              movement.productCurrentCostPerBox =
+                product
+                  ? numberOrZero(
+                      product.lastCostPerBox
+                    )
+                  : movement.costoPorCaja;
 
               movements.push(
                 movement
@@ -3559,6 +3957,20 @@
               )
             : movement.saldoActual;
 
+        movement.productCurrentPrice =
+          product
+            ? numberOrZero(
+                product.price
+              )
+            : movement.precioVenta;
+
+        movement.productCurrentCostPerBox =
+          product
+            ? numberOrZero(
+                product.lastCostPerBox
+              )
+            : movement.costoPorCaja;
+
         movements.push(
           movement
         );
@@ -3642,10 +4054,21 @@
     salida,
     saldoAnterior,
     saldoActual,
-    costoUnitario,
+
+    cajas = 0,
+    cajasBono = 0,
+    unidades = 0,
+    unidadesBono = 0,
+    unidadesPorCaja = 1,
+
+    costoUnitario = 0,
+    costoPorCaja = 0,
+    precioVenta = 0,
+
     costoTotal,
     entradaPagada,
     entradaBono,
+
     detalle,
     user,
     operationDate,
@@ -3660,6 +4083,143 @@
         ? operationDate
         : parseOperationDate(
             operationDate
+          );
+
+    const normalizedUnitsPerBox =
+      Math.max(
+        1,
+        integerOrZero(
+          unidadesPorCaja
+        ) || 1
+      );
+
+    const normalizedBoxes =
+      integerOrZero(
+        cajas
+      );
+
+    const normalizedBonusBoxes =
+      integerOrZero(
+        cajasBono
+      );
+
+    const normalizedUnits =
+      integerOrZero(
+        unidades
+      );
+
+    const normalizedBonusUnits =
+      integerOrZero(
+        unidadesBono
+      );
+
+    const calculatedPaidUnits =
+      normalizedBoxes *
+        normalizedUnitsPerBox +
+      normalizedUnits;
+
+    const calculatedBonusUnits =
+      normalizedBonusBoxes *
+        normalizedUnitsPerBox +
+      normalizedBonusUnits;
+
+    const normalizedPaidUnits =
+      entradaPagada !==
+          undefined &&
+        entradaPagada !==
+          null
+        ? integerOrZero(
+            entradaPagada
+          )
+        : calculatedPaidUnits;
+
+    const normalizedBonusUnitsTotal =
+      entradaBono !==
+          undefined &&
+        entradaBono !==
+          null
+        ? integerOrZero(
+            entradaBono
+          )
+        : calculatedBonusUnits;
+
+    const normalizedEntry =
+      entrada !==
+          undefined &&
+        entrada !==
+          null
+        ? numberOrZero(
+            entrada
+          )
+        : normalizedPaidUnits +
+          normalizedBonusUnitsTotal;
+
+    let normalizedCostUnit =
+      Math.max(
+        0,
+        numberOrZero(
+          costoUnitario
+        )
+      );
+
+    let normalizedCostBox =
+      Math.max(
+        0,
+        numberOrZero(
+          costoPorCaja
+        )
+      );
+
+    /*
+     * Normalización bidireccional del costo.
+     *
+     * Si llegó costo por caja, se deriva costo unitario.
+     *
+     * Si llegó costo unitario, se deriva costo por caja.
+     */
+    if (
+      normalizedCostBox > 0
+    ) {
+      normalizedCostUnit =
+        normalizedCostBox /
+        normalizedUnitsPerBox;
+
+      /*
+       * Recalculamos nuevamente para mantener la relación
+       * exacta después de la división.
+       */
+      normalizedCostBox =
+        normalizedCostUnit *
+        normalizedUnitsPerBox;
+    } else {
+      normalizedCostBox =
+        normalizedCostUnit *
+        normalizedUnitsPerBox;
+    }
+
+    const normalizedSalePrice =
+      Math.max(
+        0,
+        numberOrZero(
+          precioVenta
+        )
+      );
+
+    const normalizedCostTotal =
+      costoTotal !==
+          undefined &&
+        costoTotal !==
+          null
+        ? Math.max(
+            0,
+            numberOrZero(
+              costoTotal
+            )
+          )
+        : Math.max(
+            0,
+            normalizedPaidUnits *
+              normalizedCostUnit
           );
 
     return {
@@ -3698,9 +4258,7 @@
         "",
 
       entrada:
-        numberOrZero(
-          entrada
-        ),
+        normalizedEntry,
 
       salida:
         numberOrZero(
@@ -3717,37 +4275,74 @@
           saldoActual
         ),
 
-      costoUnitario:
-        Math.max(
-          0,
-          numberOrZero(
-            costoUnitario
-          )
-        ),
+      /*
+       * Desglose
+       */
+      cajas:
+        normalizedBoxes,
 
-      costoTotal:
-        Math.max(
-          0,
-          numberOrZero(
-            costoTotal
-          )
-        ),
+      boxes:
+        normalizedBoxes,
+
+      cajasBono:
+        normalizedBonusBoxes,
+
+      bonusBoxes:
+        normalizedBonusBoxes,
+
+      unidades:
+        normalizedUnits,
+
+      units:
+        normalizedUnits,
+
+      unidadesBono:
+        normalizedBonusUnits,
+
+      bonusUnits:
+        normalizedBonusUnits,
+
+      unidadesPorCaja:
+        normalizedUnitsPerBox,
+
+      unitsPerBox:
+        normalizedUnitsPerBox,
 
       entradaPagada:
-        Math.max(
-          0,
-          numberOrZero(
-            entradaPagada
-          )
-        ),
+        normalizedPaidUnits,
 
       entradaBono:
-        Math.max(
-          0,
-          numberOrZero(
-            entradaBono
-          )
-        ),
+        normalizedBonusUnitsTotal,
+
+      /*
+       * Costos
+       */
+      costoUnitario:
+        normalizedCostUnit,
+
+      unitCost:
+        normalizedCostUnit,
+
+      costoPorUnidad:
+        normalizedCostUnit,
+
+      costoPorCaja:
+        normalizedCostBox,
+
+      lastCostPerBox:
+        normalizedCostBox,
+
+      /*
+       * Precio de venta
+       */
+      precioVenta:
+        normalizedSalePrice,
+
+      price:
+        normalizedSalePrice,
+
+      costoTotal:
+        normalizedCostTotal,
 
       expenseId:
         String(
@@ -3850,17 +4445,13 @@
       );
 
     const totalPaidUnits =
-      (
-        paidBoxes *
-        unitsPerBox
-      ) +
+      paidBoxes *
+        unitsPerBox +
       paidUnits;
 
     const totalBonusUnits =
-      (
-        bonusBoxes *
-        unitsPerBox
-      ) +
+      bonusBoxes *
+        unitsPerBox +
       bonusUnits;
 
     const totalUnits =
@@ -3903,27 +4494,29 @@
         )
         .doc();
 
-    const lastCostPerBox =
-      Math.max(
-        0,
-        numberOrZero(
-          line.lastCostPerBox
-        )
-      );
-
-    const lastCostPerUnit =
-      unitsPerBox > 0
-        ? lastCostPerBox /
-          unitsPerBox
-        : 0;
-
-    const totalPurchaseCost =
-      calculateLinePurchaseCost(
+    const costPerUnit =
+      getEffectiveCostPerUnitForLine(
         line,
         {
           ...line,
           unitsPerBox
         }
+      );
+
+    const lastCostPerBox =
+      costPerUnit *
+      unitsPerBox;
+
+    const totalPurchaseCost =
+      totalPaidUnits *
+      costPerUnit;
+
+    const price =
+      Math.max(
+        0,
+        numberOrZero(
+          line.price
+        )
       );
 
     const productData = {
@@ -3963,19 +4556,12 @@
 
       unitsPerBox,
 
-      lastCostPerBox:
-        lastCostPerBox,
+      lastCostPerBox,
 
       lastCostPerUnit:
-        lastCostPerUnit,
+        costPerUnit,
 
-      price:
-        Math.max(
-          0,
-          numberOrZero(
-            line.price
-          )
-        ),
+      price,
 
       id_local:
         currentLocalId,
@@ -4067,8 +4653,29 @@
         saldoActual:
           totalUnits,
 
+        cajas:
+          paidBoxes,
+
+        cajasBono:
+          bonusBoxes,
+
+        unidades:
+          paidUnits,
+
+        unidadesBono:
+          bonusUnits,
+
+        unidadesPorCaja:
+          unitsPerBox,
+
         costoUnitario:
-          lastCostPerUnit,
+          costPerUnit,
+
+        costoPorCaja:
+          lastCostPerBox,
+
+        precioVenta:
+          price,
 
         costoTotal:
           totalPurchaseCost,
@@ -4087,11 +4694,18 @@
             `Unidades bono: ${bonusUnits}`,
             `Entrada pagada: ${totalPaidUnits}`,
             `Entrada bono: ${totalBonusUnits}`,
+            `Unidades por caja: ${unitsPerBox}`,
+            `Costo por unidad: ${currency(
+              costPerUnit
+            )}`,
+            `Costo por caja: ${currency(
+              lastCostPerBox
+            )}`,
+            `Precio de venta: ${currency(
+              price
+            )}`,
             `Costo total: ${currency(
               totalPurchaseCost
-            )}`,
-            `Costo unitario: ${currency(
-              lastCostPerUnit
             )}`,
             `Fecha de operación: ${formatOperationDate(
               validOperationDate
@@ -4231,17 +4845,13 @@
       );
 
     const totalPaidUnits =
-      (
-        paidBoxes *
-        unitsPerBox
-      ) +
+      paidBoxes *
+        unitsPerBox +
       paidUnits;
 
     const totalBonusUnits =
-      (
-        bonusBoxes *
-        unitsPerBox
-      ) +
+      bonusBoxes *
+        unitsPerBox +
       bonusUnits;
 
     const totalUnits =
@@ -4310,12 +4920,6 @@
     let movementData =
       null;
 
-    const totalPurchaseCost =
-      calculateLinePurchaseCost(
-        line,
-        product
-      );
-
     const transactionResult =
       await db.runTransaction(
         async transaction => {
@@ -4353,33 +4957,72 @@
             previousStock +
             totalUnits;
 
-          const costPerBoxInput =
+          /*
+           * El costo introducido se interpreta como costo por caja.
+           * De él se deriva el costo por unidad.
+           *
+           * costoPorUnidad = costoPorCaja / unidadesPorCaja
+           */
+          const inputCostPerBox =
             numberOrZero(
               line.lastCostPerBox
             );
 
-          nextCostPerBox =
-            costPerBoxInput >
-            0
-              ? costPerBoxInput
-              : numberOrZero(
-                  data.lastCostPerBox
+          const inputCostPerUnit =
+            numberOrZero(
+              line.lastCostPerUnit
+            );
+
+          if (
+            inputCostPerBox > 0
+          ) {
+            nextCostPerBox =
+              inputCostPerBox;
+
+            nextCostPerUnit =
+              nextCostPerBox /
+              unitsPerBox;
+          } else if (
+            inputCostPerUnit > 0
+          ) {
+            nextCostPerUnit =
+              inputCostPerUnit;
+
+            nextCostPerBox =
+              nextCostPerUnit *
+              unitsPerBox;
+          } else {
+            nextCostPerBox =
+              numberOrZero(
+                data.lastCostPerBox
+              );
+
+            if (
+              nextCostPerBox > 0
+            ) {
+              nextCostPerUnit =
+                nextCostPerBox /
+                unitsPerBox;
+            } else {
+              nextCostPerUnit =
+                numberOrZero(
+                  data.lastCostPerUnit
                 );
 
-          nextCostPerUnit =
-            unitsPerBox >
-            0
-              ? nextCostPerBox /
-                unitsPerBox
-              : 0;
+              nextCostPerBox =
+                nextCostPerUnit *
+                unitsPerBox;
+            }
+          }
 
-          nextPrice =
+          const normalizedPrice =
             numberOrZero(
               line.price
-            ) > 0
-              ? numberOrZero(
-                  line.price
-                )
+            );
+
+          nextPrice =
+            normalizedPrice > 0
+              ? normalizedPrice
               : numberOrZero(
                   data.price
                 );
@@ -4404,6 +5047,10 @@
                   ""
               ).trim();
           }
+
+          const totalPurchaseCost =
+            totalPaidUnits *
+            nextCostPerUnit;
 
           const movementRef =
             db
@@ -4452,8 +5099,29 @@
               saldoActual:
                 nextStock,
 
+              cajas:
+                paidBoxes,
+
+              cajasBono:
+                bonusBoxes,
+
+              unidades:
+                paidUnits,
+
+              unidadesBono:
+                bonusUnits,
+
+              unidadesPorCaja:
+                unitsPerBox,
+
               costoUnitario:
                 nextCostPerUnit,
+
+              costoPorCaja:
+                nextCostPerBox,
+
+              precioVenta:
+                nextPrice,
 
               costoTotal:
                 totalPurchaseCost,
@@ -4472,11 +5140,18 @@
                   `Unidades bono: ${bonusUnits}`,
                   `Entrada pagada: ${totalPaidUnits}`,
                   `Entrada bono: ${totalBonusUnits}`,
+                  `Unidades por caja: ${unitsPerBox}`,
+                  `Costo por unidad: ${currency(
+                    nextCostPerUnit
+                  )}`,
+                  `Costo por caja: ${currency(
+                    nextCostPerBox
+                  )}`,
+                  `Precio de venta: ${currency(
+                    nextPrice
+                  )}`,
                   `Costo total: ${currency(
                     totalPurchaseCost
-                  )}`,
-                  `Costo unitario: ${currency(
-                    nextCostPerUnit
                   )}`,
                   `Fecha de operación: ${formatOperationDate(
                     validOperationDate
@@ -4583,7 +5258,10 @@
 
           return {
             movementId:
-              movementRef.id
+              movementRef.id,
+
+            movementCostTotal:
+              totalPurchaseCost
           };
         }
       );
@@ -4753,7 +5431,8 @@
       movementId,
 
       movementCostTotal:
-        totalPurchaseCost
+        transactionResult?.movementCostTotal ||
+        0
     };
   }
 
@@ -4789,9 +5468,27 @@
   function refreshProductComboboxDatalist(
     rowElement
   ) {
-    const list =
+    const input =
       rowElement.querySelector(
-        ".batch-product-list"
+        ".batch-product-input"
+      );
+
+    if (!input) {
+      return;
+    }
+
+    const listId =
+      input.getAttribute(
+        "list"
+      );
+
+    if (!listId) {
+      return;
+    }
+
+    const list =
+      document.getElementById(
+        listId
       );
 
     if (!list) {
@@ -4807,8 +5504,7 @@
                 product.name ||
                   ""
               )}"
-            >
-            </option>
+            ></option>
           `
         )
         .join("");
@@ -4826,6 +5522,30 @@
     values = {}
   ) {
     batchLineCounter += 1;
+
+    const initialUnitsPerBox =
+      Math.max(
+        1,
+        integerOrZero(
+          values.unitsPerBox
+        ) || 1
+      );
+
+    const initialCostPerBox =
+      numberOrZero(
+        values.lastCostPerBox ??
+          values.costoPorCaja
+      );
+
+    const initialCostPerUnit =
+      initialCostPerBox >
+      0
+        ? initialCostPerBox /
+          initialUnitsPerBox
+        : numberOrZero(
+            values.lastCostPerUnit ??
+              values.costoUnitario
+          );
 
     return {
       id:
@@ -4876,17 +5596,13 @@
         ),
 
       unitsPerBox:
-        Math.max(
-          1,
-          integerOrZero(
-            values.unitsPerBox
-          ) || 1
-        ),
+        initialUnitsPerBox,
 
       lastCostPerBox:
-        numberOrZero(
-          values.lastCostPerBox
-        ),
+        initialCostPerBox,
+
+      lastCostPerUnit:
+        initialCostPerUnit,
 
       price:
         numberOrZero(
@@ -5117,6 +5833,21 @@
 
         <div class="inv-field">
           <label>
+            Costo por unidad
+          </label>
+
+          <input
+            type="text"
+            class="batch-cost-unit"
+            value="${line.lastCostPerUnit.toFixed(
+              4
+            )}"
+            readonly
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
             Precio
           </label>
 
@@ -5297,6 +6028,12 @@
         )
       );
 
+    const lastCostPerUnit =
+      unitsPerBox > 0
+        ? lastCostPerBox /
+          unitsPerBox
+        : 0;
+
     const price =
       Math.max(
         0,
@@ -5383,6 +6120,8 @@
 
       lastCostPerBox,
 
+      lastCostPerUnit,
+
       price,
 
       referenciaLibro,
@@ -5418,6 +6157,11 @@
     const costBoxInput =
       row.querySelector(
         ".batch-cost-box"
+      );
+
+    const costUnitInput =
+      row.querySelector(
+        ".batch-cost-unit"
       );
 
     const priceInput =
@@ -5456,17 +6200,13 @@
       );
 
     const totalNormal =
-      (
-        data.boxes *
-        data.unitsPerBox
-      ) +
+      data.boxes *
+        data.unitsPerBox +
       data.units;
 
     const totalBonus =
-      (
-        data.bonusBoxes *
-        data.unitsPerBox
-      ) +
+      data.bonusBoxes *
+        data.unitsPerBox +
       data.bonusUnits;
 
     const totalUnits =
@@ -5476,6 +6216,21 @@
     const totalBoxes =
       data.boxes +
       data.bonusBoxes;
+
+    const calculatedCostPerUnit =
+      data.unitsPerBox > 0
+        ? data.lastCostPerBox /
+          data.unitsPerBox
+        : 0;
+
+    if (
+      costUnitInput
+    ) {
+      costUnitInput.value =
+        calculatedCostPerUnit.toFixed(
+          4
+        );
+    }
 
     if (totalElement) {
       totalElement.textContent =
@@ -5563,11 +6318,22 @@
             costBoxInput.value
           ) <= 0
         ) {
+          const existingCostBox =
+            numberOrZero(
+              product.lastCostPerBox
+            );
+
+          const existingCostUnit =
+            numberOrZero(
+              product.lastCostPerUnit
+            );
+
           costBoxInput.value =
             String(
-              numberOrZero(
-                product.lastCostPerBox
-              )
+              existingCostBox > 0
+                ? existingCostBox
+                : existingCostUnit *
+                  existingUnitsPerBox
             );
         }
 
@@ -5912,17 +6678,16 @@
 
         const totalUnits =
           (
-            (
-              line.boxes +
-              line.bonusBoxes
-            ) *
-            line.unitsPerBox
-          ) +
+            line.boxes +
+            line.bonusBoxes
+          ) *
+            line.unitsPerBox +
           line.units +
           line.bonusUnits;
 
         if (
-          totalUnits <= 0
+          totalUnits <=
+          0
         ) {
           errors.push(
             `${label}: debes ingresar cajas, cajas bono, unidades o unidades bono.`
@@ -5930,10 +6695,29 @@
         }
 
         if (
-          line.unitsPerBox <= 0
+          line.unitsPerBox <=
+          0
         ) {
           errors.push(
             `${label}: las unidades por caja deben ser mayores que cero.`
+          );
+        }
+
+        if (
+          line.lastCostPerBox <
+          0
+        ) {
+          errors.push(
+            `${label}: el costo por caja no puede ser negativo.`
+          );
+        }
+
+        if (
+          line.price <
+          0
+        ) {
+          errors.push(
+            `${label}: el precio no puede ser negativo.`
           );
         }
       }
@@ -6115,6 +6899,11 @@
 
         <p>
           El proveedor es opcional.
+        </p>
+
+        <p>
+          El costo por caja corresponde al costo por unidad
+          multiplicado por las unidades de la caja.
         </p>
 
         <p>
@@ -6659,7 +7448,15 @@
    * EDICIÓN DE MOVIMIENTO
    * ============================================================
    *
-   * YA NO SE EDITA stockCurrentUnits DIRECTAMENTE.
+   * La edición:
+   *
+   * 1. Calcula la nueva entrada completa.
+   * 2. Calcula diferencia = nuevaEntrada - entradaAnterior.
+   * 3. Aplica esa diferencia al stock vigente.
+   * 4. Actualiza desglose.
+   * 5. Actualiza costo unitario / costo por caja.
+   * 6. Actualiza precio de venta.
+   * 7. Actualiza gasto, únicamente por la parte pagada.
    */
 
   function buildMovementEditFormHtml(
@@ -6671,19 +7468,69 @@
         movement
       );
 
-    const currentEntry =
-      numberOrZero(
-        movement.entrada
+    const breakdown =
+      getMovementBreakdown(
+        movement,
+        product
       );
 
-    const currentCost =
+    const unitsPerBox =
+      breakdown.unitsPerBox;
+
+    let currentCostPerUnit =
       numberOrZero(
         movement.costoUnitario
       );
 
-    const currentCostTotal =
+    let currentCostPerBox =
       numberOrZero(
-        movement.costoTotal
+        movement.costoPorCaja
+      );
+
+    if (
+      currentCostPerUnit <=
+      0 &&
+      currentCostPerBox >
+      0
+    ) {
+      currentCostPerUnit =
+        currentCostPerBox /
+        unitsPerBox;
+    }
+
+    if (
+      currentCostPerBox <=
+      0 &&
+      currentCostPerUnit >
+      0
+    ) {
+      currentCostPerBox =
+        currentCostPerUnit *
+        unitsPerBox;
+    }
+
+    if (
+      currentCostPerUnit <=
+      0 &&
+      currentCostPerBox <=
+      0
+    ) {
+      currentCostPerUnit =
+        getCostPerUnit(
+          product
+        );
+
+      currentCostPerBox =
+        currentCostPerUnit *
+        unitsPerBox;
+    }
+
+    const currentSalePrice =
+      numberOrZero(
+        movement.precioVenta
+      ) ||
+      numberOrZero(
+        product?.price
       );
 
     return `
@@ -6734,21 +7581,93 @@
 
           <div class="inv-field">
             <label>
-              Entrada total (unidades)
+              Unidades por caja
             </label>
 
             <input
-              id="movement-edit-entry"
+              id="movement-edit-units-per-box"
+              type="number"
+              min="1"
+              step="1"
+              value="${unitsPerBox}"
+              readonly
+            >
+          </div>
+
+          <div class="inv-field">
+            <label>
+              Cajas
+            </label>
+
+            <input
+              id="movement-edit-boxes"
               type="number"
               min="0"
               step="1"
-              value="${currentEntry}"
+              value="${breakdown.cajas}"
             >
+          </div>
 
-            <small>
-              Esta cantidad reemplaza únicamente
-              la cantidad de este movimiento.
-            </small>
+          <div
+            class="inv-field bonus-field"
+          >
+            <label>
+              Cajas bono
+            </label>
+
+            <input
+              id="movement-edit-bonus-boxes"
+              type="number"
+              min="0"
+              step="1"
+              value="${breakdown.cajasBono}"
+            >
+          </div>
+
+          <div class="inv-field">
+            <label>
+              Unidades sueltas
+            </label>
+
+            <input
+              id="movement-edit-units"
+              type="number"
+              min="0"
+              step="1"
+              value="${breakdown.unidades}"
+            >
+          </div>
+
+          <div
+            class="inv-field bonus-field"
+          >
+            <label>
+              Unidades bono
+            </label>
+
+            <input
+              id="movement-edit-bonus-units"
+              type="number"
+              min="0"
+              step="1"
+              value="${breakdown.unidadesBono}"
+            >
+          </div>
+
+          <div class="inv-field">
+            <label>
+              Costo por caja
+            </label>
+
+            <input
+              id="movement-edit-cost-box"
+              type="number"
+              min="0"
+              step="0.01"
+              value="${currentCostPerBox.toFixed(
+                2
+              )}"
+            >
           </div>
 
           <div class="inv-field">
@@ -6757,30 +7676,47 @@
             </label>
 
             <input
-              id="movement-edit-cost"
-              type="number"
-              min="0"
-              step="0.0001"
-              value="${currentCost}"
-            >
-          </div>
-
-          <div class="inv-field">
-            <label>
-              Costo total
-            </label>
-
-            <input
-              id="movement-edit-total-cost"
+              id="movement-edit-cost-unit"
               type="text"
-              value="${currency(
-                currentCostTotal
+              value="${currentCostPerUnit.toFixed(
+                4
               )}"
               readonly
             >
           </div>
 
-          <div class="inv-field movement-edit-full">
+          <div class="inv-field">
+            <label>
+              Precio de venta
+            </label>
+
+            <input
+              id="movement-edit-sale-price"
+              type="number"
+              min="0"
+              step="0.01"
+              value="${currentSalePrice.toFixed(
+                2
+              )}"
+            >
+          </div>
+
+          <div class="inv-field">
+            <label>
+              Entrada total
+            </label>
+
+            <input
+              id="movement-edit-entry"
+              type="text"
+              value="${breakdown.totalUnits}"
+              readonly
+            >
+          </div>
+
+          <div
+            class="inv-field movement-edit-full"
+          >
             <label>
               Referencia de libro
             </label>
@@ -6795,7 +7731,9 @@
             >
           </div>
 
-          <div class="inv-field movement-edit-full">
+          <div
+            class="inv-field movement-edit-full"
+          >
             <label>
               Documento
             </label>
@@ -6815,37 +7753,7 @@
         <div
           id="movement-edit-preview"
           class="movement-edit-preview"
-        >
-          <div>
-            Entrada anterior:
-            <strong>
-              ${currentEntry}
-            </strong>
-          </div>
-
-          <div>
-            Nueva entrada:
-            <strong>
-              ${currentEntry}
-            </strong>
-          </div>
-
-          <div>
-            Diferencia:
-            <strong>
-              0
-            </strong>
-          </div>
-
-          <div>
-            Stock resultante:
-            <strong>
-              ${getCurrentStockUnits(
-                product
-              )}
-            </strong>
-          </div>
-        </div>
+        ></div>
 
         <div
           class="movement-edit-warning"
@@ -6855,13 +7763,28 @@
           </strong>
 
           El sistema no sustituirá el stock actual
-          del producto. Aplicará solamente la diferencia
-          de esta entrada sobre el stock vigente.
+          del producto.
 
           <br><br>
 
-          Si la entrada se reduce, el nuevo stock no puede
-          quedar por debajo de cero.
+          Aplicará únicamente:
+          <strong>
+            nueva entrada - entrada anterior
+          </strong>
+
+          sobre el stock vigente.
+
+          <br><br>
+
+          Las cajas bono y unidades bono aumentan
+          el inventario pero no generan costo.
+
+          <br><br>
+
+          El costo por caja se calcula como:
+          <strong>
+            costo por unidad × unidades por caja
+          </strong>
         </div>
 
         ${
@@ -6871,9 +7794,10 @@
                 class="movement-edit-linked"
               >
                 <i class="fas fa-link"></i>
-                Esta entrada está vinculada a un gasto
-                de inventario. El importe del gasto se
-                actualizará si cambia el costo de la entrada.
+
+                Esta entrada está vinculada a un gasto.
+                El gasto se ajustará considerando solamente
+                las cantidades pagadas.
               </div>
             `
             : `
@@ -6881,10 +7805,10 @@
                 class="movement-edit-warning"
               >
                 <i class="fas fa-info-circle"></i>
-                Este movimiento no tiene un gasto vinculado.
-                La edición modificará inventario y movimiento,
-                pero no puede ajustar un gasto histórico que
-                no esté relacionado con este movimiento.
+
+                Esta entrada no tiene un gasto vinculado.
+                Se actualizarán el movimiento y el producto,
+                pero no existe un gasto histórico que ajustar.
               </div>
             `
         }
@@ -6897,19 +7821,49 @@
     product,
     movement
   ) {
+    const boxesInput =
+      document.getElementById(
+        "movement-edit-boxes"
+      );
+
+    const bonusBoxesInput =
+      document.getElementById(
+        "movement-edit-bonus-boxes"
+      );
+
+    const unitsInput =
+      document.getElementById(
+        "movement-edit-units"
+      );
+
+    const bonusUnitsInput =
+      document.getElementById(
+        "movement-edit-bonus-units"
+      );
+
+    const unitsPerBoxInput =
+      document.getElementById(
+        "movement-edit-units-per-box"
+      );
+
+    const costBoxInput =
+      document.getElementById(
+        "movement-edit-cost-box"
+      );
+
+    const costUnitInput =
+      document.getElementById(
+        "movement-edit-cost-unit"
+      );
+
+    const salePriceInput =
+      document.getElementById(
+        "movement-edit-sale-price"
+      );
+
     const entryInput =
       document.getElementById(
         "movement-edit-entry"
-      );
-
-    const costInput =
-      document.getElementById(
-        "movement-edit-cost"
-      );
-
-    const totalCostInput =
-      document.getElementById(
-        "movement-edit-total-cost"
       );
 
     const preview =
@@ -6918,74 +7872,185 @@
       );
 
     if (
-      !entryInput ||
-      !costInput ||
+      !boxesInput ||
+      !bonusBoxesInput ||
+      !unitsInput ||
+      !bonusUnitsInput ||
+      !unitsPerBoxInput ||
+      !costBoxInput ||
       !preview
     ) {
       return;
     }
 
-    const oldEntry =
-      numberOrZero(
-        movement.entrada
-      );
-
-    const newEntry =
-      integerOrZero(
-        entryInput.value
-      );
-
-    const newCost =
-      Math.max(
-        0,
-        numberOrZero(
-          costInput.value
-        )
-      );
-
-    const oldStock =
-      getCurrentStockUnits(
+    const oldBreakdown =
+      getMovementBreakdown(
+        movement,
         product
       );
+
+    const unitsPerBox =
+      Math.max(
+        1,
+        integerOrZero(
+          unitsPerBoxInput.value
+        ) ||
+          oldBreakdown.unitsPerBox
+      );
+
+    const cajas =
+      integerOrZero(
+        boxesInput.value
+      );
+
+    const cajasBono =
+      integerOrZero(
+        bonusBoxesInput.value
+      );
+
+    const unidades =
+      integerOrZero(
+        unitsInput.value
+      );
+
+    const unidadesBono =
+      integerOrZero(
+        bonusUnitsInput.value
+      );
+
+    const paidUnits =
+      cajas *
+        unitsPerBox +
+      unidades;
+
+    const bonusUnits =
+      cajasBono *
+        unitsPerBox +
+      unidadesBono;
+
+    const newEntry =
+      paidUnits +
+      bonusUnits;
+
+    const oldEntry =
+      oldBreakdown.totalUnits;
 
     const difference =
       newEntry -
       oldEntry;
 
+    const currentStock =
+      getCurrentStockUnits(
+        product
+      );
+
     const resultingStock =
-      oldStock +
+      currentStock +
       difference;
 
-    const newTotalCost =
-      newEntry *
-      newCost;
+    const costPerBox =
+      Math.max(
+        0,
+        numberOrZero(
+          costBoxInput.value
+        )
+      );
+
+    const costPerUnit =
+      unitsPerBox > 0
+        ? costPerBox /
+          unitsPerBox
+        : 0;
+
+    const purchaseCost =
+      paidUnits *
+      costPerUnit;
 
     if (
-      totalCostInput
+      costUnitInput
     ) {
-      totalCostInput.value =
-        currency(
-          newTotalCost
+      costUnitInput.value =
+        costPerUnit.toFixed(
+          4
         );
     }
 
+    if (
+      entryInput
+    ) {
+      entryInput.value =
+        String(
+          newEntry
+        );
+    }
+
+    const salePrice =
+      Math.max(
+        0,
+        numberOrZero(
+          salePriceInput?.value
+        )
+      );
+
     preview.innerHTML = `
       <div>
-        Entrada anterior:
+        Cajas
+        <strong>
+          ${cajas}
+        </strong>
+      </div>
+
+      <div>
+        Cajas bono
+        <strong>
+          ${cajasBono}
+        </strong>
+      </div>
+
+      <div>
+        Unidades
+        <strong>
+          ${unidades}
+        </strong>
+      </div>
+
+      <div>
+        Unidades bono
+        <strong>
+          ${unidadesBono}
+        </strong>
+      </div>
+
+      <div>
+        Entrada anterior
         <strong>
           ${oldEntry}
         </strong>
       </div>
 
       <div>
-        Nueva entrada:
+        Entrada pagada
+        <strong>
+          ${paidUnits}
+        </strong>
+      </div>
+
+      <div>
+        Entrada bono
+        <strong>
+          ${bonusUnits}
+        </strong>
+      </div>
+
+      <div>
+        Nueva entrada
         <strong>
           ${newEntry}
         </strong>
       </div>
 
       <div>
-        Diferencia:
+        Diferencia
         <strong
           style="
             color:${
@@ -7006,7 +8071,7 @@
       </div>
 
       <div>
-        Stock resultante:
+        Stock resultante
         <strong
           style="
             color:${
@@ -7017,6 +8082,42 @@
           "
         >
           ${resultingStock}
+        </strong>
+      </div>
+
+      <div>
+        Costo por caja
+        <strong>
+          ${currency(
+            costPerBox
+          )}
+        </strong>
+      </div>
+
+      <div>
+        Costo por unidad
+        <strong>
+          ${currency(
+            costPerUnit
+          )}
+        </strong>
+      </div>
+
+      <div>
+        Precio de venta
+        <strong>
+          ${currency(
+            salePrice
+          )}
+        </strong>
+      </div>
+
+      <div>
+        Costo de entrada
+        <strong>
+          ${currency(
+            purchaseCost
+          )}
         </strong>
       </div>
     `;
@@ -7055,11 +8156,14 @@
         operationDate
       );
 
-    let updatedMovement = null;
+    let updatedMovement =
+      null;
 
-    let updatedProduct = null;
+    let updatedProduct =
+      null;
 
-    let updatedExpense = null;
+    let updatedExpense =
+      null;
 
     await db.runTransaction(
       async transaction => {
@@ -7076,15 +8180,17 @@
           );
         }
 
-        const oldMovement =
+        const oldMovementRaw =
           movementSnap.data() ||
           {};
 
         if (
           String(
-            oldMovement.tipoMovimiento ||
+            oldMovementRaw.tipoMovimiento ||
               ""
-          ).trim().toLowerCase() !==
+          )
+            .trim()
+            .toLowerCase() !==
           "entrada"
         ) {
           throw new Error(
@@ -7094,7 +8200,7 @@
 
         if (
           !matchesCurrentLocal(
-            oldMovement
+            oldMovementRaw
           )
         ) {
           throw new Error(
@@ -7104,7 +8210,7 @@
 
         const productId =
           String(
-            oldMovement.productId ||
+            oldMovementRaw.productId ||
               ""
           ).trim();
 
@@ -7150,31 +8256,141 @@
           );
         }
 
-        const oldEntry =
-          numberOrZero(
-            oldMovement.entrada
+        const oldMovement =
+          normalizeMovementDocument(
+            movementId,
+            oldMovementRaw
           );
+
+        const oldBreakdown =
+          getMovementBreakdown(
+            oldMovement,
+            productData
+          );
+
+        /*
+         * ========================================================
+         * NUEVO DESGLOSE
+         * ========================================================
+         */
+
+        const unitsPerBox =
+          Math.max(
+            1,
+            integerOrZero(
+              values.unidadesPorCaja
+            ) ||
+              oldBreakdown.unitsPerBox ||
+              integerOrZero(
+                productData.unitsPerBox
+              ) ||
+              1
+          );
+
+        const newBoxes =
+          integerOrZero(
+            values.cajas
+          );
+
+        const newBonusBoxes =
+          integerOrZero(
+            values.cajasBono
+          );
+
+        const newUnits =
+          integerOrZero(
+            values.unidades
+          );
+
+        const newBonusUnits =
+          integerOrZero(
+            values.unidadesBono
+          );
+
+        const newPaidUnits =
+          newBoxes *
+            unitsPerBox +
+          newUnits;
+
+        const newBonusUnitsTotal =
+          newBonusBoxes *
+            unitsPerBox +
+          newBonusUnits;
 
         const newEntry =
-          integerOrZero(
-            values.entrada
-          );
+          newPaidUnits +
+          newBonusUnitsTotal;
 
-        const oldCostUnit =
+        /*
+         * ========================================================
+         * COSTO
+         * ========================================================
+         *
+         * values.costoPorCaja es el valor editable.
+         *
+         * costoPorUnidad =
+         *      costoPorCaja / unidadesPorCaja
+         *
+         * Se recalcula nuevamente:
+         *
+         * costoPorCaja =
+         *      costoPorUnidad * unidadesPorCaja
+         */
+
+        let newCostPerBox =
           Math.max(
             0,
+            numberOrZero(
+              values.costoPorCaja
+            )
+          );
+
+        let newCostPerUnit =
+          0;
+
+        if (
+          newCostPerBox > 0
+        ) {
+          newCostPerUnit =
+            newCostPerBox /
+            unitsPerBox;
+
+          newCostPerBox =
+            newCostPerUnit *
+            unitsPerBox;
+        } else {
+          newCostPerUnit =
             numberOrZero(
               oldMovement.costoUnitario
-            )
-          );
+            );
 
-        const newCostUnit =
+          newCostPerBox =
+            newCostPerUnit *
+            unitsPerBox;
+        }
+
+        /*
+         * ========================================================
+         * PRECIO DE VENTA
+         * ========================================================
+         */
+
+        const newSalePrice =
           Math.max(
             0,
             numberOrZero(
-              values.costoUnitario
+              values.precioVenta
             )
           );
+
+        /*
+         * ========================================================
+         * STOCK
+         * ========================================================
+         */
+
+        const oldEntry =
+          oldBreakdown.totalUnits;
 
         const currentStock =
           getCurrentStockUnits(
@@ -7197,31 +8413,71 @@
           );
         }
 
+        /*
+         * ========================================================
+         * COSTO DE LA ENTRADA
+         * ========================================================
+         *
+         * Solo las unidades pagadas generan costo.
+         */
+
+        const oldPaidUnits =
+          oldBreakdown.paidUnits;
+
+        let oldCostPerUnit =
+          numberOrZero(
+            oldMovement.costoUnitario
+          );
+
+        if (
+          oldCostPerUnit <=
+          0
+        ) {
+          const oldCostPerBox =
+            numberOrZero(
+              oldMovement.costoPorCaja
+            );
+
+          oldCostPerUnit =
+            oldBreakdown.unitsPerBox >
+            0
+              ? oldCostPerBox /
+                oldBreakdown.unitsPerBox
+              : 0;
+        }
+
         const oldCostTotal =
           oldMovement.costoTotal !==
-            undefined &&
-          oldMovement.costoTotal !==
-            null
-            ? Math.max(
-                0,
-                numberOrZero(
-                  oldMovement.costoTotal
-                )
+              undefined &&
+            oldMovement.costoTotal !==
+              null
+          ? Math.max(
+              0,
+              numberOrZero(
+                oldMovement.costoTotal
               )
-            : Math.max(
-                0,
-                oldEntry *
-                  oldCostUnit
-              );
+            )
+          : Math.max(
+              0,
+              oldPaidUnits *
+                oldCostPerUnit
+            );
 
         const newCostTotal =
           Math.max(
             0,
-            newEntry *
-              newCostUnit
+            newPaidUnits *
+              newCostPerUnit
           );
 
-        let expenseData = null;
+        /*
+         * ========================================================
+         * GASTO
+         * ========================================================
+         */
+
+        let expenseData =
+          null;
 
         const expenseId =
           String(
@@ -7229,7 +8485,9 @@
               ""
           ).trim();
 
-        if (expenseId) {
+        if (
+          expenseId
+        ) {
           const expenseRef =
             db
               .collection(
@@ -7259,10 +8517,6 @@
                 )
               );
 
-            /*
-             * Se sustituye dentro del gasto únicamente
-             * la parte correspondiente a este movimiento.
-             */
             const expenseDifference =
               newCostTotal -
               oldCostTotal;
@@ -7307,29 +8561,101 @@
           }
         }
 
+        /*
+         * ========================================================
+         * MOVIMIENTO ACTUALIZADO
+         * ========================================================
+         */
+
         const nextMovementData = {
-          ...oldMovement,
+          ...oldMovementRaw,
 
           entrada:
             newEntry,
 
           saldoAnterior:
             numberOrZero(
-              oldMovement.saldoAnterior
+              oldMovementRaw.saldoAnterior
             ),
 
           saldoActual:
             numberOrZero(
-              oldMovement.saldoAnterior
+              oldMovementRaw.saldoAnterior
             ) +
             newEntry,
 
+          /*
+           * Desglose
+           */
+          cajas:
+            newBoxes,
+
+          boxes:
+            newBoxes,
+
+          cajasBono:
+            newBonusBoxes,
+
+          bonusBoxes:
+            newBonusBoxes,
+
+          unidades:
+            newUnits,
+
+          units:
+            newUnits,
+
+          unidadesBono:
+            newBonusUnits,
+
+          bonusUnits:
+            newBonusUnits,
+
+          unidadesPorCaja:
+            unitsPerBox,
+
+          unitsPerBox:
+            unitsPerBox,
+
+          entradaPagada:
+            newPaidUnits,
+
+          entradaBono:
+            newBonusUnitsTotal,
+
+          /*
+           * Costos
+           */
           costoUnitario:
-            newCostUnit,
+            newCostPerUnit,
+
+          unitCost:
+            newCostPerUnit,
+
+          costoPorUnidad:
+            newCostPerUnit,
+
+          costoPorCaja:
+            newCostPerBox,
+
+          lastCostPerBox:
+            newCostPerBox,
 
           costoTotal:
             newCostTotal,
 
+          /*
+           * Precio de venta
+           */
+          precioVenta:
+            newSalePrice,
+
+          price:
+            newSalePrice,
+
+          /*
+           * Otros
+           */
           fechaOperacion:
             getLocalDateInputValue(
               operationDate
@@ -7349,6 +8675,35 @@
 
           numeroDocumento:
             values.numeroDocumento,
+
+          detalle:
+            [
+              `Cajas: ${newBoxes}`,
+              `Cajas bono: ${newBonusBoxes}`,
+              `Unidades: ${newUnits}`,
+              `Unidades bono: ${newBonusUnits}`,
+              `Entrada pagada: ${newPaidUnits}`,
+              `Entrada bono: ${newBonusUnitsTotal}`,
+              `Entrada total: ${newEntry}`,
+              `Unidades por caja: ${unitsPerBox}`,
+              `Costo por unidad: ${currency(
+                newCostPerUnit
+              )}`,
+              `Costo por caja: ${currency(
+                newCostPerBox
+              )}`,
+              `Precio de venta: ${currency(
+                newSalePrice
+              )}`,
+              `Costo total: ${currency(
+                newCostTotal
+              )}`,
+              `Fecha de operación: ${formatOperationDate(
+                operationDate
+              )}`
+            ].join(
+              " | "
+            ),
 
           updatedAt:
             firebase.firestore
@@ -7379,13 +8734,11 @@
           nextMovementData
         );
 
-        const unitsPerBox =
-          Math.max(
-            1,
-            integerOrZero(
-              productData.unitsPerBox
-            ) || 1
-          );
+        /*
+         * ========================================================
+         * PRODUCTO ACTUALIZADO
+         * ========================================================
+         */
 
         const nextProductData = {
           quantity:
@@ -7400,6 +8753,38 @@
                 unitsPerBox
             ),
 
+          unitsPerBox,
+
+          lastCostPerBox:
+            newCostPerBox,
+
+          lastCostPerUnit:
+            newCostPerUnit,
+
+          price:
+            newSalePrice,
+
+          referenciaLibro:
+            values.referenciaLibro ||
+            productData.referenciaLibro ||
+            "",
+
+          referenceBook:
+            values.referenciaLibro ||
+            productData.referenceBook ||
+            productData.referenciaLibro ||
+            "",
+
+          numeroDocumento:
+            values.numeroDocumento ||
+            productData.numeroDocumento ||
+            "",
+
+          fechaUltimaEntrada:
+            getLocalDateInputValue(
+              operationDate
+            ),
+
           updatedAt:
             firebase.firestore
               .FieldValue
@@ -7411,8 +8796,14 @@
           nextProductData
         );
 
+        /*
+         * ========================================================
+         * CACHE
+         * ========================================================
+         */
+
         updatedMovement = {
-          ...oldMovement,
+          ...oldMovementRaw,
           ...nextMovementData,
 
           id:
@@ -7443,6 +8834,17 @@
               nextStock /
                 unitsPerBox
             ),
+
+          unitsPerBox,
+
+          lastCostPerBox:
+            newCostPerBox,
+
+          lastCostPerUnit:
+            newCostPerUnit,
+
+          price:
+            newSalePrice,
 
           updatedAt:
             Date.now()
@@ -7494,7 +8896,9 @@
         updatedProduct.id
       );
 
-    if (localProduct) {
+    if (
+      localProduct
+    ) {
       Object.assign(
         localProduct,
         updatedProduct
@@ -7524,7 +8928,10 @@
 
     return {
       movement:
-        updatedMovement,
+        normalizeMovementDocument(
+          movementId,
+          updatedMovement
+        ),
 
       product:
         updatedProduct,
@@ -7577,6 +8984,12 @@
       return;
     }
 
+    const normalizedMovement =
+      normalizeMovementDocument(
+        movement.id,
+        movement
+      );
+
     const result =
       await Swal.fire({
         title:
@@ -7584,12 +8997,12 @@
 
         html:
           buildMovementEditFormHtml(
-            movement,
+            normalizedMovement,
             product
           ),
 
         width:
-          "760px",
+          "920px",
 
         showCancelButton:
           true,
@@ -7609,45 +9022,53 @@
         },
 
         didOpen: () => {
-          const entryInput =
-            document.getElementById(
-              "movement-edit-entry"
-            );
+          const selectors = [
+            "#movement-edit-boxes",
+            "#movement-edit-bonus-boxes",
+            "#movement-edit-units",
+            "#movement-edit-bonus-units",
+            "#movement-edit-cost-box",
+            "#movement-edit-sale-price"
+          ];
 
-          const costInput =
-            document.getElementById(
-              "movement-edit-cost"
-            );
+          selectors.forEach(
+            selector => {
+              const element =
+                document.querySelector(
+                  selector
+                );
 
-          if (
-            entryInput
-          ) {
-            entryInput.addEventListener(
-              "input",
-              () =>
-                updateMovementEditPreview(
-                  product,
-                  movement
-                )
-            );
-          }
+              if (
+                !element
+              ) {
+                return;
+              }
 
-          if (
-            costInput
-          ) {
-            costInput.addEventListener(
-              "input",
-              () =>
-                updateMovementEditPreview(
-                  product,
-                  movement
-                )
-            );
-          }
+              element.addEventListener(
+                "input",
+                () => {
+                  updateMovementEditPreview(
+                    product,
+                    normalizedMovement
+                  );
+                }
+              );
+
+              element.addEventListener(
+                "change",
+                () => {
+                  updateMovementEditPreview(
+                    product,
+                    normalizedMovement
+                  );
+                }
+              );
+            }
+          );
 
           updateMovementEditPreview(
             product,
-            movement
+            normalizedMovement
           );
         },
 
@@ -7660,19 +9081,60 @@
                 ""
             ).trim();
 
-          const entrada =
+          const cajas =
             integerOrZero(
               document.getElementById(
-                "movement-edit-entry"
+                "movement-edit-boxes"
               )?.value
             );
 
-          const costoUnitario =
+          const cajasBono =
+            integerOrZero(
+              document.getElementById(
+                "movement-edit-bonus-boxes"
+              )?.value
+            );
+
+          const unidades =
+            integerOrZero(
+              document.getElementById(
+                "movement-edit-units"
+              )?.value
+            );
+
+          const unidadesBono =
+            integerOrZero(
+              document.getElementById(
+                "movement-edit-bonus-units"
+              )?.value
+            );
+
+          const unidadesPorCaja =
+            Math.max(
+              1,
+              integerOrZero(
+                document.getElementById(
+                  "movement-edit-units-per-box"
+                )?.value
+              ) || 1
+            );
+
+          const costoPorCaja =
             Math.max(
               0,
               numberOrZero(
                 document.getElementById(
-                  "movement-edit-cost"
+                  "movement-edit-cost-box"
+                )?.value
+              )
+            );
+
+          const precioVenta =
+            Math.max(
+              0,
+              numberOrZero(
+                document.getElementById(
+                  "movement-edit-sale-price"
                 )?.value
               )
             );
@@ -7709,10 +9171,60 @@
           }
 
           if (
-            entrada < 0
+            cajas < 0 ||
+            cajasBono < 0 ||
+            unidades < 0 ||
+            unidadesBono < 0
           ) {
             Swal.showValidationMessage(
-              "La entrada no puede ser negativa."
+              "Las cantidades no pueden ser negativas."
+            );
+
+            return;
+          }
+
+          if (
+            unidadesPorCaja <=
+            0
+          ) {
+            Swal.showValidationMessage(
+              "Las unidades por caja deben ser mayores que cero."
+            );
+
+            return;
+          }
+
+          if (
+            costoPorCaja <
+            0
+          ) {
+            Swal.showValidationMessage(
+              "El costo por caja no puede ser negativo."
+            );
+
+            return;
+          }
+
+          const paidUnits =
+            cajas *
+              unidadesPorCaja +
+            unidades;
+
+          const bonusUnits =
+            cajasBono *
+              unidadesPorCaja +
+            unidadesBono;
+
+          const totalUnits =
+            paidUnits +
+            bonusUnits;
+
+          if (
+            totalUnits <=
+            0
+          ) {
+            Swal.showValidationMessage(
+              "Debes ingresar al menos una cantidad."
             );
 
             return;
@@ -7721,9 +9233,19 @@
           return {
             fechaOperacion,
 
-            entrada,
+            cajas,
 
-            costoUnitario,
+            cajasBono,
+
+            unidades,
+
+            unidadesBono,
+
+            unidadesPorCaja,
+
+            costoPorCaja,
+
+            precioVenta,
 
             referenciaLibro,
 
@@ -7744,7 +9266,7 @@
           "Actualizando entrada",
 
         text:
-          "Calculando la diferencia y actualizando el stock.",
+          "Calculando diferencia de stock, costos y valores del producto.",
 
         allowOutsideClick:
           false,
@@ -7759,7 +9281,7 @@
 
       const resultData =
         await updateEntryMovement(
-          movement.id,
+          normalizedMovement.id,
           result.value
         );
 
@@ -7776,7 +9298,11 @@
 
         html:
           `
-            <div style="text-align:left;">
+            <div
+              style="
+                text-align:left;
+              "
+            >
               <p>
                 Producto:
                 <strong>
@@ -7789,12 +9315,84 @@
               </p>
 
               <p>
-                Nueva entrada:
+                Cajas:
                 <strong>
-                  ${numberOrZero(
+                  ${integerOrZero(
+                    resultData.movement.cajas
+                  )}
+                </strong>
+              </p>
+
+              <p>
+                Cajas bono:
+                <strong>
+                  ${integerOrZero(
+                    resultData.movement.cajasBono
+                  )}
+                </strong>
+              </p>
+
+              <p>
+                Unidades:
+                <strong>
+                  ${integerOrZero(
+                    resultData.movement.unidades
+                  )}
+                </strong>
+              </p>
+
+              <p>
+                Unidades bono:
+                <strong>
+                  ${integerOrZero(
+                    resultData.movement.unidadesBono
+                  )}
+                </strong>
+              </p>
+
+              <p>
+                Entrada total:
+                <strong>
+                  ${integerOrZero(
                     resultData.movement.entrada
                   )}
                   unidades
+                </strong>
+              </p>
+
+              <p>
+                Costo por caja:
+                <strong>
+                  ${currency(
+                    resultData.movement.costoPorCaja
+                  )}
+                </strong>
+              </p>
+
+              <p>
+                Costo por unidad:
+                <strong>
+                  ${currency(
+                    resultData.movement.costoUnitario
+                  )}
+                </strong>
+              </p>
+
+              <p>
+                Precio de venta:
+                <strong>
+                  ${currency(
+                    resultData.movement.precioVenta
+                  )}
+                </strong>
+              </p>
+
+              <p>
+                Costo total de la entrada:
+                <strong>
+                  ${currency(
+                    resultData.movement.costoTotal
+                  )}
                 </strong>
               </p>
 
@@ -7805,15 +9403,6 @@
                     resultData.product.stockCurrentUnits
                   )}
                   unidades
-                </strong>
-              </p>
-
-              <p>
-                Costo total de la entrada:
-                <strong>
-                  ${currency(
-                    resultData.movement.costoTotal
-                  )}
                 </strong>
               </p>
 
@@ -7836,8 +9425,7 @@
                       "
                     >
                       Esta entrada no estaba vinculada
-                      a un gasto, por lo que no se modificó
-                      ningún gasto histórico.
+                      a un gasto.
                     </p>
                   `
               }
@@ -7848,10 +9436,6 @@
           "Aceptar"
       });
 
-      /*
-       * Reabrimos el administrador de movimientos
-       * para conservar el flujo de trabajo.
-       */
       await openMovementManagerModal(
         movement.productId
       );
@@ -8088,11 +9672,19 @@
               </th>
 
               <th>
-                Costo unitario
+                Costo por unidad
+              </th>
+
+              <th>
+                Costo por caja
               </th>
 
               <th>
                 Costo total
+              </th>
+
+              <th>
+                Precio venta
               </th>
 
               <th>
@@ -8152,10 +9744,59 @@
                     <td>
                       <strong>
                         ${integerOrZero(
-                          movement.entrada
+                          movement.cajas
                         )}
                       </strong>
+                      cajas
+
+                      <br>
+
+                      <strong>
+                        ${integerOrZero(
+                          movement.unidades
+                        )}
+                      </strong>
+                      unidades
+
+                      ${
+                        integerOrZero(
+                          movement.cajasBono
+                        ) > 0
+                          ? `
+                            <br>
+                            <small>
+                              + ${integerOrZero(
+                                movement.cajasBono
+                              )}
+                              cajas bono
+                            </small>
+                          `
+                          : ""
+                      }
+
+                      ${
+                        integerOrZero(
+                          movement.unidadesBono
+                        ) > 0
+                          ? `
+                            <br>
+                            <small>
+                              + ${integerOrZero(
+                                movement.unidadesBono
+                              )}
+                              unidades bono
+                            </small>
+                          `
+                          : ""
+                      }
+
+                      <br>
+
                       <small>
+                        Total:
+                        ${integerOrZero(
+                          movement.entrada
+                        )}
                         unidades
                       </small>
                     </td>
@@ -8167,11 +9808,23 @@
                     </td>
 
                     <td>
+                      ${currency(
+                        movement.costoPorCaja
+                      )}
+                    </td>
+
+                    <td>
                       <strong>
                         ${currency(
                           movement.costoTotal
                         )}
                       </strong>
+                    </td>
+
+                    <td>
+                      ${currency(
+                        movement.precioVenta
+                      )}
                     </td>
 
                     <td>
@@ -8327,187 +9980,184 @@
           "entrada"
       );
 
-    const result =
-      await Swal.fire({
-        title:
-          productId
-            ? "Historial de entradas"
-            : "Entradas de inventario",
+    await Swal.fire({
+      title:
+        productId
+          ? "Historial de entradas"
+          : "Entradas de inventario",
 
-        html:
-          buildMovementManagerHtml(
-            productId,
-            movements
-          ),
+      html:
+        buildMovementManagerHtml(
+          productId,
+          movements
+        ),
 
-        width:
-          "1280px",
+      width:
+        "1280px",
 
-        showCancelButton:
-          true,
+      showCancelButton:
+        true,
 
-        confirmButtonText:
-          "Cerrar",
+      confirmButtonText:
+        "Cerrar",
 
-        cancelButtonText:
-          "Cerrar",
+      cancelButtonText:
+        "Cerrar",
 
-        showConfirmButton:
-          false,
+      showConfirmButton:
+        false,
 
-        focusConfirm:
-          false,
+      focusConfirm:
+        false,
 
-        customClass: {
-          popup:
-            "inventory-movement-manager-modal"
-        },
+      customClass: {
+        popup:
+          "inventory-movement-manager-modal"
+      },
 
-        didOpen: () => {
-          const applyButton =
-            document.getElementById(
-              "movement-filter-apply"
-            );
+      didOpen: () => {
+        const applyButton =
+          document.getElementById(
+            "movement-filter-apply"
+          );
 
-          const clearButton =
-            document.getElementById(
-              "movement-filter-clear"
-            );
+        const clearButton =
+          document.getElementById(
+            "movement-filter-clear"
+          );
 
-          const renderFiltered =
-            () => {
-              const dateFrom =
-                String(
-                  document.getElementById(
-                    "movement-filter-from"
-                  )?.value ||
-                    ""
-                ).trim();
-
-              const dateTo =
-                String(
-                  document.getElementById(
-                    "movement-filter-to"
-                  )?.value ||
-                    ""
-                ).trim();
-
-              const productText =
-                String(
-                  document.getElementById(
-                    "movement-filter-product"
-                  )?.value ||
-                    ""
-                ).trim();
-
-              if (
-                dateFrom &&
-                dateTo &&
-                dateFrom >
-                  dateTo
-              ) {
-                Swal.fire(
-                  "Filtro inválido",
-                  "La fecha inicial no puede ser posterior a la fecha final.",
-                  "warning"
-                );
-
-                return;
-              }
-
-              const filtered =
-                filterMovements(
-                  movements,
-                  {
-                    productId,
-                    dateFrom,
-                    dateTo,
-                    productText
-                  }
-                );
-
-              const summary =
+        const renderFiltered =
+          () => {
+            const dateFrom =
+              String(
                 document.getElementById(
-                  "movement-summary"
-                );
+                  "movement-filter-from"
+                )?.value ||
+                  ""
+              ).trim();
 
-              const wrapper =
+            const dateTo =
+              String(
                 document.getElementById(
-                  "movement-table-wrapper"
+                  "movement-filter-to"
+                )?.value ||
+                  ""
+              ).trim();
+
+            const productText =
+              String(
+                document.getElementById(
+                  "movement-filter-product"
+                )?.value ||
+                  ""
+              ).trim();
+
+            if (
+              dateFrom &&
+              dateTo &&
+              dateFrom >
+                dateTo
+            ) {
+              Swal.fire(
+                "Filtro inválido",
+                "La fecha inicial no puede ser posterior a la fecha final.",
+                "warning"
+              );
+
+              return;
+            }
+
+            const filtered =
+              filterMovements(
+                movements,
+                {
+                  productId,
+                  dateFrom,
+                  dateTo,
+                  productText
+                }
+              );
+
+            const summary =
+              document.getElementById(
+                "movement-summary"
+              );
+
+            const wrapper =
+              document.getElementById(
+                "movement-table-wrapper"
+              );
+
+            if (summary) {
+              summary.textContent =
+                `${filtered.length} entrada${
+                  filtered.length ===
+                  1
+                    ? ""
+                    : "s"
+                }`;
+            }
+
+            if (wrapper) {
+              wrapper.innerHTML =
+                renderMovementTableHtml(
+                  filtered
                 );
+            }
 
-              if (summary) {
-                summary.textContent =
-                  `${filtered.length} entrada${
-                    filtered.length ===
-                    1
-                      ? ""
-                      : "s"
-                  }`;
-              }
+            bindMovementEditButtons();
+          };
 
-              if (wrapper) {
-                wrapper.innerHTML =
-                  renderMovementTableHtml(
-                    filtered
-                  );
-              }
-
-              bindMovementEditButtons();
-            };
-
-          if (
-            applyButton
-          ) {
-            applyButton.addEventListener(
-              "click",
-              renderFiltered
-            );
-          }
-
-          if (
-            clearButton
-          ) {
-            clearButton.addEventListener(
-              "click",
-              () => {
-                const from =
-                  document.getElementById(
-                    "movement-filter-from"
-                  );
-
-                const to =
-                  document.getElementById(
-                    "movement-filter-to"
-                  );
-
-                const product =
-                  document.getElementById(
-                    "movement-filter-product"
-                  );
-
-                if (from) {
-                  from.value = "";
-                }
-
-                if (to) {
-                  to.value = "";
-                }
-
-                if (product) {
-                  product.value = "";
-                }
-
-                renderFiltered();
-              }
-            );
-          }
-
-          bindMovementEditButtons();
+        if (
+          applyButton
+        ) {
+          applyButton.addEventListener(
+            "click",
+            renderFiltered
+          );
         }
-      });
 
-    return result;
+        if (
+          clearButton
+        ) {
+          clearButton.addEventListener(
+            "click",
+            () => {
+              const from =
+                document.getElementById(
+                  "movement-filter-from"
+                );
+
+              const to =
+                document.getElementById(
+                  "movement-filter-to"
+                );
+
+              const product =
+                document.getElementById(
+                  "movement-filter-product"
+                );
+
+              if (from) {
+                from.value = "";
+              }
+
+              if (to) {
+                to.value = "";
+              }
+
+              if (product) {
+                product.value = "";
+              }
+
+              renderFiltered();
+            }
+          );
+        }
+
+        bindMovementEditButtons();
+      }
+    });
   }
 
   function bindMovementEditButtons() {
@@ -8614,10 +10264,6 @@
     return null;
   }
 
-  /*
-   * Mantengo este nombre como alias de compatibilidad
-   * con cualquier referencia existente.
-   */
   async function openEditModal(
     productId
   ) {
@@ -9220,12 +10866,12 @@
       .movement-edit-grid {
         display:grid;
         grid-template-columns:
-          repeat(2,minmax(0,1fr));
+          repeat(3,minmax(0,1fr));
         gap:10px;
       }
 
       .movement-edit-full {
-        grid-column:span 2;
+        grid-column:span 3;
       }
 
       .movement-edit-preview {
@@ -9272,6 +10918,17 @@
         background:#ecfdf5;
         border:1px solid #bbf7d0;
         color:#166534;
+      }
+
+      @media (max-width:1100px) {
+        .movement-edit-grid {
+          grid-template-columns:
+            repeat(2,minmax(0,1fr));
+        }
+
+        .movement-edit-full {
+          grid-column:span 2;
+        }
       }
 
       @media (max-width:1000px) {
