@@ -1,133 +1,82 @@
-// assets/js/inventory.js
+// assets/js/controllers/inventory.controller.js
 //
 // INVENTARIO
 //
 // Características:
 //
 // - Stock visible = stock actual guardado en el producto.
-// - Las ventas del mes se utilizan para métricas,
-//   sugerencias y alertas.
+// - Las ventas se utilizan para métricas, sugerencias y alertas.
 // - Administrador/Bodega pueden editar y agregar.
 // - Administrador puede eliminar.
 // - Proveedor opcional.
 // - Producto existente o nuevo.
-// - Carga múltiple de productos en una sola operación.
-// - Cada línea puede tener:
+// - Carga múltiple de productos.
+//
+// - Cada entrada registra:
 //      cajas
 //      cajas bono
 //      unidades
 //      unidades bono
-//      proveedor
+//      unidades por caja
 //      costo por caja
 //      costo por unidad
 //      precio
+//      proveedor
 //      referencia
 //      documento
 //
-// - RELACIÓN DE COSTOS:
+// - El proveedor del movimiento se guarda independientemente
+//   del proveedor actual del producto.
 //
-//      costoPorCaja = costoPorUnidad * unidadesPorCaja
+// - La búsqueda de proveedores permite:
+//      nombre
+//      razón social / denominación
+//      combinación nombre + razón social
 //
-//      costoPorUnidad = costoPorCaja / unidadesPorCaja
+// - La edición de una entrada modifica el stock mediante:
 //
-// - NUEVO:
-//      La carga múltiple permite seleccionar una
-//      fecha de operación.
-//      Esa fecha se utiliza para registrar:
-//          stock_movimientos.createdAt
-//          stock_movimientos.fechaOperacion
-//          gastos.createdAt
-//          gastos.dayKey
-//          caché de sesión
+//      diferencia = nuevaEntrada - entradaAnterior
 //
-// - NUEVO:
-//      La edición de inventario NO modifica directamente
-//      el stock actual.
+//      stockNuevo = stockActual + diferencia
 //
-//      El botón "Entradas" abre los movimientos históricos
-//      de tipo "entrada".
-//
-//      Al modificar una entrada:
-//
-//          diferencia = nuevaEntrada - entradaAnterior
-//
-//      y:
-//
-//          stockNuevo = stockActual + diferencia
-//
-//      De esta forma se conserva el inventario actual y
-//      únicamente se corrige el efecto histórico de la entrada.
-//
-// - NUEVO:
-//      Las entradas tienen:
-//
-//          cajas
-//          cajasBono
-//          unidades
-//          unidadesBono
-//          unidadesPorCaja
-//          entradaPagada
-//          entradaBono
-//          costoUnitario
-//          costoPorCaja
-//          precioVenta
-//          costoTotal
-//          expenseId
-//
-//      para poder relacionarlas correctamente con el gasto
-//      generado automáticamente.
-//
-// - NUEVO:
-//      Los movimientos de entrada pueden filtrarse por:
-//
-//          fecha inicial
-//          fecha final
-//          producto
-//
-// - Producto existente:
-//      se suma al stock actual.
-//
-// - Producto nuevo:
-//      se crea con el stock inicial.
-//
-// - Las cajas bono y unidades bono agregan stock,
-//   pero no agregan costo por sí mismas.
-//
-// - Producto y proveedor se seleccionan mediante
-//   comboboxes basados en <input list="...">.
-//
-// - No se utilizan <select> para productos ni proveedores.
+// - Las cajas son editables.
+// - Las unidades por caja son editables.
+// - El proveedor específico del movimiento es editable.
+// - El historial de entradas muestra todas las entradas por
+//   defecto.
+// - La búsqueda principal de inventario acepta nombre, código
+//   y proveedor.
+// - El historial de entradas acepta nombre, código y proveedor.
+// - Se verifica la coherencia entre stock guardado y movimientos
+//   cuando no existen ventas históricas que expliquen la diferencia.
 //
 // - No usa onSnapshot().
+// - Las lecturas normales utilizan la caché de sesión administrada
+//   por app.js.
+// - Las entradas pagadas generan gasto automático.
 //
-// - Las lecturas normales utilizan la caché de sesión
-//   administrada por app.js.
-//
-// - Al registrar productos se genera automáticamente
-//   un gasto en la colección "gastos" con el costo total
-//   de las cantidades pagadas.
-//
-// - Una carga múltiple genera un solo gasto consolidado.
-//
-// - IMPORTANTE:
-//
-//   El producto ya NO se edita para cambiar el stock.
-//   Los movimientos son la fuente operativa para corregir
-//   entradas históricas.
-//
+// ================================================================
 
 (function () {
   "use strict";
 
-  if (typeof firebase === "undefined") {
+  if (
+    typeof firebase === "undefined"
+  ) {
     console.error(
       "Firebase no se ha cargado correctamente."
     );
 
-    if (typeof Swal !== "undefined") {
+    if (
+      typeof Swal !== "undefined"
+    ) {
       Swal.fire({
-        icon: "error",
-        title: "Error",
+        icon:
+          "error",
+
+        title:
+          "Error",
+
         text:
           "Firebase no se cargó. Revisa la conexión o los scripts."
       });
@@ -142,19 +91,31 @@
    * ============================================================
    */
 
-  const PRODUCTS_COLLECTION = "productos";
+  const PRODUCTS_COLLECTION =
+    window.PRODUCTS_COLLECTION_NAME ||
+    "productos";
 
-  const SALES_COLLECTION = "ventas";
+  const SALES_COLLECTION =
+    window.SALES_COLLECTION_NAME ||
+    "ventas";
 
-  const MOVEMENTS_COLLECTION = "stock_movimientos";
+  const MOVEMENTS_COLLECTION =
+    window.MOVEMENTS_COLLECTION_NAME ||
+    "stock_movimientos";
 
-  const PROVIDERS_COLLECTION = "proveedores";
+  const PROVIDERS_COLLECTION =
+    window.SUPPLIER_COLLECTION_NAME ||
+    "proveedores";
 
-  const EXPENSES_COLLECTION = "gastos";
+  const EXPENSES_COLLECTION =
+    window.EXPENSES_COLLECTION_NAME ||
+    "gastos";
 
-  const LOW_STOCK_THRESHOLD = 5;
+  const LOW_STOCK_THRESHOLD =
+    5;
 
-  const SAFETY_STOCK_DEFAULT = 10;
+  const SAFETY_STOCK_DEFAULT =
+    10;
 
   /*
    * ============================================================
@@ -162,46 +123,70 @@
    * ============================================================
    */
 
-  let currentRole = "";
+  let currentRole =
+    "";
 
-  let canEditInventory = false;
+  let canEditInventory =
+    false;
 
-  let currentLocalId = "";
+  let currentLocalId =
+    "";
 
   let currentLocalInfo = {
-    id_local: "",
-    nombre: "",
-    numeroDocumento: "",
-    ubicacion: "",
-    contribuyente: "",
-    tipoDocumento: "",
-    nit: "",
-    nrc: ""
+    id_local:
+      "",
+
+    nombre:
+      "",
+
+    numeroDocumento:
+      "",
+
+    ubicacion:
+      "",
+
+    contribuyente:
+      "",
+
+    tipoDocumento:
+      "",
+
+    nit:
+      "",
+
+    nrc:
+      ""
   };
 
-  let currentUserInventoryContext = null;
+  let currentUserInventoryContext =
+    null;
 
-  let currentProductsList = [];
+  let currentProductsList =
+    [];
 
-  let currentProvidersList = [];
+  let currentProvidersList =
+    [];
 
-  let currentMonthlySalesMap = {};
+  let currentMonthlySalesMap =
+    {};
 
-  let currentMonthlyBoxesMap = {};
+  let currentMonthlyBoxesMap =
+    {};
 
-  let inventoryDT = null;
+  let inventoryDT =
+    null;
 
-  let inventoryLoadPromise = null;
+  let inventoryLoadPromise =
+    null;
 
-  let inventoryInitialized = false;
+  let inventoryInitialized =
+    false;
 
-  /*
-   * Caché local de movimientos.
-   */
+  const productStockMovementsCache =
+    new Map();
 
-  const productStockMovementsCache = new Map();
-
-  const productStockMovementsPending = new Map();
+  const productStockMovementsPending =
+    new Map();
 
   /*
    * ============================================================
@@ -209,45 +194,72 @@
    * ============================================================
    */
 
-  const inventoryTbody =
-    document.querySelector(
+  function getInventoryTableBody() {
+    return document.querySelector(
       "#inventoryTable tbody"
     );
+  }
 
-  const lowStockPanel =
-    document.getElementById(
+  function getLowStockPanel() {
+    return document.getElementById(
       "lowStockPanel"
     );
+  }
 
-  const searchInput =
-    document.getElementById(
-      "salesSearch"
+  function getInventorySearchInput() {
+    return (
+      document.getElementById(
+        "searchInventory"
+      ) ||
+      document.getElementById(
+        "inventorySearch"
+      ) ||
+      document.getElementById(
+        "productSearch"
+      ) ||
+      document.getElementById(
+        "salesSearch"
+      ) ||
+      document.querySelector(
+        "[data-inventory-search]"
+      )
     );
+  }
 
-  const btnAdd =
-    document.getElementById(
-      "btnAdd"
+  function getInventoryAddButton() {
+    return (
+      document.getElementById(
+        "btnAddProduct"
+      ) ||
+      document.getElementById(
+        "btnAdd"
+      )
     );
+  }
 
-  const userGreeting =
-    document.querySelectorAll(
-      ".userGreeting"
-    );
-
-  const totalProductsCard =
-    document.getElementById(
+  function getInventoryTotalProductsCard() {
+    return document.getElementById(
       "totalProductsCard"
     );
+  }
 
-  const totalValueCard =
-    document.getElementById(
+  function getInventoryTotalValueCard() {
+    return document.getElementById(
       "totalValueCard"
     );
+  }
 
-  const lowStockCard =
-    document.getElementById(
+  function getInventoryLowStockCard() {
+    return document.getElementById(
       "lowStockCard"
     );
+  }
+
+  function getInventoryGreetingElements() {
+    return document.querySelectorAll(
+      ".userGreeting"
+    );
+  }
 
   /*
    * ============================================================
@@ -255,48 +267,90 @@
    * ============================================================
    */
 
-  function numberOrZero(value) {
-    const number = Number(value);
+  function numberOrZero(
+    value
+  ) {
+    const number =
+      Number(value);
 
-    return Number.isFinite(number)
+    return Number.isFinite(
+      number
+    )
       ? number
       : 0;
   }
 
-  function integerOrZero(value) {
+  function integerOrZero(
+    value
+  ) {
     return Math.max(
       0,
       Math.floor(
-        numberOrZero(value)
+        numberOrZero(
+          value
+        )
       )
     );
   }
 
-  function currency(value) {
+  function currency(
+    value
+  ) {
     return `$${numberOrZero(
       value
     ).toFixed(2)}`;
   }
 
-  function escapeHtml(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+  function escapeHtml(
+    value
+  ) {
+    return String(
+      value ?? ""
+    )
+      .replace(
+        /&/g,
+        "&amp;"
+      )
+      .replace(
+        /</g,
+        "&lt;"
+      )
+      .replace(
+        />/g,
+        "&gt;"
+      )
+      .replace(
+        /"/g,
+        "&quot;"
+      )
+      .replace(
+        /'/g,
+        "&#039;"
+      );
   }
 
-  function normalizeText(value) {
-    return String(value || "")
+  function normalizeText(
+    value
+  ) {
+    return String(
+      value || ""
+    )
       .trim()
       .toLowerCase()
-      .normalize("NFD")
+      .normalize(
+        "NFD"
+      )
       .replace(
         /[\u0300-\u036f]/g,
         ""
       );
   }
+
+  /*
+   * ============================================================
+   * USUARIO
+   * ============================================================
+   */
 
   function getStoredCurrentUser() {
     if (
@@ -353,7 +407,7 @@
 
   /*
    * ============================================================
-   * CACHÉ DE SESIÓN - APP.JS
+   * CACHE DE SESIÓN
    * ============================================================
    */
 
@@ -450,11 +504,13 @@
 
   /*
    * ============================================================
-   * FECHAS / TIMESTAMPS
+   * FECHAS
    * ============================================================
    */
 
-  function getTimestampMs(value) {
+  function getTimestampMs(
+    value
+  ) {
     if (
       value === null ||
       value === undefined
@@ -500,7 +556,9 @@
     }
 
     const date =
-      new Date(value);
+      new Date(
+        value
+      );
 
     return isNaN(
       date.getTime()
@@ -515,7 +573,9 @@
     const value =
       date instanceof Date
         ? date
-        : new Date(date);
+        : new Date(
+          date
+        );
 
     if (
       isNaN(
@@ -531,12 +591,18 @@
     const month =
       String(
         value.getMonth() + 1
-      ).padStart(2, "0");
+      ).padStart(
+        2,
+        "0"
+      );
 
     const day =
       String(
         value.getDate()
-      ).padStart(2, "0");
+      ).padStart(
+        2,
+        "0"
+      );
 
     return `${year}-${month}-${day}`;
   }
@@ -563,13 +629,19 @@
     }
 
     const year =
-      Number(match[1]);
+      Number(
+        match[1]
+      );
 
     const month =
-      Number(match[2]);
+      Number(
+        match[2]
+      );
 
     const day =
-      Number(match[3]);
+      Number(
+        match[3]
+      );
 
     const date =
       new Date(
@@ -584,11 +656,11 @@
 
     if (
       date.getFullYear() !==
-        year ||
+      year ||
       date.getMonth() !==
-        month - 1 ||
+      month - 1 ||
       date.getDate() !==
-        day
+      day
     ) {
       return null;
     }
@@ -615,8 +687,8 @@
       operationDate instanceof Date
         ? operationDate
         : new Date(
-            operationDate
-          );
+          operationDate
+        );
 
     if (
       isNaN(
@@ -667,23 +739,10 @@
     }
 
     return getLocalDateInputValue(
-      new Date(timestampMs)
+      new Date(
+        timestampMs
+      )
     );
-  }
-
-  function getMovementOperationDate(
-    movement
-  ) {
-    const value =
-      getMovementOperationDateValue(
-        movement
-      );
-
-    return value
-      ? parseOperationDate(
-          value
-        )
-      : null;
   }
 
   function getInventoryDayKey(
@@ -767,7 +826,7 @@
     currentLocalId =
       String(
         context.id_local ||
-          ""
+        ""
       ).trim();
 
     currentLocalInfo = {
@@ -777,76 +836,78 @@
       nombre:
         String(
           context.localNombre ||
-            ""
+          ""
         ).trim(),
 
       numeroDocumento:
         String(
           context.localNumeroDocumento ||
-            ""
+          ""
         ).trim(),
 
       ubicacion:
         String(
           context.localUbicacion ||
-            ""
+          ""
         ).trim(),
 
       contribuyente:
         String(
           context.localContribuyente ||
-            ""
+          ""
         ).trim(),
 
       tipoDocumento:
         String(
           context.localTipoDocumento ||
-            ""
+          ""
         ).trim(),
 
       nit:
         String(
           context.localNIT ||
-            ""
+          ""
         ).trim(),
 
       nrc:
         String(
           context.localNRC ||
-            ""
+          ""
         ).trim()
     };
 
     currentRole =
       String(
         context.role ||
-          ""
+        ""
       )
         .trim()
         .toLowerCase();
 
     canEditInventory =
       currentRole ===
-        "administrador" ||
+      "administrador" ||
       currentRole ===
-        "admin" ||
+      "admin" ||
       currentRole ===
-        "bodega";
+      "bodega";
 
-    userGreeting.forEach(
+    getInventoryGreetingElements().forEach(
       element => {
         element.textContent =
-          `Hola, ${
-            context.name ||
-            "Usuario"
+          `Hola, ${context.name ||
+          "Usuario"
           } (${context.role || ""})`;
       }
     );
 
-    if (btnAdd) {
-      btnAdd.style.display =
+    const addButton =
+      getInventoryAddButton();
+
+    if (addButton) {
+      addButton.style.display =
         canEditInventory &&
-        currentLocalId
+          currentLocalId
           ? ""
           : "none";
     }
@@ -886,6 +947,71 @@
    * ============================================================
    */
 
+  function getProviderName(
+    provider
+  ) {
+    return String(
+      provider?.nombre ||
+      provider?.name ||
+      provider?.nombreProveedor ||
+      ""
+    ).trim();
+  }
+
+  function getProviderBusinessName(
+    provider
+  ) {
+    return String(
+      provider?.razonSocialDenominacion ||
+      provider?.razonSocial ||
+      provider?.razon_social ||
+      provider?.denominacion ||
+      provider?.denominacionSocial ||
+      provider?.businessName ||
+      ""
+    ).trim();
+  }
+
+  function getProviderNationality(
+    provider
+  ) {
+    return String(
+      provider?.nacionalidad ||
+      ""
+    ).trim();
+  }
+
+  function getProviderDisplayName(
+    provider
+  ) {
+    if (!provider) {
+      return "";
+    }
+
+    const name =
+      getProviderName(
+        provider
+      );
+
+    const businessName =
+      getProviderBusinessName(
+        provider
+      );
+
+    if (
+      name &&
+      businessName
+    ) {
+      return `${name} — ${businessName}`;
+    }
+
+    return (
+      name ||
+      businessName ||
+      ""
+    );
+  }
+
   function normalizeProviderObject(
     provider,
     fallbackId = ""
@@ -897,30 +1023,49 @@
     const id =
       String(
         provider.id ||
-          provider.id_proveedor ||
-          provider.proveedorId ||
-          fallbackId ||
-          ""
+        provider.id_proveedor ||
+        provider.proveedorId ||
+        fallbackId ||
+        ""
       ).trim();
 
     const nombre =
-      String(
-        provider.nombre ||
-          provider.name ||
-          provider.razonSocial ||
-          provider.razon_social ||
-          provider.nombreProveedor ||
-          ""
-      ).trim();
+      getProviderName(
+        provider
+      );
 
-    if (!id && !nombre) {
+    const razonSocialDenominacion =
+      getProviderBusinessName(
+        provider
+      );
+
+    if (
+      !id &&
+      !nombre &&
+      !razonSocialDenominacion
+    ) {
       return null;
     }
 
     return {
       id,
+
+      ...provider,
+
       nombre,
-      ...provider
+
+      razonSocialDenominacion,
+
+      razonSocial:
+        razonSocialDenominacion,
+
+      denominacion:
+        razonSocialDenominacion,
+
+      nacionalidad:
+        getProviderNationality(
+          provider
+        )
     };
   }
 
@@ -929,7 +1074,8 @@
       auth.currentUser
     );
 
-    currentProvidersList = [];
+    currentProvidersList =
+      [];
 
     try {
       const providerDocs =
@@ -937,10 +1083,14 @@
           PROVIDERS_COLLECTION
         );
 
-      const providers = [];
+      const providers =
+        [];
 
       providerDocs.forEach(
-        ({ id, data }) => {
+        ({
+          id,
+          data
+        }) => {
           if (
             !matchesCurrentLocal(
               data
@@ -966,12 +1116,19 @@
       );
 
       providers.sort(
-        (a, b) =>
+        (
+          a,
+          b
+        ) =>
           normalizeText(
-            a.nombre
+            getProviderDisplayName(
+              a
+            )
           ).localeCompare(
             normalizeText(
-              b.nombre
+              getProviderDisplayName(
+                b
+              )
             ),
             "es"
           )
@@ -989,7 +1146,8 @@
         error
       );
 
-      currentProvidersList = [];
+      currentProvidersList =
+        [];
 
       return [];
     }
@@ -1001,7 +1159,7 @@
     const target =
       String(
         providerId ||
-          ""
+        ""
       ).trim();
 
     if (!target) {
@@ -1015,9 +1173,23 @@
             provider.id
           ).trim() ===
           target
-      ) || null
+      ) ||
+      null
     );
   }
+
+  /*
+   * Búsqueda de proveedor:
+   *
+   * 1. Nombre exacto.
+   * 2. Razón social exacta.
+   * 3. Denominación exacta.
+   * 4. Nombre + razón social exacto.
+   * 5. Contiene en nombre.
+   * 6. Contiene en razón social.
+   * 7. Contiene en denominación.
+   * 8. Contiene en el texto combinado.
+   */
 
   function findProviderByText(
     value
@@ -1031,78 +1203,252 @@
       return null;
     }
 
+    const exactName =
+      currentProvidersList.find(
+        provider =>
+          normalizeText(
+            getProviderName(
+              provider
+            )
+          ) ===
+          text
+      );
+
+    if (
+      exactName
+    ) {
+      return exactName;
+    }
+
+    const exactBusinessName =
+      currentProvidersList.find(
+        provider =>
+          normalizeText(
+            getProviderBusinessName(
+              provider
+            )
+          ) ===
+          text
+      );
+
+    if (
+      exactBusinessName
+    ) {
+      return exactBusinessName;
+    }
+
+    const exactDisplay =
+      currentProvidersList.find(
+        provider =>
+          normalizeText(
+            getProviderDisplayName(
+              provider
+            )
+          ) ===
+          text
+      );
+
+    if (
+      exactDisplay
+    ) {
+      return exactDisplay;
+    }
+
+    const containsName =
+      currentProvidersList.find(
+        provider =>
+          normalizeText(
+            getProviderName(
+              provider
+            )
+          ).includes(
+            text
+          )
+      );
+
+    if (
+      containsName
+    ) {
+      return containsName;
+    }
+
+    const containsBusinessName =
+      currentProvidersList.find(
+        provider =>
+          normalizeText(
+            getProviderBusinessName(
+              provider
+            )
+          ).includes(
+            text
+          )
+      );
+
+    if (
+      containsBusinessName
+    ) {
+      return containsBusinessName;
+    }
+
     return (
       currentProvidersList.find(
         provider =>
           normalizeText(
-            provider.nombre
-          ) === text
-      ) ||
-      currentProvidersList.find(
-        provider =>
-          normalizeText(
-            provider.nombre
-          ).includes(text)
-      ) ||
-      null
+            getProviderDisplayName(
+              provider
+            )
+          ).includes(
+            text
+          )
+      ) || null
     );
   }
 
-  function getProductProviderId(
-    product
-  ) {
-    return String(
-      product?.proveedorId ||
-        ""
-    ).trim();
-  }
+  /*
+   * Resuelve un proveedor introducido en un input.
+   *
+   * Si está vacío, devuelve null.
+   *
+   * Si corresponde a un proveedor existente, devuelve el objeto.
+   *
+   * Permite:
+   *   "Distribuidora XYZ"
+   *   "Distribuidora XYZ S.A. de C.V."
+   *   "Distribuidora XYZ — Distribuidora XYZ S.A. de C.V."
+   */
 
-  function getProductProviderName(
-    product
+  function resolveProviderSelection(
+    value
   ) {
-    return String(
-      product?.proveedorNombre ||
+    const text =
+      String(
+        value ||
         ""
-    ).trim();
+      ).trim();
+
+    if (!text) {
+      return null;
+    }
+
+    return findProviderByText(
+      text
+    );
   }
 
   function getProviderComboboxHtml(
     inputId,
     listId,
-    value = ""
+    value = "",
+    className = ""
   ) {
+    const currentValue =
+      String(
+        value ||
+        ""
+      ).trim();
+
     return `
       <input
-        id="${inputId}"
+        id="${escapeHtml(
+      inputId
+    )}"
         type="text"
-        class="inv-combobox batch-provider"
-        list="${listId}"
+        class="inv-combobox batch-provider ${escapeHtml(
+      className
+    )}"
+        list="${escapeHtml(
+      listId
+    )}"
         value="${escapeHtml(
-          value
-        )}"
-        placeholder="Escribe para buscar..."
+      currentValue
+    )}"
+        placeholder="Nombre o razón social..."
         autocomplete="off"
       >
 
-      <datalist id="${listId}">
+      <datalist
+        id="${escapeHtml(
+      listId
+    )}"
+      >
         ${currentProvidersList
-          .map(
-            provider => `
+        .map(
+          provider => {
+            const name =
+              getProviderName(
+                provider
+              );
+
+            const businessName =
+              getProviderBusinessName(
+                provider
+              );
+
+            const display =
+              getProviderDisplayName(
+                provider
+              );
+
+            return `
               <option
                 value="${escapeHtml(
-                  provider.nombre
-                )}"
+              display
+            )}"
+                label="${escapeHtml(
+              name
+            )}${businessName
+                ? ` — ${escapeHtml(
+                  businessName
+                )}`
+                : ""
+              }"
               ></option>
-            `
-          )
-          .join("")}
+            `;
+          }
+        )
+        .join("")}
       </datalist>
     `;
   }
 
   /*
    * ============================================================
-   * PRODUCTOS / STOCK
+   * LOCAL
+   * ============================================================
+   */
+
+  function getLocalFieldValue(
+    data = {}
+  ) {
+    return String(
+      data.id_local ||
+      data.idLocal ||
+      data.localId ||
+      data.idlocal ||
+      ""
+    ).trim();
+  }
+
+  function matchesCurrentLocal(
+    data = {}
+  ) {
+    if (!currentLocalId) {
+      return false;
+    }
+
+    return (
+      getLocalFieldValue(
+        data
+      ) ===
+      String(
+        currentLocalId
+      ).trim()
+    );
+  }
+
+  /*
+   * ============================================================
+   * PRODUCTOS
    * ============================================================
    */
 
@@ -1124,10 +1470,10 @@
   ) {
     return String(
       product?.codigoProducto ||
-        product?.productCode ||
-        product?.code ||
-        product?.sku ||
-        ""
+      product?.productCode ||
+      product?.code ||
+      product?.sku ||
+      ""
     ).trim();
   }
 
@@ -1201,7 +1547,7 @@
       getCurrentStockUnits(
         product
       ) /
-        unitsPerBox
+      unitsPerBox
     );
   }
 
@@ -1213,7 +1559,9 @@
         product?.lastCostPerUnit
       );
 
-    if (direct > 0) {
+    if (
+      direct > 0
+    ) {
       return direct;
     }
 
@@ -1240,16 +1588,124 @@
     return 0;
   }
 
+  function findProductById(
+    id
+  ) {
+    const target =
+      String(
+        id || ""
+      ).trim();
+
+    return (
+      currentProductsList.find(
+        product =>
+          String(
+            product.id
+          ).trim() ===
+          target
+      ) || null
+    );
+  }
+
+  function getProductProviderId(
+    product
+  ) {
+    return String(
+      product?.proveedorId ||
+      ""
+    ).trim();
+  }
+
+  function getProductProviderName(
+    product
+  ) {
+    return String(
+      product?.proveedorNombre ||
+      ""
+    ).trim();
+  }
+
+  function getProductProviderReason(
+    product
+  ) {
+    return String(
+      product?.proveedorRazonSocial ||
+      product?.proveedorRazonSocialDenominacion ||
+      product?.proveedorDenominacion ||
+      ""
+    ).trim();
+  }
+
+  function findProductByText(
+    value
+  ) {
+    const text =
+      normalizeText(
+        value
+      );
+
+    if (!text) {
+      return null;
+    }
+
+    const exact =
+      currentProductsList.find(
+        product =>
+          normalizeText(
+            product.name
+          ) ===
+          text ||
+          normalizeText(
+            getProductCode(
+              product
+            )
+          ) ===
+          text
+      );
+
+    if (
+      exact
+    ) {
+      return exact;
+    }
+
+    return (
+      currentProductsList.find(
+        product =>
+          normalizeText(
+            product.name
+          ).includes(
+            text
+          ) ||
+          normalizeText(
+            getProductCode(
+              product
+            )
+          ).includes(
+            text
+          ) ||
+          normalizeText(
+            getProductProviderName(
+              product
+            )
+          ).includes(
+            text
+          ) ||
+          normalizeText(
+            getProductProviderReason(
+              product
+            )
+          ).includes(
+            text
+          )
+      ) || null
+    );
+  }
+
   /*
    * ============================================================
    * COSTOS
    * ============================================================
-   *
-   * Regla única:
-   *
-   *   costoPorCaja = costoPorUnidad * unidadesPorCaja
-   *
-   *   costoPorUnidad = costoPorCaja / unidadesPorCaja
    */
 
   function getEffectiveUnitsPerBox(
@@ -1261,8 +1717,8 @@
       integerOrZero(
         product
           ? getUnitsPerBox(
-              product
-            )
+            product
+          )
           : line?.unitsPerBox
       ) || 1
     );
@@ -1281,8 +1737,8 @@
     const explicitCostPerBox =
       numberOrZero(
         line?.lastCostPerBox ??
-          line?.costoPorCaja ??
-          line?.costPerBox
+        line?.costoPorCaja ??
+        line?.costPerBox
       );
 
     if (
@@ -1294,8 +1750,8 @@
     const explicitCostPerUnit =
       numberOrZero(
         line?.lastCostPerUnit ??
-          line?.costoUnitario ??
-          line?.costPerUnit
+        line?.costoUnitario ??
+        line?.costPerUnit
       );
 
     if (
@@ -1352,8 +1808,8 @@
     const explicitCostPerUnit =
       numberOrZero(
         line?.lastCostPerUnit ??
-          line?.costoUnitario ??
-          line?.costPerUnit
+        line?.costoUnitario ??
+        line?.costPerUnit
       );
 
     if (
@@ -1370,7 +1826,7 @@
 
     return unitsPerBox > 0
       ? costPerBox /
-          unitsPerBox
+      unitsPerBox
       : 0;
   }
 
@@ -1404,29 +1860,20 @@
         product
       );
 
-    /*
-     * Las cajas pagadas se valoran como:
-     *
-     * cajas * unidadesPorCaja * costoPorUnidad
-     *
-     * y las unidades sueltas como:
-     *
-     * unidades * costoPorUnidad
-     */
     return Math.max(
       0,
       (
         paidBoxes *
-          unitsPerBox +
+        unitsPerBox +
         paidUnits
       ) *
-        costPerUnit
+      costPerUnit
     );
   }
 
   /*
    * ============================================================
-   * GASTO AUTOMÁTICO
+   * GASTO
    * ============================================================
    */
 
@@ -1435,7 +1882,10 @@
   ) {
     return lines
       .map(
-        (line, index) => {
+        (
+          line,
+          index
+        ) => {
           const product =
             line.product ||
             null;
@@ -1483,28 +1933,47 @@
             unitsPerBox;
 
           return [
-            `${index + 1}. ${
-              line.name ||
-              line.productText ||
-              "Producto"
+            `${index + 1}. ${line.name ||
+            line.productText ||
+            "Producto"
             }`,
+
             `Cajas pagadas: ${paidBoxes}`,
+
             `Unidades pagadas: ${paidUnits}`,
+
             `Cajas bono: ${bonusBoxes}`,
+
             `Unidades bono: ${bonusUnits}`,
+
             `Unidades por caja: ${unitsPerBox}`,
+
             `Costo por unidad: ${currency(
               costPerUnit
             )}`,
+
             `Costo por caja: ${currency(
               costPerBox
             )}`,
+
             `Costo línea: ${currency(
               cost
-            )}`
-          ].join(
-            " | "
-          );
+            )}`,
+
+            line.proveedorNombre
+              ? `Proveedor: ${line.proveedorNombre}`
+              : "",
+
+            line.proveedorRazonSocial
+              ? `Razón Social: ${line.proveedorRazonSocial}`
+              : ""
+          ]
+            .filter(
+              Boolean
+            )
+            .join(
+              " | "
+            );
         }
       )
       .join(
@@ -1526,11 +1995,19 @@
         )
       );
 
-    if (amount <= 0) {
+    if (
+      amount <=
+      0
+    ) {
       return {
-        created: false,
-        amount: 0,
-        id: ""
+        created:
+          false,
+
+        amount:
+          0,
+
+        id:
+          ""
       };
     }
 
@@ -1538,10 +2015,12 @@
       operationDate instanceof Date
         ? operationDate
         : parseOperationDate(
-            operationDate
-          );
+          operationDate
+        );
 
-    if (!validOperationDate) {
+    if (
+      !validOperationDate
+    ) {
       throw new Error(
         "La fecha de operación no es válida para registrar el gasto."
       );
@@ -1561,48 +2040,55 @@
       {};
 
     const productCount =
-      Array.isArray(lines)
+      Array.isArray(
+        lines
+      )
         ? lines.length
         : 0;
 
     const totalUnits =
-      Array.isArray(lines)
+      Array.isArray(
+        lines
+      )
         ? lines.reduce(
-            (sum, line) => {
-              const product =
-                line.product ||
-                null;
+          (
+            sum,
+            line
+          ) => {
+            const product =
+              line.product ||
+              null;
 
-              const unitsPerBox =
-                getEffectiveUnitsPerBox(
-                  line,
-                  product
-                );
+            const unitsPerBox =
+              getEffectiveUnitsPerBox(
+                line,
+                product
+              );
 
-              const totalLineUnits =
-                (
-                  integerOrZero(
-                    line.boxes
-                  ) +
-                  integerOrZero(
-                    line.bonusBoxes
-                  )
-                ) *
-                  unitsPerBox +
+            const totalLineUnits =
+              (
                 integerOrZero(
-                  line.units
+                  line.boxes
                 ) +
                 integerOrZero(
-                  line.bonusUnits
-                );
-
-              return (
-                sum +
-                totalLineUnits
+                  line.bonusBoxes
+                )
+              ) *
+              unitsPerBox +
+              integerOrZero(
+                line.units
+              ) +
+              integerOrZero(
+                line.bonusUnits
               );
-            },
-            0
-          )
+
+            return (
+              sum +
+              totalLineUnits
+            );
+          },
+          0
+        )
         : 0;
 
     const expenseRef =
@@ -1613,12 +2099,12 @@
         .doc();
 
     const concept =
-      productCount === 1
-        ? `Compra de inventario - ${
-            lines[0]?.name ||
-            lines[0]?.productText ||
-            "Producto"
-          }`
+      productCount ===
+        1
+        ? `Compra de inventario - ${lines[0]?.name ||
+        lines[0]?.productText ||
+        "Producto"
+        }`
         : `Compra de inventario - ${productCount} productos`;
 
     const details =
@@ -1629,16 +2115,25 @@
     const notes =
       [
         "Gasto generado automáticamente desde Inventario.",
+
         "Las cantidades bono no generan costo.",
+
         "El costo por caja equivale al costo por unidad multiplicado por las unidades por caja.",
+
         `Fecha de operación: ${formatOperationDate(
           validOperationDate
         )}`,
+
         `Productos ingresados: ${productCount}`,
+
         `Unidades totales ingresadas: ${totalUnits}`,
+
         "",
+
         details
-      ].join("\n");
+      ].join(
+        "\n"
+      );
 
     const expenseData = {
       concept,
@@ -1662,8 +2157,8 @@
         user
           ? user.uid
           : auth.currentUser
-              ? auth.currentUser.uid
-              : null,
+            ? auth.currentUser.uid
+            : null,
 
       userName:
         context.name ||
@@ -1738,17 +2233,15 @@
     );
 
     return {
-      created: true,
+      created:
+        true,
+
       amount,
-      id: expenseRef.id
+
+      id:
+        expenseRef.id
     };
   }
-
-  /*
-   * ============================================================
-   * VINCULAR GASTO A MOVIMIENTOS
-   * ============================================================
-   */
 
   async function attachExpenseToMovements(
     expenseId,
@@ -1762,7 +2255,7 @@
               result =>
                 String(
                   result?.movementId ||
-                    ""
+                  ""
                 ).trim()
             )
             .filter(
@@ -1793,6 +2286,7 @@
             ),
           {
             expenseId,
+
             updatedAt:
               firebase.firestore
                 .FieldValue
@@ -1817,13 +2311,17 @@
               movementId
           );
 
-        if (current) {
+        if (
+          current
+        ) {
           upsertSessionDocument(
             MOVEMENTS_COLLECTION,
             movementId,
             {
               ...(current.data || {}),
+
               expenseId,
+
               updatedAt:
                 Date.now()
             }
@@ -1832,42 +2330,7 @@
       }
     );
 
-    productStockMovementsCache.clear();
-  }
-
-  /*
-   * ============================================================
-   * LOCAL
-   * ============================================================
-   */
-
-  function getLocalFieldValue(
-    data = {}
-  ) {
-    return String(
-      data.id_local ||
-        data.idLocal ||
-        data.localId ||
-        data.idlocal ||
-        ""
-    ).trim();
-  }
-
-  function matchesCurrentLocal(
-    data = {}
-  ) {
-    if (!currentLocalId) {
-      return false;
-    }
-
-    return (
-      getLocalFieldValue(
-        data
-      ) ===
-      String(
-        currentLocalId
-      ).trim()
-    );
+    invalidateAllMovementsCache();
   }
 
   /*
@@ -1881,19 +2344,21 @@
   ) {
     return String(
       product?.productId ||
-        product?.productID ||
-        product?.product_id ||
-        product?.id ||
-        ""
+      product?.productID ||
+      product?.product_id ||
+      product?.id ||
+      ""
     ).trim();
   }
 
   function aggregateMonthlySales(
     documents
   ) {
-    const unitsMap = {};
+    const unitsMap =
+      {};
 
-    const boxesMap = {};
+    const boxesMap =
+      {};
 
     const now =
       new Date();
@@ -1943,15 +2408,17 @@
           createdAtMs &&
           (
             createdAtMs <
-              monthStart.getTime() ||
+            monthStart.getTime() ||
             createdAtMs >=
-              nextMonthStart.getTime()
+            nextMonthStart.getTime()
           )
         ) {
           return;
         }
 
-        if (!createdAtMs) {
+        if (
+          !createdAtMs
+        ) {
           return;
         }
 
@@ -1969,7 +2436,9 @@
                 product
               );
 
-            if (!productId) {
+            if (
+              !productId
+            ) {
               return;
             }
 
@@ -1984,9 +2453,9 @@
             const mode =
               normalizeText(
                 product.mode ||
-                  product.saleMode ||
-                  product.saleType ||
-                  ""
+                product.saleMode ||
+                product.saleType ||
+                ""
               );
 
             const quantity =
@@ -1997,12 +2466,14 @@
             const totalUnits =
               numberOrZero(
                 product.unitsTotal ||
-                  product.totalUnits
+                product.totalUnits
               );
 
-            let soldUnits = 0;
+            let soldUnits =
+              0;
 
-            let soldBoxes = 0;
+            let soldBoxes =
+              0;
 
             if (
               mode ===
@@ -2011,20 +2482,20 @@
               soldBoxes =
                 quantity > 0
                   ? Math.floor(
-                      quantity
-                    )
+                    quantity
+                  )
                   : totalUnits > 0
                     ? Math.floor(
-                        totalUnits /
-                          unitsPerBox
-                      )
+                      totalUnits /
+                      unitsPerBox
+                    )
                     : 0;
 
               soldUnits =
                 totalUnits > 0
                   ? totalUnits
                   : soldBoxes *
-                    unitsPerBox;
+                  unitsPerBox;
             } else if (
               mode ===
               "unit"
@@ -2061,7 +2532,7 @@
             ] =
               (
                 unitsMap[
-                  productId
+                productId
                 ] || 0
               ) +
               soldUnits;
@@ -2071,7 +2542,7 @@
             ] =
               (
                 boxesMap[
-                  productId
+                productId
                 ] || 0
               ) +
               soldBoxes;
@@ -2088,71 +2559,617 @@
 
   /*
    * ============================================================
-   * PRODUCTO
+   * VENTAS HISTÓRICAS
    * ============================================================
    */
 
-  function findProductById(
-    id
+  function aggregateAllTimeSalesMap(
+    documents
   ) {
-    const target =
-      String(
-        id || ""
-      ).trim();
+    const unitsMap =
+      {};
 
-    return (
-      currentProductsList.find(
-        product =>
-          String(
-            product.id
-          ).trim() ===
-          target
-      ) || null
+    documents.forEach(
+      document => {
+        const sale =
+          document?.data ||
+          {};
+
+        if (
+          !matchesCurrentLocal(
+            sale
+          )
+        ) {
+          return;
+        }
+
+        const products =
+          Array.isArray(
+            sale.products
+          )
+            ? sale.products
+            : [];
+
+        products.forEach(
+          product => {
+            const productId =
+              getSaleProductId(
+                product
+              );
+
+            if (
+              !productId
+            ) {
+              return;
+            }
+
+            const unitsPerBox =
+              Math.max(
+                1,
+                numberOrZero(
+                  product.unitsPerBox
+                )
+              );
+
+            const mode =
+              normalizeText(
+                product.mode ||
+                product.saleMode ||
+                product.saleType ||
+                ""
+              );
+
+            const quantity =
+              numberOrZero(
+                product.quantity
+              );
+
+            const totalUnits =
+              numberOrZero(
+                product.unitsTotal ||
+                product.totalUnits
+              );
+
+            let soldUnits =
+              0;
+
+            if (
+              mode ===
+              "box"
+            ) {
+              soldUnits =
+                totalUnits > 0
+                  ? totalUnits
+                  : Math.floor(
+                    quantity
+                  ) *
+                  unitsPerBox;
+            } else if (
+              mode ===
+              "unit"
+            ) {
+              soldUnits =
+                totalUnits > 0
+                  ? totalUnits
+                  : quantity;
+            } else if (
+              totalUnits > 0
+            ) {
+              soldUnits =
+                totalUnits;
+            } else if (
+              numberOrZero(
+                product.boxes
+              ) > 0
+            ) {
+              soldUnits =
+                integerOrZero(
+                  product.boxes
+                ) *
+                unitsPerBox;
+            } else {
+              soldUnits =
+                quantity;
+            }
+
+            unitsMap[
+              productId
+            ] =
+              (
+                unitsMap[
+                productId
+                ] || 0
+              ) +
+              soldUnits;
+          }
+        );
+      }
     );
+
+    return unitsMap;
   }
 
-  function findProductByText(
-    value
+  /*
+   * ============================================================
+   * SUMA MOVIMIENTOS
+   * ============================================================
+   */
+
+  function calculateMovementNetStockMap(
+    movementDocuments
   ) {
-    const text =
-      normalizeText(
-        value
-      );
+    const stockMap =
+      {};
 
-    if (!text) {
-      return null;
-    }
+    movementDocuments.forEach(
+      ({
+        id,
+        data
+      }) => {
+        if (
+          !matchesCurrentLocal(
+            data
+          )
+        ) {
+          return;
+        }
 
-    const exact =
-      currentProductsList.find(
-        product =>
-          normalizeText(
-            product.name
-          ) === text ||
-          normalizeText(
-            getProductCode(
-              product
-            )
-          ) === text
-      );
+        const productId =
+          String(
+            data?.productId ||
+            data?.productID ||
+            data?.product_id ||
+            ""
+          ).trim();
 
-    if (exact) {
-      return exact;
-    }
+        if (
+          !productId
+        ) {
+          return;
+        }
 
-    return (
-      currentProductsList.find(
-        product =>
-          normalizeText(
-            product.name
-          ).includes(text) ||
-          normalizeText(
-            getProductCode(
-              product
-            )
-          ).includes(text)
-      ) || null
+        const movement =
+          normalizeMovementDocument(
+            id,
+            data
+          );
+
+        const entry =
+          numberOrZero(
+            movement.entrada
+          );
+
+        const exit =
+          numberOrZero(
+            movement.salida
+          );
+
+        stockMap[
+          productId
+        ] =
+          (
+            stockMap[
+            productId
+            ] || 0
+          ) +
+          (
+            entry -
+            exit
+          );
+      }
     );
+
+    return stockMap;
+  }
+
+  /*
+   * ============================================================
+   * RECONCILIACIÓN
+   * ============================================================
+   */
+
+  async function reconcileProductsAgainstMovements(
+    products,
+    movementDocuments,
+    salesDocuments
+  ) {
+    if (
+      !Array.isArray(
+        products
+      ) ||
+      !products.length
+    ) {
+      return;
+    }
+
+    const movementStockMap =
+      calculateMovementNetStockMap(
+        movementDocuments
+      );
+
+    const salesStockMap =
+      aggregateAllTimeSalesMap(
+        salesDocuments
+      );
+
+    const updates =
+      [];
+
+    products.forEach(
+      product => {
+        const productId =
+          String(
+            product?.id ||
+            ""
+          ).trim();
+
+        if (
+          !productId
+        ) {
+          return;
+        }
+
+        const movementNet =
+          numberOrZero(
+            movementStockMap[
+            productId
+            ]
+          );
+
+        const historicalSales =
+          numberOrZero(
+            salesStockMap[
+            productId
+            ]
+          );
+
+        if (
+          movementNet <=
+          0
+        ) {
+          return;
+        }
+
+        if (
+          historicalSales >
+          0
+        ) {
+          return;
+        }
+
+        const currentStock =
+          getCurrentStockUnits(
+            product
+          );
+
+        if (
+          currentStock ===
+          movementNet
+        ) {
+          return;
+        }
+
+        updates.push({
+          product,
+
+          previousStock:
+            currentStock,
+
+          stock:
+            movementNet
+        });
+      }
+    );
+
+    if (
+      !updates.length
+    ) {
+      return;
+    }
+
+    const chunks =
+      [];
+
+    for (
+      let index = 0;
+      index <
+      updates.length;
+      index +=
+      450
+    ) {
+      chunks.push(
+        updates.slice(
+          index,
+          index + 450
+        )
+      );
+    }
+
+    for (
+      const chunk of chunks
+    ) {
+      const batch =
+        db.batch();
+
+      chunk.forEach(
+        ({
+          product,
+          stock
+        }) => {
+          const ref =
+            db
+              .collection(
+                PRODUCTS_COLLECTION
+              )
+              .doc(
+                product.id
+              );
+
+          const unitsPerBox =
+            getUnitsPerBox(
+              product
+            );
+
+          batch.update(
+            ref,
+            {
+              quantity:
+                stock,
+
+              stockCurrentUnits:
+                stock,
+
+              boxes:
+                Math.floor(
+                  stock /
+                  unitsPerBox
+                ),
+
+              updatedAt:
+                firebase.firestore
+                  .FieldValue
+                  .serverTimestamp()
+            }
+          );
+        }
+      );
+
+      await batch.commit();
+
+      chunk.forEach(
+        ({
+          product,
+          stock
+        }) => {
+          const unitsPerBox =
+            getUnitsPerBox(
+              product
+            );
+
+          product.quantity =
+            stock;
+
+          product.stockCurrentUnits =
+            stock;
+
+          product.boxes =
+            Math.floor(
+              stock /
+              unitsPerBox
+            );
+
+          upsertSessionDocument(
+            PRODUCTS_COLLECTION,
+            product.id,
+            {
+              ...product,
+
+              quantity:
+                stock,
+
+              stockCurrentUnits:
+                stock,
+
+              boxes:
+                Math.floor(
+                  stock /
+                  unitsPerBox
+                ),
+
+              updatedAt:
+                Date.now()
+            }
+          );
+        }
+      );
+    }
+  }
+
+  /*
+   * ============================================================
+   * COMBOBOX PRODUCTO
+   * ============================================================
+   */
+
+  let batchLineCounter =
+    0;
+
+  function buildProductCombobox(
+    rowId,
+    value = ""
+  ) {
+    return `
+      <input
+        id="batch-product-${escapeHtml(
+      rowId
+    )}"
+        class="batch-product-input inv-combobox"
+        type="text"
+        list="batch-product-list-${escapeHtml(
+      rowId
+    )}"
+        value="${escapeHtml(
+      value
+    )}"
+        placeholder="Producto existente o nombre nuevo"
+        autocomplete="off"
+      >
+
+      <datalist
+        id="batch-product-list-${escapeHtml(
+      rowId
+    )}"
+      >
+        ${getProductComboOptionsHtml()}
+      </datalist>
+    `;
+  }
+
+  function refreshProductComboboxDatalist(
+    rowElement
+  ) {
+    const input =
+      rowElement.querySelector(
+        ".batch-product-input"
+      );
+
+    if (
+      !input
+    ) {
+      return;
+    }
+
+    const listId =
+      input.getAttribute(
+        "list"
+      );
+
+    if (
+      !listId
+    ) {
+      return;
+    }
+
+    const list =
+      document.getElementById(
+        listId
+      );
+
+    if (
+      !list
+    ) {
+      return;
+    }
+
+    list.innerHTML =
+      getProductComboOptionsHtml();
+  }
+
+  function createBatchLineData(
+    values = {}
+  ) {
+    batchLineCounter +=
+      1;
+
+    const initialUnitsPerBox =
+      Math.max(
+        1,
+        integerOrZero(
+          values.unitsPerBox
+        ) || 1
+      );
+
+    const initialCostPerBox =
+      numberOrZero(
+        values.lastCostPerBox ??
+        values.costoPorCaja
+      );
+
+    const initialCostPerUnit =
+      initialCostPerBox >
+        0
+        ? initialCostPerBox /
+        initialUnitsPerBox
+        : numberOrZero(
+          values.lastCostPerUnit ??
+          values.costoUnitario
+        );
+
+    return {
+      id:
+        `line-${batchLineCounter}`,
+
+      mode:
+        values.mode ||
+        "existing",
+
+      productText:
+        values.productText ||
+        "",
+
+      name:
+        values.name ||
+        "",
+
+      codigoProducto:
+        values.codigoProducto ||
+        "",
+
+      proveedorId:
+        values.proveedorId ||
+        "",
+
+      proveedorNombre:
+        values.proveedorNombre ||
+        "",
+
+      proveedorRazonSocial:
+        values.proveedorRazonSocial ||
+        values.proveedorRazonSocialDenominacion ||
+        "",
+
+      boxes:
+        integerOrZero(
+          values.boxes
+        ),
+
+      bonusBoxes:
+        integerOrZero(
+          values.bonusBoxes
+        ),
+
+      units:
+        integerOrZero(
+          values.units
+        ),
+
+      bonusUnits:
+        integerOrZero(
+          values.bonusUnits
+        ),
+
+      unitsPerBox:
+        initialUnitsPerBox,
+
+      lastCostPerBox:
+        initialCostPerBox,
+
+      lastCostPerUnit:
+        initialCostPerUnit,
+
+      price:
+        numberOrZero(
+          values.price
+        ),
+
+      referenciaLibro:
+        values.referenciaLibro ||
+        "",
+
+      numeroDocumento:
+        values.numeroDocumento ||
+        ""
+    };
   }
 
   function getProductComboOptionsHtml() {
@@ -2162,7 +3179,7 @@
           const name =
             String(
               product.name ||
-                ""
+              ""
             ).trim();
 
           const code =
@@ -2175,25 +3192,94 @@
               product
             );
 
+          const providerReason =
+            getProductProviderReason(
+              product
+            );
+
           const display =
             [
               name,
-              code || "",
-              provider || ""
+              code ||
+              "",
+              provider ||
+              "",
+              providerReason ||
+              ""
             ]
-              .filter(Boolean)
-              .join(" — ");
+              .filter(
+                Boolean
+              )
+              .join(
+                " — "
+              );
 
           return `
             <option
               value="${escapeHtml(
-                name
-              )}"
-            >
-              ${escapeHtml(
-                display
-              )}
-            </option>
+            name
+          )}"
+              label="${escapeHtml(
+            display
+          )}"
+            ></option>
+          `;
+        }
+      )
+      .join("");
+  }
+
+  function getProductFilterOptionsHtml() {
+    return currentProductsList
+      .map(
+        product => {
+          const name =
+            String(
+              product.name ||
+              ""
+            ).trim();
+
+          const code =
+            getProductCode(
+              product
+            );
+
+          const provider =
+            getProductProviderName(
+              product
+            );
+
+          const providerReason =
+            getProductProviderReason(
+              product
+            );
+
+          const display =
+            [
+              name,
+              code ||
+              "",
+              provider ||
+              "",
+              providerReason ||
+              ""
+            ]
+              .filter(
+                Boolean
+              )
+              .join(
+                " — "
+              );
+
+          return `
+            <option
+              value="${escapeHtml(
+            name
+          )}"
+              label="${escapeHtml(
+            display
+          )}"
+            ></option>
           `;
         }
       )
@@ -2227,7 +3313,7 @@
     const soldUnits =
       numberOrZero(
         currentMonthlySalesMap[
-          product.id
+        product.id
         ]
       );
 
@@ -2235,7 +3321,7 @@
       Math.floor(
         numberOrZero(
           currentMonthlyBoxesMap[
-            product.id
+          product.id
           ]
         )
       );
@@ -2259,16 +3345,17 @@
     const suggestedBoxes =
       unitsPerBox > 1
         ? Math.ceil(
-            suggestedUnits /
-              unitsPerBox
-          )
+          suggestedUnits /
+          unitsPerBox
+        )
         : suggestedUnits;
 
     let status =
       "OK";
 
     if (
-      suggestedUnits > 0
+      suggestedUnits >
+      0
     ) {
       status =
         "Reponer";
@@ -2282,13 +3369,21 @@
 
     return {
       stockUnits,
+
       stockBoxes,
+
       unitsPerBox,
+
       soldUnits,
+
       soldBoxes,
+
       costPerUnit,
+
       suggestedUnits,
+
       suggestedBoxes,
+
       status
     };
   }
@@ -2301,6 +3396,21 @@
         product
       );
 
+    const providerName =
+      getProductProviderName(
+        product
+      );
+
+    const providerReason =
+      getProductProviderReason(
+        product
+      );
+
+    const productCode =
+      getProductCode(
+        product
+      );
+
     return {
       id:
         product.id,
@@ -2309,10 +3419,11 @@
         product.name ||
         "—",
 
-      providerName:
-        getProductProviderName(
-          product
-        ),
+      providerName,
+
+      providerReason,
+
+      productCode,
 
       price:
         numberOrZero(
@@ -2344,7 +3455,17 @@
         projection.suggestedBoxes,
 
       status:
-        projection.status
+        projection.status,
+
+      searchText:
+        [
+          product.name,
+          productCode,
+          providerName,
+          providerReason
+        ]
+          .filter(Boolean)
+          .join(" ")
     };
   }
 
@@ -2408,15 +3529,50 @@
     row
   ) {
     if (
-      row.unitsPerBox > 1
+      row.unitsPerBox >
+      1
     ) {
+      const boxes =
+        Math.floor(
+          numberOrZero(
+            row.stockUnits
+          ) /
+          row.unitsPerBox
+        );
+
+      const remainder =
+        numberOrZero(
+          row.stockUnits
+        ) %
+        row.unitsPerBox;
+
       return `
-        ${row.stockUnits}
+        <strong>
+          ${row.stockUnits}
+        </strong>
+
         <br>
+
         <small>
-          ${row.stockBoxes}
-          cajas x
+          ${boxes}
+          ${boxes === 1
+          ? "caja"
+          : "cajas"
+        }
+
+          ×
+
           ${row.unitsPerBox}
+          unidades
+
+          ${remainder > 0
+          ? `
+                +
+                ${remainder}
+                sueltas
+              `
+          : ""
+        }
         </small>
       `;
     }
@@ -2427,7 +3583,9 @@
   function renderActions(
     row
   ) {
-    if (!canEditInventory) {
+    if (
+      !canEditInventory
+    ) {
       return `
         <span class="small">
           Solo lectura
@@ -2437,9 +3595,9 @@
 
     const isAdmin =
       currentRole ===
-        "administrador" ||
+      "administrador" ||
       currentRole ===
-        "admin";
+      "admin";
 
     return `
       <button
@@ -2447,8 +3605,8 @@
         class="btn-outline"
         data-action="movements"
         data-id="${escapeHtml(
-          row.id
-        )}"
+      row.id
+    )}"
         title="Editar entradas de este producto"
       >
         <i class="fas fa-history"></i>
@@ -2460,17 +3618,16 @@
         class="btn-outline"
         data-action="delete"
         data-id="${escapeHtml(
-          row.id
-        )}"
+      row.id
+    )}"
         data-name="${escapeHtml(
-          row.name
-        )}"
+      row.name
+    )}"
         style="margin-left:8px;"
-        ${
-          isAdmin
-            ? ""
-            : "disabled title='Solo administrador puede eliminar productos'"
-        }
+        ${isAdmin
+        ? ""
+        : "disabled title='Solo administrador puede eliminar productos'"
+      }
       >
         <i class="fas fa-trash"></i>
         Eliminar
@@ -2479,7 +3636,9 @@
   }
 
   function ensureInventoryDataTable() {
-    if (inventoryDT) {
+    if (
+      inventoryDT
+    ) {
       return inventoryDT;
     }
 
@@ -2495,6 +3654,19 @@
       return null;
     }
 
+    const table =
+      document.getElementById(
+        "inventoryTable"
+      );
+
+    if (!table) {
+      console.warn(
+        "No existe #inventoryTable."
+      );
+
+      return null;
+    }
+
     inventoryDT =
       $("#inventoryTable")
         .DataTable({
@@ -2504,45 +3676,54 @@
             {
               data:
                 "name",
+
               title:
                 "Nombre",
+
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                  "display"
+                    "display"
                     ? escapeHtml(
-                        data
-                      )
+                      data
+                    )
                     : data
             },
 
             {
               data:
                 "providerName",
+
               title:
                 "Proveedor",
+
               render:
                 (
                   data,
-                  type
+                  type,
+                  row
                 ) =>
                   type ===
-                  "display"
+                    "display"
                     ? escapeHtml(
-                        data ||
-                          "Sin proveedor"
-                      )
+                      row.providerReason
+                        ? `${data || "Sin proveedor"} — ${row.providerReason}`
+                        : data ||
+                        "Sin proveedor"
+                    )
                     : data
             },
 
             {
               data:
                 "stockUnits",
+
               title:
                 "Stock",
+
               render:
                 (
                   data,
@@ -2550,148 +3731,183 @@
                   row
                 ) =>
                   type ===
-                  "display"
+                    "display"
                     ? renderStockDisplay(
-                        row
-                      )
+                      row
+                    )
                     : data
             },
 
             {
               data:
                 "price",
+
               title:
                 "Precio",
+
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                  "display"
+                    "display"
                     ? currency(
-                        data
-                      )
+                      data
+                    )
                     : data
             },
 
             {
               data:
                 "soldMonthUnits",
+
               title:
                 "Vendido Mes (Unid.)",
+
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                  "display"
+                    "display"
                     ? numberOrZero(
-                        data
-                      )
+                      data
+                    )
                     : data
             },
 
             {
               data:
                 "soldMonthBoxes",
+
               title:
                 "Vendido Mes (Cajas)",
+
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                  "display"
+                    "display"
                     ? integerOrZero(
-                        data
-                      )
+                      data
+                    )
                     : data
             },
 
             {
               data:
                 "costPerUnit",
+
               title:
                 "Costo por unidad",
+
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                  "display"
+                    "display"
                     ? currency(
-                        data
-                      )
+                      data
+                    )
                     : data
             },
 
             {
               data:
                 "suggestedPurchaseUnits",
+
               title:
                 "Sugerido Compra (Unid.)",
+
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                  "display"
+                    "display"
                     ? numberOrZero(
-                        data
-                      )
+                      data
+                    )
                     : data
             },
 
             {
               data:
                 "suggestedPurchaseBoxes",
+
               title:
                 "Sugerido Compra (Cajas)",
+
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                  "display"
+                    "display"
                     ? integerOrZero(
-                        data
-                      )
+                      data
+                    )
                     : data
             },
 
             {
               data:
                 "status",
+
               title:
                 "Estado",
+
               render:
                 (
                   data,
                   type
                 ) =>
                   type ===
-                  "display"
+                    "display"
                     ? renderStatusChip(
-                        data
-                      )
+                      data
+                    )
                     : data
             },
 
             {
               data:
+                "searchText",
+
+              title:
+                "Búsqueda",
+
+              visible:
+                false,
+
+              searchable:
+                true,
+
+              orderable:
+                false
+            },
+
+            {
+              data:
                 null,
+
               title:
                 "Acciones",
+
               orderable:
                 false,
+
               searchable:
                 false,
+
               render:
                 (
                   data,
@@ -2699,10 +3915,10 @@
                   row
                 ) =>
                   type ===
-                  "display"
+                    "display"
                     ? renderActions(
-                        row
-                      )
+                      row
+                    )
                     : ""
             }
           ],
@@ -2759,57 +3975,66 @@
             paginate: {
               previous:
                 "‹",
+
               next:
                 "›"
             }
           }
         });
 
-    $("#inventoryTable tbody").on(
-      "click",
-      "button[data-action='movements']",
-      function () {
-        if (
-          !canEditInventory
-        ) {
-          return;
-        }
+    $("#inventoryTable tbody")
+      .off(
+        "click.inventoryMovements"
+      )
+      .on(
+        "click.inventoryMovements",
+        "button[data-action='movements']",
+        function () {
+          if (
+            !canEditInventory
+          ) {
+            return;
+          }
 
-        openMovementManagerModal(
-          String(
-            $(this).data(
-              "id"
+          openMovementManagerModal(
+            String(
+              $(this).data(
+                "id"
+              )
             )
-          )
-        );
-      }
-    );
-
-    $("#inventoryTable tbody").on(
-      "click",
-      "button[data-action='delete']",
-      function () {
-        if (
-          !canEditInventory
-        ) {
-          return;
+          );
         }
+      );
 
-        confirmDeleteProduct(
-          String(
-            $(this).data(
-              "id"
-            )
-          ),
-          String(
-            $(this).data(
-              "name"
-            ) ||
+    $("#inventoryTable tbody")
+      .off(
+        "click.inventoryDelete"
+      )
+      .on(
+        "click.inventoryDelete",
+        "button[data-action='delete']",
+        function () {
+          if (
+            !canEditInventory
+          ) {
+            return;
+          }
+
+          confirmDeleteProduct(
+            String(
+              $(this).data(
+                "id"
+              )
+            ),
+            String(
+              $(this).data(
+                "name"
+              ) ||
               ""
-          )
-        );
-      }
-    );
+            )
+          );
+        }
+      );
 
     return inventoryDT;
   }
@@ -2848,10 +4073,19 @@
       rows.filter(
         row =>
           row.stockUnits <=
-            LOW_STOCK_THRESHOLD ||
+          LOW_STOCK_THRESHOLD ||
           row.suggestedPurchaseUnits >
-            0
+          0
       );
+
+    const totalProductsCard =
+      getInventoryTotalProductsCard();
+
+    const totalValueCard =
+      getInventoryTotalValueCard();
+
+    const lowStockCard =
+      getInventoryLowStockCard();
 
     if (
       totalProductsCard
@@ -2887,7 +4121,12 @@
     const dt =
       ensureInventoryDataTable();
 
-    if (dt) {
+    if (
+      dt
+    ) {
+      const searchInput =
+        getInventorySearchInput();
+
       const searchValue =
         searchInput
           ? searchInput.value.trim()
@@ -2899,11 +4138,15 @@
         rows
       );
 
-      dt.draw(false);
+      dt.draw(
+        false
+      );
 
       dt.search(
         searchValue
-      ).draw(false);
+      ).draw(
+        false
+      );
 
       return;
     }
@@ -2916,18 +4159,25 @@
   function renderInventoryFallback(
     rows
   ) {
-    if (!inventoryTbody) {
+    const inventoryTbody =
+      getInventoryTableBody();
+
+    if (
+      !inventoryTbody
+    ) {
       return;
     }
 
     inventoryTbody.innerHTML =
       "";
 
-    if (!rows.length) {
+    if (
+      !rows.length
+    ) {
       inventoryTbody.innerHTML =
         `
           <tr>
-            <td colspan="11">
+            <td colspan="12">
               No hay productos registrados.
             </td>
           </tr>
@@ -2946,27 +4196,31 @@
         tr.innerHTML = `
           <td>
             ${escapeHtml(
-              row.name
-            )}
+          row.name
+        )}
           </td>
 
           <td>
             ${escapeHtml(
-              row.providerName ||
-                "Sin proveedor"
-            )}
+          row.providerReason
+            ? `${row.providerName ||
+            "Sin proveedor"
+            } — ${row.providerReason}`
+            : row.providerName ||
+            "Sin proveedor"
+        )}
           </td>
 
           <td>
             ${renderStockDisplay(
-              row
-            )}
+          row
+        )}
           </td>
 
           <td>
             ${currency(
-              row.price
-            )}
+          row.price
+        )}
           </td>
 
           <td>
@@ -2979,8 +4233,8 @@
 
           <td>
             ${currency(
-              row.costPerUnit
-            )}
+          row.costPerUnit
+        )}
           </td>
 
           <td>
@@ -2993,14 +4247,14 @@
 
           <td>
             ${renderStatusChip(
-              row.status
-            )}
+          row.status
+        )}
           </td>
 
           <td>
             ${renderActions(
-              row
-            )}
+          row
+        )}
           </td>
         `;
 
@@ -3014,11 +4268,18 @@
   function renderLowStockPanel(
     list
   ) {
-    if (!lowStockPanel) {
+    const lowStockPanel =
+      getLowStockPanel();
+
+    if (
+      !lowStockPanel
+    ) {
       return;
     }
 
-    if (!list.length) {
+    if (
+      !list.length
+    ) {
       lowStockPanel.style.display =
         "none";
 
@@ -3048,16 +4309,20 @@
           <div>
             <strong>
               ${escapeHtml(
-                product.name
-              )}
+          product.name
+        )}
             </strong>
 
             <div class="small">
               Proveedor:
               ${escapeHtml(
-                product.providerName ||
-                  "Sin proveedor"
-              )}
+          product.providerReason
+            ? `${product.providerName ||
+            "Sin proveedor"
+            } — ${product.providerReason}`
+            : product.providerName ||
+            "Sin proveedor"
+        )}
             </div>
           </div>
 
@@ -3092,7 +4357,7 @@
 
   /*
    * ============================================================
-   * CARGA DESDE CACHÉ
+   * CARGA INVENTARIO
    * ============================================================
    */
 
@@ -3105,7 +4370,9 @@
 
     inventoryLoadPromise =
       (async () => {
-        if (!currentLocalId) {
+        if (
+          !currentLocalId
+        ) {
           currentProductsList =
             [];
 
@@ -3125,7 +4392,8 @@
             PRODUCTS_COLLECTION
           );
 
-        const products = [];
+        const products =
+          [];
 
         productDocuments.forEach(
           ({
@@ -3143,30 +4411,45 @@
             const providerId =
               String(
                 data.proveedorId ||
-                  ""
+                ""
               ).trim();
 
             let providerName =
               String(
                 data.proveedorNombre ||
-                  ""
+                ""
+              ).trim();
+
+            let providerReason =
+              String(
+                data.proveedorRazonSocial ||
+                data.proveedorRazonSocialDenominacion ||
+                data.proveedorDenominacion ||
+                ""
               ).trim();
 
             if (
-              providerId &&
-              !providerName
+              providerId
             ) {
               const provider =
                 getProviderById(
                   providerId
                 );
 
-              if (provider) {
+              if (
+                provider
+              ) {
                 providerName =
-                  String(
-                    provider.nombre ||
-                      ""
-                  ).trim();
+                  getProviderName(
+                    provider
+                  ) ||
+                  providerName;
+
+                providerReason =
+                  getProviderBusinessName(
+                    provider
+                  ) ||
+                  providerReason;
               }
             }
 
@@ -3186,6 +4469,9 @@
 
               proveedorNombre:
                 providerName,
+
+              proveedorRazonSocial:
+                providerReason,
 
               id_local:
                 currentLocalId,
@@ -3276,6 +4562,14 @@
         currentMonthlyBoxesMap =
           sales.boxesMap;
 
+        await reconcileProductsAgainstMovements(
+          currentProductsList,
+          getSessionCollection(
+            MOVEMENTS_COLLECTION
+          ),
+          salesDocuments
+        );
+
         refreshInventoryView();
 
         console.log(
@@ -3313,10 +4607,12 @@
     const target =
       String(
         productId ||
-          ""
+        ""
       ).trim();
 
-    if (target) {
+    if (
+      target
+    ) {
       productStockMovementsCache.delete(
         target
       );
@@ -3327,24 +4623,6 @@
     productStockMovementsCache.clear();
   }
 
-  /*
-   * ------------------------------------------------------------
-   * DESGLOSE DE ENTRADA
-   * ------------------------------------------------------------
-   *
-   * Los movimientos nuevos guardan:
-   *
-   *   cajas
-   *   cajasBono
-   *   unidades
-   *   unidadesBono
-   *   unidadesPorCaja
-   *
-   * Los movimientos antiguos pueden no tener esos campos.
-   * En ese caso se utiliza entradaPagada / entradaBono como
-   * respaldo.
-   */
-
   function getMovementUnitsPerBox(
     movement,
     product = null
@@ -3352,7 +4630,7 @@
     const movementValue =
       integerOrZero(
         movement?.unidadesPorCaja ??
-          movement?.unitsPerBox
+        movement?.unitsPerBox
       );
 
     if (
@@ -3364,8 +4642,8 @@
     const productValue =
       product
         ? integerOrZero(
-            product.unitsPerBox
-          )
+          product.unitsPerBox
+        )
         : 0;
 
     return Math.max(
@@ -3385,37 +4663,45 @@
       );
 
     const hasExplicitBreakdown =
-      movement?.cajas !== undefined ||
-      movement?.cajasBono !== undefined ||
-      movement?.unidades !== undefined ||
-      movement?.unidadesBono !== undefined ||
-      movement?.boxes !== undefined ||
-      movement?.bonusBoxes !== undefined ||
-      movement?.units !== undefined ||
-      movement?.bonusUnits !== undefined;
+      movement?.cajas !==
+      undefined ||
+      movement?.cajasBono !==
+      undefined ||
+      movement?.unidades !==
+      undefined ||
+      movement?.unidadesBono !==
+      undefined ||
+      movement?.boxes !==
+      undefined ||
+      movement?.bonusBoxes !==
+      undefined ||
+      movement?.units !==
+      undefined ||
+      movement?.bonusUnits !==
+      undefined;
 
     let cajas =
       integerOrZero(
         movement?.cajas ??
-          movement?.boxes
+        movement?.boxes
       );
 
     let cajasBono =
       integerOrZero(
         movement?.cajasBono ??
-          movement?.bonusBoxes
+        movement?.bonusBoxes
       );
 
     let unidades =
       integerOrZero(
         movement?.unidades ??
-          movement?.units
+        movement?.units
       );
 
     let unidadesBono =
       integerOrZero(
         movement?.unidadesBono ??
-          movement?.bonusUnits
+        movement?.bonusUnits
       );
 
     if (
@@ -3431,13 +4717,11 @@
           movement?.entradaBono
         );
 
-      /*
-       * Si un movimiento antiguo no tiene entradaPagada /
-       * entradaBono, se considera toda la entrada como pagada.
-       */
       if (
-        paidUnits <= 0 &&
-        bonusUnits <= 0
+        paidUnits <=
+        0 &&
+        bonusUnits <=
+        0
       ) {
         paidUnits =
           Math.max(
@@ -3451,7 +4735,7 @@
       cajas =
         Math.floor(
           paidUnits /
-            unitsPerBox
+          unitsPerBox
         );
 
       unidades =
@@ -3461,7 +4745,7 @@
       cajasBono =
         Math.floor(
           bonusUnits /
-            unitsPerBox
+          unitsPerBox
         );
 
       unidadesBono =
@@ -3471,12 +4755,12 @@
 
     const paidUnits =
       cajas *
-        unitsPerBox +
+      unitsPerBox +
       unidades;
 
     const bonusUnits =
       cajasBono *
-        unitsPerBox +
+      unitsPerBox +
       unidadesBono;
 
     const totalUnits =
@@ -3485,12 +4769,19 @@
 
     return {
       cajas,
+
       cajasBono,
+
       unidades,
+
       unidadesBono,
+
       unitsPerBox,
+
       paidUnits,
+
       bonusUnits,
+
       totalUnits
     };
   }
@@ -3505,9 +4796,9 @@
     const productId =
       String(
         source.productId ||
-          source.productID ||
-          source.product_id ||
-          ""
+        source.productID ||
+        source.product_id ||
+        ""
       ).trim();
 
     const product =
@@ -3531,8 +4822,8 @@
       breakdown.totalUnits > 0
         ? breakdown.totalUnits
         : numberOrZero(
-            source.entrada
-          );
+          source.entrada
+        );
 
     const salida =
       numberOrZero(
@@ -3544,44 +4835,95 @@
         source.costoUnitario
       ) > 0
         ? numberOrZero(
-            source.costoUnitario
-          )
+          source.costoUnitario
+        )
         : numberOrZero(
-            source.costoPorUnidad
-          );
+          source.costoPorUnidad
+        );
 
     const costoPorCaja =
       numberOrZero(
         source.costoPorCaja
       ) > 0
         ? numberOrZero(
-            source.costoPorCaja
-          )
+          source.costoPorCaja
+        )
         : costoUnitario *
-          unitsPerBox;
+        unitsPerBox;
 
     const precioVenta =
       numberOrZero(
         source.precioVenta ??
-          source.price
+        source.price
       );
 
     const costoTotal =
       source.costoTotal !==
-          undefined &&
+        undefined &&
         source.costoTotal !==
-          null
+        null
         ? Math.max(
-            0,
-            numberOrZero(
-              source.costoTotal
-            )
+          0,
+          numberOrZero(
+            source.costoTotal
           )
+        )
         : Math.max(
-            0,
-            breakdown.paidUnits *
-              costoUnitario
-          );
+          0,
+          breakdown.paidUnits *
+          costoUnitario
+        );
+
+    /*
+     * El proveedor del movimiento tiene prioridad.
+     *
+     * Si el movimiento antiguo no tiene proveedor, se usa
+     * el proveedor del producto únicamente como fallback visual.
+     */
+    const movementProviderId =
+      String(
+        source.proveedorId ||
+        ""
+      ).trim();
+
+    const movementProviderName =
+      String(
+        source.proveedorNombre ||
+        ""
+      ).trim();
+
+    const movementProviderReason =
+      String(
+        source.proveedorRazonSocial ||
+        source.proveedorRazonSocialDenominacion ||
+        source.proveedorDenominacion ||
+        ""
+      ).trim();
+
+    const providerById =
+      getProviderById(
+        movementProviderId
+      );
+
+    const providerName =
+      movementProviderName ||
+      getProviderName(
+        providerById
+      ) ||
+      getProductProviderName(
+        product
+      ) ||
+      "";
+
+    const providerReason =
+      movementProviderReason ||
+      getProviderBusinessName(
+        providerById
+      ) ||
+      getProductProviderReason(
+        product
+      ) ||
+      "";
 
     return {
       id,
@@ -3593,24 +4935,39 @@
       productName:
         String(
           source.productName ||
-            product?.name ||
-            ""
+          product?.name ||
+          ""
         ).trim(),
 
       codigoProducto:
         String(
           source.codigoProducto ||
-            source.productCode ||
-            getProductCode(
-              product
-            ) ||
-            ""
+          source.productCode ||
+          getProductCode(
+            product
+          ) ||
+          ""
         ).trim(),
+
+      providerName,
+
+      proveedorId:
+        movementProviderId ||
+        getProductProviderId(
+          product
+        ) ||
+        "",
+
+      proveedorNombre:
+        providerName,
+
+      proveedorRazonSocial:
+        providerReason,
 
       tipoMovimiento:
         String(
           source.tipoMovimiento ||
-            ""
+          ""
         )
           .trim()
           .toLowerCase(),
@@ -3618,16 +4975,16 @@
       referenciaLibro:
         String(
           source.referenciaLibro ||
-            source.referenceBook ||
-            source.bookReference ||
-            ""
+          source.referenceBook ||
+          source.bookReference ||
+          ""
         ).trim(),
 
       numeroDocumento:
         String(
           source.numeroDocumento ||
-            source.documentNumber ||
-            ""
+          source.documentNumber ||
+          ""
         ).trim(),
 
       entrada,
@@ -3644,9 +5001,6 @@
           source.saldoActual
         ),
 
-      /*
-       * Desglose
-       */
       cajas:
         breakdown.cajas,
 
@@ -3682,9 +5036,6 @@
       entradaBono:
         breakdown.bonusUnits,
 
-      /*
-       * Costos
-       */
       costoUnitario,
 
       unitCost:
@@ -3698,9 +5049,6 @@
       lastCostPerBox:
         costoPorCaja,
 
-      /*
-       * Precio de venta
-       */
       precioVenta,
 
       price:
@@ -3711,13 +5059,13 @@
       expenseId:
         String(
           source.expenseId ||
-            ""
+          ""
         ).trim(),
 
       detalle:
         String(
           source.detalle ||
-            ""
+          ""
         ),
 
       fechaOperacion:
@@ -3738,10 +5086,12 @@
     const target =
       String(
         productId ||
-          ""
+        ""
       ).trim();
 
-    if (!target) {
+    if (
+      !target
+    ) {
       return [];
     }
 
@@ -3775,7 +5125,8 @@
               MOVEMENTS_COLLECTION
             );
 
-          const movements = [];
+          const movements =
+            [];
 
           movementDocuments.forEach(
             ({
@@ -3793,9 +5144,9 @@
               const movementProductId =
                 String(
                   data.productId ||
-                    data.productID ||
-                    data.product_id ||
-                    ""
+                  data.productID ||
+                  data.product_id ||
+                  ""
                 ).trim();
 
               if (
@@ -3821,25 +5172,35 @@
                 movement.productName ||
                 "Producto";
 
+              movement.productCurrentProvider =
+                getProductProviderName(
+                  product
+                );
+
+              movement.productCurrentProviderReason =
+                getProductProviderReason(
+                  product
+                );
+
               movement.productCurrentStock =
                 product
                   ? getCurrentStockUnits(
-                      product
-                    )
+                    product
+                  )
                   : movement.saldoActual;
 
               movement.productCurrentPrice =
                 product
                   ? numberOrZero(
-                      product.price
-                    )
+                    product.price
+                  )
                   : movement.precioVenta;
 
               movement.productCurrentCostPerBox =
                 product
                   ? numberOrZero(
-                      product.lastCostPerBox
-                    )
+                    product.lastCostPerBox
+                  )
                   : movement.costoPorCaja;
 
               movements.push(
@@ -3863,9 +5224,9 @@
               numberOrZero(
                 b.createdAtMs
               ) -
-                numberOrZero(
-                  a.createdAtMs
-                )
+              numberOrZero(
+                a.createdAtMs
+              )
           );
 
           productStockMovementsCache.set(
@@ -3906,7 +5267,8 @@
         MOVEMENTS_COLLECTION
       );
 
-    const movements = [];
+    const movements =
+      [];
 
     movementDocuments.forEach(
       ({
@@ -3950,25 +5312,35 @@
           movement.productName ||
           "Producto";
 
+        movement.productCurrentProvider =
+          getProductProviderName(
+            product
+          );
+
+        movement.productCurrentProviderReason =
+          getProductProviderReason(
+            product
+          );
+
         movement.productCurrentStock =
           product
             ? getCurrentStockUnits(
-                product
-              )
+              product
+            )
             : movement.saldoActual;
 
         movement.productCurrentPrice =
           product
             ? numberOrZero(
-                product.price
-              )
+              product.price
+            )
             : movement.precioVenta;
 
         movement.productCurrentCostPerBox =
           product
             ? numberOrZero(
-                product.lastCostPerBox
-              )
+              product.lastCostPerBox
+            )
             : movement.costoPorCaja;
 
         movements.push(
@@ -3990,56 +5362,15 @@
           )
         ) ||
         b.createdAtMs -
-          a.createdAtMs
+        a.createdAtMs
     );
 
     return movements;
   }
 
-  function getUniqueBookReferences(
-    movements
-  ) {
-    const seen =
-      new Set();
-
-    const result = [];
-
-    movements.forEach(
-      movement => {
-        const key =
-          [
-            movement.referenciaLibro ||
-              "",
-            movement.numeroDocumento ||
-              ""
-          ]
-            .join("|")
-            .toLowerCase();
-
-        if (
-          seen.has(
-            key
-          )
-        ) {
-          return;
-        }
-
-        seen.add(
-          key
-        );
-
-        result.push(
-          movement
-        );
-      }
-    );
-
-    return result;
-  }
-
   /*
    * ============================================================
-   * REGISTRAR MOVIMIENTO
+   * MOVIMIENTO
    * ============================================================
    */
 
@@ -4069,6 +5400,10 @@
     entradaPagada,
     entradaBono,
 
+    proveedorId = "",
+    proveedorNombre = "",
+    proveedorRazonSocial = "",
+
     detalle,
     user,
     operationDate,
@@ -4082,8 +5417,8 @@
       operationDate instanceof Date
         ? operationDate
         : parseOperationDate(
-            operationDate
-          );
+          operationDate
+        );
 
     const normalizedUnitsPerBox =
       Math.max(
@@ -4115,44 +5450,44 @@
 
     const calculatedPaidUnits =
       normalizedBoxes *
-        normalizedUnitsPerBox +
+      normalizedUnitsPerBox +
       normalizedUnits;
 
     const calculatedBonusUnits =
       normalizedBonusBoxes *
-        normalizedUnitsPerBox +
+      normalizedUnitsPerBox +
       normalizedBonusUnits;
 
     const normalizedPaidUnits =
       entradaPagada !==
-          undefined &&
+        undefined &&
         entradaPagada !==
-          null
+        null
         ? integerOrZero(
-            entradaPagada
-          )
+          entradaPagada
+        )
         : calculatedPaidUnits;
 
     const normalizedBonusUnitsTotal =
       entradaBono !==
-          undefined &&
+        undefined &&
         entradaBono !==
-          null
+        null
         ? integerOrZero(
-            entradaBono
-          )
+          entradaBono
+        )
         : calculatedBonusUnits;
 
     const normalizedEntry =
       entrada !==
-          undefined &&
+        undefined &&
         entrada !==
-          null
+        null
         ? numberOrZero(
-            entrada
-          )
+          entrada
+        )
         : normalizedPaidUnits +
-          normalizedBonusUnitsTotal;
+        normalizedBonusUnitsTotal;
 
     let normalizedCostUnit =
       Math.max(
@@ -4170,24 +5505,14 @@
         )
       );
 
-    /*
-     * Normalización bidireccional del costo.
-     *
-     * Si llegó costo por caja, se deriva costo unitario.
-     *
-     * Si llegó costo unitario, se deriva costo por caja.
-     */
     if (
-      normalizedCostBox > 0
+      normalizedCostBox >
+      0
     ) {
       normalizedCostUnit =
         normalizedCostBox /
         normalizedUnitsPerBox;
 
-      /*
-       * Recalculamos nuevamente para mantener la relación
-       * exacta después de la división.
-       */
       normalizedCostBox =
         normalizedCostUnit *
         normalizedUnitsPerBox;
@@ -4207,20 +5532,20 @@
 
     const normalizedCostTotal =
       costoTotal !==
-          undefined &&
+        undefined &&
         costoTotal !==
-          null
+        null
         ? Math.max(
-            0,
-            numberOrZero(
-              costoTotal
-            )
+          0,
+          numberOrZero(
+            costoTotal
           )
+        )
         : Math.max(
-            0,
-            normalizedPaidUnits *
-              normalizedCostUnit
-          );
+          0,
+          normalizedPaidUnits *
+          normalizedCostUnit
+        );
 
     return {
       productId,
@@ -4275,9 +5600,6 @@
           saldoActual
         ),
 
-      /*
-       * Desglose
-       */
       cajas:
         normalizedBoxes,
 
@@ -4314,9 +5636,6 @@
       entradaBono:
         normalizedBonusUnitsTotal,
 
-      /*
-       * Costos
-       */
       costoUnitario:
         normalizedCostUnit,
 
@@ -4332,9 +5651,6 @@
       lastCostPerBox:
         normalizedCostBox,
 
-      /*
-       * Precio de venta
-       */
       precioVenta:
         normalizedSalePrice,
 
@@ -4344,10 +5660,52 @@
       costoTotal:
         normalizedCostTotal,
 
+      /*
+       * PROVEEDOR ESPECÍFICO DEL MOVIMIENTO
+       */
+      proveedorId:
+        String(
+          proveedorId ||
+          ""
+        ).trim(),
+
+      proveedorNombre:
+        String(
+          proveedorNombre ||
+          ""
+        ).trim(),
+
+      proveedorRazonSocial:
+        String(
+          proveedorRazonSocial ||
+          ""
+        ).trim(),
+
+      /*
+       * Alias para compatibilidad.
+       */
+      providerId:
+        String(
+          proveedorId ||
+          ""
+        ).trim(),
+
+      providerName:
+        String(
+          proveedorNombre ||
+          ""
+        ).trim(),
+
+      providerBusinessName:
+        String(
+          proveedorRazonSocial ||
+          ""
+        ).trim(),
+
       expenseId:
         String(
           expenseId ||
-            ""
+          ""
         ).trim(),
 
       detalle:
@@ -4357,8 +5715,8 @@
       fechaOperacion:
         validOperationDate
           ? getLocalDateInputValue(
-              validOperationDate
-            )
+            validOperationDate
+          )
           : "",
 
       id_local:
@@ -4446,12 +5804,12 @@
 
     const totalPaidUnits =
       paidBoxes *
-        unitsPerBox +
+      unitsPerBox +
       paidUnits;
 
     const totalBonusUnits =
       bonusBoxes *
-        unitsPerBox +
+      unitsPerBox +
       bonusUnits;
 
     const totalUnits =
@@ -4471,8 +5829,8 @@
       operationDate instanceof Date
         ? operationDate
         : parseOperationDate(
-            operationDate
-          );
+          operationDate
+        );
 
     if (
       !validOperationDate
@@ -4539,6 +5897,10 @@
         line.proveedorNombre ||
         "",
 
+      proveedorRazonSocial:
+        line.proveedorRazonSocial ||
+        "",
+
       quantity:
         totalUnits,
 
@@ -4551,7 +5913,7 @@
       boxes:
         Math.floor(
           totalUnits /
-            unitsPerBox
+          unitsPerBox
         ),
 
       unitsPerBox,
@@ -4686,6 +6048,15 @@
         entradaBono:
           totalBonusUnits,
 
+        proveedorId:
+          line.proveedorId,
+
+        proveedorNombre:
+          line.proveedorNombre,
+
+        proveedorRazonSocial:
+          line.proveedorRazonSocial,
+
         detalle:
           [
             `Cajas: ${paidBoxes}`,
@@ -4707,12 +6078,22 @@
             `Costo total: ${currency(
               totalPurchaseCost
             )}`,
+            line.proveedorNombre
+              ? `Proveedor: ${line.proveedorNombre}`
+              : "",
+            line.proveedorRazonSocial
+              ? `Razón Social: ${line.proveedorRazonSocial}`
+              : "",
             `Fecha de operación: ${formatOperationDate(
               validOperationDate
             )}`
-          ].join(
-            " | "
-          ),
+          ]
+            .filter(
+              Boolean
+            )
+            .join(
+              " | "
+            ),
 
         user,
 
@@ -4809,7 +6190,7 @@
 
   /*
    * ============================================================
-   * AGREGAR A PRODUCTO EXISTENTE
+   * AGREGAR STOCK A PRODUCTO EXISTENTE
    * ============================================================
    */
 
@@ -4820,8 +6201,14 @@
     operationDate
   ) {
     const unitsPerBox =
-      getUnitsPerBox(
-        product
+      Math.max(
+        1,
+        integerOrZero(
+          line.unitsPerBox
+        ) ||
+        getUnitsPerBox(
+          product
+        )
       );
 
     const paidBoxes =
@@ -4846,12 +6233,12 @@
 
     const totalPaidUnits =
       paidBoxes *
-        unitsPerBox +
+      unitsPerBox +
       paidUnits;
 
     const totalBonusUnits =
       bonusBoxes *
-        unitsPerBox +
+      unitsPerBox +
       bonusUnits;
 
     const totalUnits =
@@ -4871,8 +6258,8 @@
       operationDate instanceof Date
         ? operationDate
         : parseOperationDate(
-            operationDate
-          );
+          operationDate
+        );
 
     if (
       !validOperationDate
@@ -4917,6 +6304,9 @@
     let nextProviderName =
       "";
 
+    let nextProviderRazonSocial =
+      "";
+
     let movementData =
       null;
 
@@ -4928,7 +6318,9 @@
               productRef
             );
 
-          if (!snap.exists) {
+          if (
+            !snap.exists
+          ) {
             throw new Error(
               `El producto "${product.name}" ya no existe.`
             );
@@ -4957,12 +6349,6 @@
             previousStock +
             totalUnits;
 
-          /*
-           * El costo introducido se interpreta como costo por caja.
-           * De él se deriva el costo por unidad.
-           *
-           * costoPorUnidad = costoPorCaja / unidadesPorCaja
-           */
           const inputCostPerBox =
             numberOrZero(
               line.lastCostPerBox
@@ -4974,7 +6360,8 @@
             );
 
           if (
-            inputCostPerBox > 0
+            inputCostPerBox >
+            0
           ) {
             nextCostPerBox =
               inputCostPerBox;
@@ -4983,7 +6370,8 @@
               nextCostPerBox /
               unitsPerBox;
           } else if (
-            inputCostPerUnit > 0
+            inputCostPerUnit >
+            0
           ) {
             nextCostPerUnit =
               inputCostPerUnit;
@@ -4998,7 +6386,8 @@
               );
 
             if (
-              nextCostPerBox > 0
+              nextCostPerBox >
+              0
             ) {
               nextCostPerUnit =
                 nextCostPerBox /
@@ -5024,9 +6413,16 @@
             normalizedPrice > 0
               ? normalizedPrice
               : numberOrZero(
-                  data.price
-                );
+                data.price
+              );
 
+          /*
+           * Proveedor del producto:
+           *
+           * Cuando se registra una nueva entrada, la selección
+           * del formulario puede actualizar también el proveedor
+           * general del producto.
+           */
           if (
             line.proveedorId
           ) {
@@ -5036,6 +6432,10 @@
             nextProviderName =
               line.proveedorNombre ||
               "";
+
+            nextProviderRazonSocial =
+              line.proveedorRazonSocial ||
+              "";
           } else {
             nextProviderId =
               data.proveedorId ||
@@ -5044,7 +6444,14 @@
             nextProviderName =
               String(
                 data.proveedorNombre ||
-                  ""
+                ""
+              ).trim();
+
+            nextProviderRazonSocial =
+              String(
+                data.proveedorRazonSocial ||
+                data.proveedorRazonSocialDenominacion ||
+                ""
               ).trim();
           }
 
@@ -5132,6 +6539,15 @@
               entradaBono:
                 totalBonusUnits,
 
+              proveedorId:
+                nextProviderId,
+
+              proveedorNombre:
+                nextProviderName,
+
+              proveedorRazonSocial:
+                nextProviderRazonSocial,
+
               detalle:
                 [
                   `Cajas: ${paidBoxes}`,
@@ -5153,12 +6569,22 @@
                   `Costo total: ${currency(
                     totalPurchaseCost
                   )}`,
+                  nextProviderName
+                    ? `Proveedor: ${nextProviderName}`
+                    : "",
+                  nextProviderRazonSocial
+                    ? `Razón Social: ${nextProviderRazonSocial}`
+                    : "",
                   `Fecha de operación: ${formatOperationDate(
                     validOperationDate
                   )}`
-                ].join(
-                  " | "
-                ),
+                ]
+                  .filter(
+                    Boolean
+                  )
+                  .join(
+                    " | "
+                  ),
 
               user,
 
@@ -5189,6 +6615,9 @@
               proveedorNombre:
                 nextProviderName,
 
+              proveedorRazonSocial:
+                nextProviderRazonSocial,
+
               quantity:
                 nextStock,
 
@@ -5204,7 +6633,7 @@
               boxes:
                 Math.floor(
                   nextStock /
-                    unitsPerBox
+                  unitsPerBox
                 ),
 
               unitsPerBox,
@@ -5272,13 +6701,14 @@
       );
 
     const updatedProductData = {
-      ...(localProduct || product),
+      ...(localProduct ||
+        product),
 
       codigoProducto:
         line.codigoProducto ||
         getProductCode(
           localProduct ||
-            product
+          product
         ) ||
         "",
 
@@ -5286,7 +6716,7 @@
         line.codigoProducto ||
         getProductCode(
           localProduct ||
-            product
+          product
         ) ||
         "",
 
@@ -5295,6 +6725,9 @@
 
       proveedorNombre:
         nextProviderName,
+
+      proveedorRazonSocial:
+        nextProviderRazonSocial,
 
       quantity:
         nextStock,
@@ -5305,14 +6738,14 @@
       stockBaseUnits:
         numberOrZero(
           localProduct?.stockBaseUnits ||
-            product.stockBaseUnits
+          product.stockBaseUnits
         ) ||
         previousStock,
 
       boxes:
         Math.floor(
           nextStock /
-            unitsPerBox
+          unitsPerBox
         ),
 
       unitsPerBox,
@@ -5383,7 +6816,9 @@
       updatedProductData
     );
 
-    if (localProduct) {
+    if (
+      localProduct
+    ) {
       Object.assign(
         localProduct,
         updatedProductData
@@ -5431,193 +6866,17 @@
       movementId,
 
       movementCostTotal:
-        transactionResult?.movementCostTotal ||
+        transactionResult
+          ?.movementCostTotal ||
         0
     };
   }
 
   /*
    * ============================================================
-   * COMBOBOX
+   * COMBOBOX / LÍNEAS DE CARGA
    * ============================================================
    */
-
-  function buildProductCombobox(
-    rowId,
-    value = ""
-  ) {
-    return `
-      <input
-        id="batch-product-${rowId}"
-        class="batch-product-input inv-combobox"
-        type="text"
-        list="batch-product-list-${rowId}"
-        value="${escapeHtml(
-          value
-        )}"
-        placeholder="Producto existente o nombre nuevo"
-        autocomplete="off"
-      >
-
-      <datalist id="batch-product-list-${rowId}">
-        ${getProductComboOptionsHtml()}
-      </datalist>
-    `;
-  }
-
-  function refreshProductComboboxDatalist(
-    rowElement
-  ) {
-    const input =
-      rowElement.querySelector(
-        ".batch-product-input"
-      );
-
-    if (!input) {
-      return;
-    }
-
-    const listId =
-      input.getAttribute(
-        "list"
-      );
-
-    if (!listId) {
-      return;
-    }
-
-    const list =
-      document.getElementById(
-        listId
-      );
-
-    if (!list) {
-      return;
-    }
-
-    list.innerHTML =
-      currentProductsList
-        .map(
-          product => `
-            <option
-              value="${escapeHtml(
-                product.name ||
-                  ""
-              )}"
-            ></option>
-          `
-        )
-        .join("");
-  }
-
-  /*
-   * ============================================================
-   * FILA DE CARGA MÚLTIPLE
-   * ============================================================
-   */
-
-  let batchLineCounter = 0;
-
-  function createBatchLineData(
-    values = {}
-  ) {
-    batchLineCounter += 1;
-
-    const initialUnitsPerBox =
-      Math.max(
-        1,
-        integerOrZero(
-          values.unitsPerBox
-        ) || 1
-      );
-
-    const initialCostPerBox =
-      numberOrZero(
-        values.lastCostPerBox ??
-          values.costoPorCaja
-      );
-
-    const initialCostPerUnit =
-      initialCostPerBox >
-      0
-        ? initialCostPerBox /
-          initialUnitsPerBox
-        : numberOrZero(
-            values.lastCostPerUnit ??
-              values.costoUnitario
-          );
-
-    return {
-      id:
-        `line-${batchLineCounter}`,
-
-      mode:
-        values.mode ||
-        "existing",
-
-      productText:
-        values.productText ||
-        "",
-
-      name:
-        values.name ||
-        "",
-
-      codigoProducto:
-        values.codigoProducto ||
-        "",
-
-      proveedorId:
-        values.proveedorId ||
-        "",
-
-      proveedorNombre:
-        values.proveedorNombre ||
-        "",
-
-      boxes:
-        integerOrZero(
-          values.boxes
-        ),
-
-      bonusBoxes:
-        integerOrZero(
-          values.bonusBoxes
-        ),
-
-      units:
-        integerOrZero(
-          values.units
-        ),
-
-      bonusUnits:
-        integerOrZero(
-          values.bonusUnits
-        ),
-
-      unitsPerBox:
-        initialUnitsPerBox,
-
-      lastCostPerBox:
-        initialCostPerBox,
-
-      lastCostPerUnit:
-        initialCostPerUnit,
-
-      price:
-        numberOrZero(
-          values.price
-        ),
-
-      referenciaLibro:
-        values.referenciaLibro ||
-        "",
-
-      numeroDocumento:
-        values.numeroDocumento ||
-        ""
-    };
-  }
 
   function buildBatchLineHtml(
     line
@@ -5636,6 +6895,16 @@
 
     lineElement.dataset.lineId =
       line.id;
+
+    const providerValue =
+      line.proveedorId
+        ? getProviderDisplayName(
+          getProviderById(
+            line.proveedorId
+          )
+        ) ||
+        line.proveedorNombre
+        : line.proveedorNombre;
 
     lineElement.innerHTML = `
       <div class="batch-row-header">
@@ -5676,22 +6945,20 @@
           >
             <option
               value="existing"
-              ${
-                isExisting
-                  ? "selected"
-                  : ""
-              }
+              ${isExisting
+        ? "selected"
+        : ""
+      }
             >
               Existente
             </option>
 
             <option
               value="new"
-              ${
-                !isExisting
-                  ? "selected"
-                  : ""
-              }
+              ${!isExisting
+        ? "selected"
+        : ""
+      }
             >
               Nuevo
             </option>
@@ -5705,9 +6972,9 @@
 
           <div class="batch-product-combobox">
             ${buildProductCombobox(
-              line.id,
-              line.productText
-            )}
+        line.id,
+        line.productText
+      )}
           </div>
 
           <div
@@ -5725,8 +6992,8 @@
             type="text"
             class="batch-code"
             value="${escapeHtml(
-              line.codigoProducto
-            )}"
+        line.codigoProducto
+      )}"
             placeholder="Código"
           >
         </div>
@@ -5737,13 +7004,13 @@
           </label>
 
           ${getProviderComboboxHtml(
-            `batch-provider-${line.id}`,
-            `batch-provider-list-${line.id}`,
-            line.proveedorNombre
-          )}
+        `batch-provider-${line.id}`,
+        `batch-provider-list-${line.id}`,
+        providerValue
+      )}
 
           <small>
-            Opcional
+            Busca por nombre o razón social.
           </small>
         </div>
 
@@ -5815,6 +7082,10 @@
             step="1"
             value="${line.unitsPerBox}"
           >
+
+          <small>
+            Editable también para productos existentes.
+          </small>
         </div>
 
         <div class="inv-field">
@@ -5840,8 +7111,8 @@
             type="text"
             class="batch-cost-unit"
             value="${line.lastCostPerUnit.toFixed(
-              4
-            )}"
+        4
+      )}"
             readonly
           >
         </div>
@@ -5869,8 +7140,8 @@
             type="text"
             class="batch-reference"
             value="${escapeHtml(
-              line.referenciaLibro
-            )}"
+        line.referenciaLibro
+      )}"
             placeholder="Compra / Inventario"
           >
         </div>
@@ -5884,8 +7155,8 @@
             type="text"
             class="batch-document"
             value="${escapeHtml(
-              line.numeroDocumento
-            )}"
+        line.numeroDocumento
+      )}"
             placeholder="Factura / documento"
           >
         </div>
@@ -5945,7 +7216,7 @@
         row.querySelector(
           ".batch-mode"
         )?.value ||
-          ""
+        ""
       ).trim();
 
     const productText =
@@ -5953,7 +7224,7 @@
         row.querySelector(
           ".batch-product-input"
         )?.value ||
-          ""
+        ""
       ).trim();
 
     const code =
@@ -5961,7 +7232,7 @@
         row.querySelector(
           ".batch-code"
         )?.value ||
-          ""
+        ""
       ).trim();
 
     const providerElement =
@@ -5972,11 +7243,11 @@
     const providerValue =
       String(
         providerElement?.value ||
-          ""
+        ""
       ).trim();
 
     const provider =
-      findProviderByText(
+      resolveProviderSelection(
         providerValue
       );
 
@@ -6031,7 +7302,7 @@
     const lastCostPerUnit =
       unitsPerBox > 0
         ? lastCostPerBox /
-          unitsPerBox
+        unitsPerBox
         : 0;
 
     const price =
@@ -6049,7 +7320,7 @@
         row.querySelector(
           ".batch-reference"
         )?.value ||
-          ""
+        ""
       ).trim();
 
     const numeroDocumento =
@@ -6057,7 +7328,7 @@
         row.querySelector(
           ".batch-document"
         )?.value ||
-          ""
+        ""
       ).trim();
 
     const matchedProduct =
@@ -6079,12 +7350,12 @@
 
       name:
         mode ===
-        "new"
+          "new"
           ? productText
           : (
-              matchedProduct?.name ||
-              productText
-            ),
+            matchedProduct?.name ||
+            productText
+          ),
 
       codigoProducto:
         code ||
@@ -6096,16 +7367,22 @@
       proveedorId:
         provider
           ? String(
-              provider.id
-            ).trim()
+            provider.id
+          ).trim()
           : "",
 
       proveedorNombre:
         provider
-          ? String(
-              provider.nombre ||
-                ""
-            ).trim()
+          ? getProviderName(
+            provider
+          )
+          : "",
+
+      proveedorRazonSocial:
+        provider
+          ? getProviderBusinessName(
+            provider
+          )
           : "",
 
       boxes,
@@ -6201,12 +7478,12 @@
 
     const totalNormal =
       data.boxes *
-        data.unitsPerBox +
+      data.unitsPerBox +
       data.units;
 
     const totalBonus =
       data.bonusBoxes *
-        data.unitsPerBox +
+      data.unitsPerBox +
       data.bonusUnits;
 
     const totalUnits =
@@ -6220,7 +7497,7 @@
     const calculatedCostPerUnit =
       data.unitsPerBox > 0
         ? data.lastCostPerBox /
-          data.unitsPerBox
+        data.unitsPerBox
         : 0;
 
     if (
@@ -6232,7 +7509,9 @@
         );
     }
 
-    if (totalElement) {
+    if (
+      totalElement
+    ) {
       totalElement.textContent =
         String(
           totalUnits
@@ -6270,53 +7549,106 @@
       mode ===
       "existing"
     ) {
-      if (product) {
-        if (status) {
-          status.innerHTML = `
-            <span class="batch-status success">
-              Producto encontrado:
-              ${escapeHtml(
-                product.name
-              )}
-              · Stock actual:
-              ${getCurrentStockUnits(
-                product
-              )}
-            </span>
-          `;
-        }
-
-        if (codeInput) {
-          codeInput.value =
-            getProductCode(
-              product
-            ) ||
-            codeInput.value ||
-            "";
-        }
-
-        const existingUnitsPerBox =
+      if (
+        product
+      ) {
+        const productUnitsPerBox =
           getUnitsPerBox(
             product
           );
 
+        const enteredUnitsPerBox =
+          Math.max(
+            1,
+            integerOrZero(
+              unitsPerBoxInput?.value
+            ) ||
+            productUnitsPerBox
+          );
+
         if (
-          unitsPerBoxInput
+          unitsPerBoxInput &&
+          !String(
+            unitsPerBoxInput.value ||
+            ""
+          ).trim()
         ) {
           unitsPerBoxInput.value =
             String(
-              existingUnitsPerBox
+              productUnitsPerBox
             );
+        }
 
+        const unitsPerBoxChanged =
+          enteredUnitsPerBox !==
+          productUnitsPerBox;
+
+        if (
+          status
+        ) {
+          status.innerHTML = `
+            <span class="batch-status success">
+              Producto encontrado:
+              ${escapeHtml(
+            product.name
+          )}
+              · Stock actual:
+              ${getCurrentStockUnits(
+            product
+          )}
+              ·
+              ${enteredUnitsPerBox}
+              unid./caja
+
+              ${unitsPerBoxChanged
+              ? `
+                    <br>
+                    <span
+                      style="
+                        color:#9a3412;
+                        font-weight:700;
+                      "
+                    >
+                      Se actualizará el empaque:
+                      ${productUnitsPerBox}
+                      →
+                      ${enteredUnitsPerBox}
+                      unidades/caja
+                    </span>
+                  `
+              : ""
+            }
+            </span>
+          `;
+        }
+
+        if (
+          codeInput &&
+          !String(
+            codeInput.value ||
+            ""
+          ).trim()
+        ) {
+          codeInput.value =
+            getProductCode(
+              product
+            ) ||
+            "";
+        }
+
+        if (
+          unitsPerBoxInput
+        ) {
           unitsPerBoxInput.disabled =
-            true;
+            false;
         }
 
         if (
           costBoxInput &&
           numberOrZero(
             costBoxInput.value
-          ) <= 0
+          ) <=
+          0
         ) {
           const existingCostBox =
             numberOrZero(
@@ -6333,7 +7665,7 @@
               existingCostBox > 0
                 ? existingCostBox
                 : existingCostUnit *
-                  existingUnitsPerBox
+                enteredUnitsPerBox
             );
         }
 
@@ -6341,7 +7673,8 @@
           priceInput &&
           numberOrZero(
             priceInput.value
-          ) <= 0
+          ) <=
+          0
         ) {
           priceInput.value =
             String(
@@ -6355,17 +7688,26 @@
           providerInput &&
           !providerInput.value
         ) {
-          providerInput.value =
-            getProductProviderName(
-              product
-            ) ||
-            "";
-        }
+          const provider =
+            getProviderById(
+              getProductProviderId(
+                product
+              )
+            );
 
-        row.dataset.providerAutofilled =
-          "1";
+          providerInput.value =
+            provider
+              ? getProviderDisplayName(
+                provider
+              )
+              : getProductProviderName(
+                product
+              ) || "";
+        }
       } else {
-        if (status) {
+        if (
+          status
+        ) {
           status.innerHTML = `
             <span class="batch-status warning">
               Escribe o selecciona un producto existente.
@@ -6381,7 +7723,9 @@
         }
       }
     } else {
-      if (status) {
+      if (
+        status
+      ) {
         status.innerHTML = `
           <span class="batch-status info">
             Producto nuevo
@@ -6401,11 +7745,13 @@
         normalizeText(
           product.name
         ) ===
-          normalizeText(
-            data.name
-          )
+        normalizeText(
+          data.name
+        )
       ) {
-        if (status) {
+        if (
+          status
+        ) {
           status.innerHTML = `
             <span class="batch-status danger">
               Ese producto ya existe. Usa "Existente".
@@ -6440,9 +7786,6 @@
       modeElement.addEventListener(
         "change",
         () => {
-          row.dataset.providerAutofilled =
-            "";
-
           updateBatchLineState(
             row
           );
@@ -6461,9 +7804,6 @@
           productElement.addEventListener(
             eventName,
             () => {
-              row.dataset.providerAutofilled =
-                "";
-
               updateBatchLineState(
                 row
               );
@@ -6479,9 +7819,9 @@
       input => {
         if (
           input ===
-            productElement ||
+          productElement ||
           input ===
-            modeElement
+          modeElement
         ) {
           return;
         }
@@ -6535,10 +7875,11 @@
               ".batch-row-header strong"
             );
 
-          if (title) {
+          if (
+            title
+          ) {
             title.textContent =
-              `Producto ${
-                index + 1
+              `Producto ${index + 1
               }`;
           }
 
@@ -6580,14 +7921,15 @@
 
   /*
    * ============================================================
-   * VALIDACIÓN
+   * VALIDACIÓN BATCH
    * ============================================================
    */
 
   function validateBatchLines(
     rows
   ) {
-    const errors = [];
+    const errors =
+      [];
 
     const parsed =
       rows.map(
@@ -6603,11 +7945,12 @@
         index
       ) => {
         const label =
-          `Producto ${
-            index + 1
+          `Producto ${index + 1
           }`;
 
-        if (!line.productText) {
+        if (
+          !line.productText
+        ) {
           errors.push(
             `${label}: debes indicar el producto.`
           );
@@ -6619,7 +7962,9 @@
           line.mode ===
           "existing"
         ) {
-          if (!line.product) {
+          if (
+            !line.product
+          ) {
             errors.push(
               `${label}: no se encontró el producto existente "${line.productText}".`
             );
@@ -6632,7 +7977,9 @@
           line.mode ===
           "new"
         ) {
-          if (!line.name) {
+          if (
+            !line.name
+          ) {
             errors.push(
               `${label}: el nombre es obligatorio.`
             );
@@ -6681,7 +8028,7 @@
             line.boxes +
             line.bonusBoxes
           ) *
-            line.unitsPerBox +
+          line.unitsPerBox +
           line.units +
           line.bonusUnits;
 
@@ -6731,7 +8078,7 @@
 
   /*
    * ============================================================
-   * PROCESAMIENTO MÚLTIPLE
+   * PROCESAMIENTO BATCH
    * ============================================================
    */
 
@@ -6747,8 +8094,8 @@
       operationDate instanceof Date
         ? operationDate
         : parseOperationDate(
-            operationDate
-          );
+          operationDate
+        );
 
     if (
       !validOperationDate
@@ -6758,19 +8105,22 @@
       );
     }
 
-    const results = [];
+    const results =
+      [];
 
     for (
       let index = 0;
-      index < lines.length;
+      index <
+      lines.length;
       index++
     ) {
       const line =
-        lines[index];
+        lines[
+        index
+        ];
 
       const label =
-        `Producto ${
-          index + 1
+        `Producto ${index + 1
         }`;
 
       if (
@@ -6780,7 +8130,9 @@
         const product =
           line.product;
 
-        if (!product) {
+        if (
+          !product
+        ) {
           throw new Error(
             `${label}: producto existente no encontrado.`
           );
@@ -6796,6 +8148,7 @@
 
         results.push({
           ...result,
+
           name:
             product.name
         });
@@ -6812,6 +8165,7 @@
 
       results.push({
         ...result,
+
         name:
           line.name
       });
@@ -6822,7 +8176,7 @@
 
   /*
    * ============================================================
-   * MODAL MÚLTIPLE
+   * MODAL BATCH
    * ============================================================
    */
 
@@ -6857,8 +8211,8 @@
           Fecha seleccionada:
           <strong>
             ${formatOperationDate(
-              new Date()
-            )}
+      new Date()
+    )}
           </strong>
         </div>
       </div>
@@ -6887,33 +8241,27 @@
         </strong>
 
         <p>
-          Cada fila se procesa de acuerdo con su tipo:
-          los productos existentes reciben una entrada de stock
-          y los productos nuevos se crean.
+          Los productos existentes reciben una entrada
+          y los nuevos se crean.
         </p>
 
         <p>
-          Las cajas bono y unidades bono aumentan el stock
-          pero no generan costo.
-        </p>
-
-        <p>
-          El proveedor es opcional.
+          Las cajas bono y unidades bono aumentan
+          el stock pero no generan costo.
         </p>
 
         <p>
           El costo por caja corresponde al costo por unidad
-          multiplicado por las unidades de la caja.
+          multiplicado por las unidades por caja.
         </p>
 
         <p>
-          El costo de las cantidades pagadas se registra
-          automáticamente como gasto de inventario.
+          El proveedor puede buscarse por nombre o razón social.
         </p>
 
         <p>
-          Las futuras entradas quedan vinculadas al gasto
-          para permitir correcciones posteriores.
+          El gasto automático solamente considera
+          las cantidades pagadas.
         </p>
       </div>
     `;
@@ -6932,7 +8280,9 @@
       return;
     }
 
-    if (!currentLocalId) {
+    if (
+      !currentLocalId
+    ) {
       await Swal.fire(
         "Sin local",
         "No se pudo identificar el local actual.",
@@ -6978,183 +8328,193 @@
             "inventory-batch-modal"
         },
 
-        didOpen: () => {
-          const container =
-            document.getElementById(
-              "batch-products-container"
+        didOpen:
+          () => {
+            const container =
+              document.getElementById(
+                "batch-products-container"
+              );
+
+            const addButton =
+              document.getElementById(
+                "batch-add-row"
+              );
+
+            const dateInput =
+              document.getElementById(
+                "batch-operation-date"
+              );
+
+            const datePreview =
+              document.getElementById(
+                "batch-operation-date-preview"
+              );
+
+            if (
+              !container ||
+              !addButton
+            ) {
+              return;
+            }
+
+            addBatchLine(
+              container,
+              initialRow
             );
 
-          const addButton =
-            document.getElementById(
-              "batch-add-row"
+            addButton.addEventListener(
+              "click",
+              () => {
+                addBatchLine(
+                  container,
+                  {
+                    mode:
+                      currentProductsList.length
+                        ? "existing"
+                        : "new"
+                  }
+                );
+              }
             );
 
-          const dateInput =
-            document.getElementById(
-              "batch-operation-date"
-            );
+            if (
+              dateInput &&
+              datePreview
+            ) {
+              dateInput.addEventListener(
+                "change",
+                () => {
+                  const selectedDate =
+                    parseOperationDate(
+                      dateInput.value
+                    );
 
-          const datePreview =
-            document.getElementById(
-              "batch-operation-date-preview"
-            );
-
-          if (
-            !container ||
-            !addButton
-          ) {
-            return;
-          }
-
-          addBatchLine(
-            container,
-            initialRow
-          );
-
-          addButton.addEventListener(
-            "click",
-            () => {
-              addBatchLine(
-                container,
-                {
-                  mode:
-                    currentProductsList.length
-                      ? "existing"
-                      : "new"
+                  if (
+                    selectedDate
+                  ) {
+                    datePreview.innerHTML = `
+                      Fecha seleccionada:
+                      <strong>
+                        ${escapeHtml(
+                      formatOperationDate(
+                        selectedDate
+                      )
+                    )}
+                      </strong>
+                    `;
+                  } else {
+                    datePreview.innerHTML = `
+                      <span
+                        style="
+                          color:#b91c1c;
+                          font-weight:700;
+                        "
+                      >
+                        Fecha no válida.
+                      </span>
+                    `;
+                  }
                 }
               );
             }
-          );
+          },
 
-          if (
-            dateInput &&
-            datePreview
-          ) {
-            dateInput.addEventListener(
-              "change",
-              () => {
-                const selectedDate =
-                  parseOperationDate(
-                    dateInput.value
-                  );
+        preConfirm:
+          () => {
+            const container =
+              document.getElementById(
+                "batch-products-container"
+              );
 
-                if (
-                  selectedDate
-                ) {
-                  datePreview.innerHTML = `
-                    Fecha seleccionada:
-                    <strong>
-                      ${escapeHtml(
-                        formatOperationDate(
-                          selectedDate
-                        )
-                      )}
-                    </strong>
-                  `;
-                } else {
-                  datePreview.innerHTML = `
-                    <span
-                      style="
-                        color:#b91c1c;
-                        font-weight:700;
-                      "
-                    >
-                      Fecha no válida.
-                    </span>
-                  `;
-                }
-              }
-            );
-          }
-        },
+            const dateInput =
+              document.getElementById(
+                "batch-operation-date"
+              );
 
-        preConfirm: () => {
-          const container =
-            document.getElementById(
-              "batch-products-container"
-            );
+            if (
+              !container
+            ) {
+              Swal.showValidationMessage(
+                "No se pudo construir el formulario."
+              );
 
-          const dateInput =
-            document.getElementById(
-              "batch-operation-date"
-            );
+              return;
+            }
 
-          if (!container) {
-            Swal.showValidationMessage(
-              "No se pudo construir el formulario."
-            );
+            if (
+              !dateInput
+            ) {
+              Swal.showValidationMessage(
+                "No se pudo obtener la fecha de operación."
+              );
 
-            return;
-          }
+              return;
+            }
 
-          if (!dateInput) {
-            Swal.showValidationMessage(
-              "No se pudo obtener la fecha de operación."
-            );
+            const operationDate =
+              parseOperationDate(
+                dateInput.value
+              );
 
-            return;
-          }
+            if (
+              !operationDate
+            ) {
+              Swal.showValidationMessage(
+                "Debes seleccionar una fecha de operación válida."
+              );
 
-          const operationDate =
-            parseOperationDate(
-              dateInput.value
-            );
+              return;
+            }
 
-          if (!operationDate) {
-            Swal.showValidationMessage(
-              "Debes seleccionar una fecha de operación válida."
-            );
-
-            return;
-          }
-
-          const rows =
-            Array.from(
-              container.querySelectorAll(
-                ".batch-product-row"
-              )
-            );
-
-          if (!rows.length) {
-            Swal.showValidationMessage(
-              "Debes agregar al menos un producto."
-            );
-
-            return;
-          }
-
-          const validation =
-            validateBatchLines(
-              rows
-            );
-
-          if (
-            validation.errors.length
-          ) {
-            Swal.showValidationMessage(
-              validation.errors
-                .slice(
-                  0,
-                  5
+            const rows =
+              Array.from(
+                container.querySelectorAll(
+                  ".batch-product-row"
                 )
-                .join(
-                  "<br>"
-                )
-            );
+              );
 
-            return;
+            if (
+              !rows.length
+            ) {
+              Swal.showValidationMessage(
+                "Debes agregar al menos un producto."
+              );
+
+              return;
+            }
+
+            const validation =
+              validateBatchLines(
+                rows
+              );
+
+            if (
+              validation.errors.length
+            ) {
+              Swal.showValidationMessage(
+                validation.errors
+                  .slice(
+                    0,
+                    5
+                  )
+                  .join(
+                    "<br>"
+                  )
+              );
+
+              return;
+            }
+
+            return {
+              operationDate,
+
+              operationDateValue:
+                dateInput.value,
+
+              lines:
+                validation.parsed
+            };
           }
-
-          return {
-            operationDate,
-
-            operationDateValue:
-              dateInput.value,
-
-            lines:
-              validation.parsed
-          };
-        }
       });
 
     if (
@@ -7175,17 +8535,22 @@
         : [];
 
     const operationDate =
-      payload.operationDate instanceof Date
+      payload.operationDate instanceof
+        Date
         ? payload.operationDate
         : parseOperationDate(
-            payload.operationDateValue
-          );
+          payload.operationDateValue
+        );
 
-    if (!lines.length) {
+    if (
+      !lines.length
+    ) {
       return;
     }
 
-    if (!operationDate) {
+    if (
+      !operationDate
+    ) {
       await Swal.fire(
         "Fecha inválida",
         "La fecha de operación seleccionada no es válida.",
@@ -7203,18 +8568,17 @@
         html:
           `
             <div>
-              Preparando ${
-                lines.length
-              } producto(s)...
+              Preparando ${lines.length
+          } producto(s)...
               <br><br>
               <strong>
                 Fecha de operación:
               </strong>
               ${escapeHtml(
-                formatOperationDate(
-                  operationDate
-                )
-              )}
+            formatOperationDate(
+              operationDate
+            )
+          )}
             </div>
           `,
 
@@ -7224,9 +8588,10 @@
         allowEscapeKey:
           false,
 
-        didOpen: () => {
-          Swal.showLoading();
-        }
+        didOpen:
+          () => {
+            Swal.showLoading();
+          }
       });
 
       const results =
@@ -7272,7 +8637,7 @@
             calculateLinePurchaseCost(
               line,
               line.product ||
-                null
+              null
             ),
           0
         );
@@ -7289,7 +8654,7 @@
             totalPurchaseCost,
             lines,
             auth.currentUser ||
-              null,
+            null,
             operationDate
           );
 
@@ -7331,14 +8696,15 @@
                 pero el gasto automático no pudo registrarse.
               </p>
             `
-          : totalPurchaseCost > 0
+          : totalPurchaseCost >
+            0
             ? `
                 <p>
                   Gasto registrado:
                   <strong>
                     ${currency(
-                      totalPurchaseCost
-                    )}
+              totalPurchaseCost
+            )}
                   </strong>
                 </p>
               `
@@ -7373,10 +8739,10 @@
                 Fecha de operación:
                 <strong>
                   ${escapeHtml(
-                    formatOperationDate(
-                      operationDate
-                    )
-                  )}
+            formatOperationDate(
+              operationDate
+            )
+          )}
                 </strong>
               </p>
 
@@ -7412,8 +8778,8 @@
                 Costo total:
                 <strong>
                   ${currency(
-                    totalPurchaseCost
-                  )}
+            totalPurchaseCost
+          )}
                 </strong>
               </p>
 
@@ -7437,7 +8803,7 @@
       await Swal.fire(
         "Error",
         error.message ||
-          "No se pudo completar la operación.",
+        "No se pudo completar la operación.",
         "error"
       );
     }
@@ -7445,18 +8811,8 @@
 
   /*
    * ============================================================
-   * EDICIÓN DE MOVIMIENTO
+   * FORMULARIO DE EDICIÓN
    * ============================================================
-   *
-   * La edición:
-   *
-   * 1. Calcula la nueva entrada completa.
-   * 2. Calcula diferencia = nuevaEntrada - entradaAnterior.
-   * 3. Aplica esa diferencia al stock vigente.
-   * 4. Actualiza desglose.
-   * 5. Actualiza costo unitario / costo por caja.
-   * 6. Actualiza precio de venta.
-   * 7. Actualiza gasto, únicamente por la parte pagada.
    */
 
   function buildMovementEditFormHtml(
@@ -7474,8 +8830,21 @@
         product
       );
 
-    const unitsPerBox =
-      breakdown.unitsPerBox;
+    const movementUnitsPerBox =
+      Math.max(
+        1,
+        integerOrZero(
+          movement.unidadesPorCaja ??
+          movement.unitsPerBox
+        ) ||
+        breakdown.unitsPerBox ||
+        1
+      );
+
+    const productUnitsPerBox =
+      getUnitsPerBox(
+        product
+      );
 
     let currentCostPerUnit =
       numberOrZero(
@@ -7495,7 +8864,7 @@
     ) {
       currentCostPerUnit =
         currentCostPerBox /
-        unitsPerBox;
+        movementUnitsPerBox;
     }
 
     if (
@@ -7506,7 +8875,7 @@
     ) {
       currentCostPerBox =
         currentCostPerUnit *
-        unitsPerBox;
+        movementUnitsPerBox;
     }
 
     if (
@@ -7522,7 +8891,7 @@
 
       currentCostPerBox =
         currentCostPerUnit *
-        unitsPerBox;
+        movementUnitsPerBox;
     }
 
     const currentSalePrice =
@@ -7532,6 +8901,30 @@
       numberOrZero(
         product?.price
       );
+
+    /*
+     * EL PROVEEDOR DEL MOVIMIENTO TIENE PRIORIDAD.
+     */
+    const movementProvider =
+      getProviderById(
+        movement.proveedorId
+      );
+
+    const movementProviderDisplay =
+      movementProvider
+        ? getProviderDisplayName(
+          movementProvider
+        )
+        : (
+          [
+            movement.proveedorNombre,
+            movement.proveedorRazonSocial
+          ]
+            .filter(Boolean)
+            .join(
+              " — "
+            )
+        );
 
     return `
       <div
@@ -7544,18 +8937,42 @@
           <div>
             <strong>
               ${escapeHtml(
-                product?.name ||
-                  movement.productName ||
-                  "Producto"
-              )}
+      product?.name ||
+      movement.productName ||
+      "Producto"
+    )}
             </strong>
 
             <span>
               Stock actual:
               <strong>
                 ${getCurrentStockUnits(
-                  product
-                )}
+      product
+    )}
+              </strong>
+            </span>
+
+            <span>
+              Unidades por caja del producto:
+              <strong>
+                ${productUnitsPerBox}
+              </strong>
+            </span>
+
+            <span>
+              Unidades por caja de esta entrada:
+              <strong>
+                ${movementUnitsPerBox}
+              </strong>
+            </span>
+
+            <span>
+              Proveedor del movimiento:
+              <strong>
+                ${escapeHtml(
+      movementProviderDisplay ||
+      "Sin proveedor"
+    )}
               </strong>
             </span>
           </div>
@@ -7574,9 +8991,26 @@
               id="movement-edit-date"
               type="date"
               value="${escapeHtml(
-                operationDate
-              )}"
+      operationDate
+    )}"
             >
+          </div>
+
+          <div class="inv-field">
+            <label>
+              Proveedor
+            </label>
+
+            ${getProviderComboboxHtml(
+      "movement-edit-provider",
+      "movement-edit-provider-list",
+      movementProviderDisplay,
+      "movement-edit-provider-input"
+    )}
+
+            <small>
+              Puedes buscar por nombre o Razón Social / Denominación.
+            </small>
           </div>
 
           <div class="inv-field">
@@ -7589,9 +9023,13 @@
               type="number"
               min="1"
               step="1"
-              value="${unitsPerBox}"
-              readonly
+              value="${movementUnitsPerBox}"
             >
+
+            <small>
+              Editable. Al cambiarlo se recalculan
+              las unidades de las cajas y el stock.
+            </small>
           </div>
 
           <div class="inv-field">
@@ -7606,6 +9044,10 @@
               step="1"
               value="${breakdown.cajas}"
             >
+
+            <small>
+              Cantidad de cajas pagadas.
+            </small>
           </div>
 
           <div
@@ -7665,8 +9107,8 @@
               min="0"
               step="0.01"
               value="${currentCostPerBox.toFixed(
-                2
-              )}"
+      2
+    )}"
             >
           </div>
 
@@ -7679,8 +9121,8 @@
               id="movement-edit-cost-unit"
               type="text"
               value="${currentCostPerUnit.toFixed(
-                4
-              )}"
+      4
+    )}"
               readonly
             >
           </div>
@@ -7696,8 +9138,8 @@
               min="0"
               step="0.01"
               value="${currentSalePrice.toFixed(
-                2
-              )}"
+      2
+    )}"
             >
           </div>
 
@@ -7725,9 +9167,9 @@
               id="movement-edit-reference"
               type="text"
               value="${escapeHtml(
-                movement.referenciaLibro ||
-                  ""
-              )}"
+      movement.referenciaLibro ||
+      ""
+    )}"
             >
           </div>
 
@@ -7742,9 +9184,9 @@
               id="movement-edit-document"
               type="text"
               value="${escapeHtml(
-                movement.numeroDocumento ||
-                  ""
-              )}"
+      movement.numeroDocumento ||
+      ""
+    )}"
             >
           </div>
 
@@ -7762,34 +9204,33 @@
             Importante:
           </strong>
 
-          El sistema no sustituirá el stock actual
-          del producto.
+          Las cajas, unidades por caja y proveedor
+          son editables.
 
           <br><br>
 
-          Aplicará únicamente:
+          El proveedor seleccionado aquí corresponde
+          específicamente a esta entrada.
+
+          <br><br>
+
+          Cambiar el proveedor del movimiento
+          no cambia el proveedor global del producto.
+
+          <br><br>
+
+          Se seguirá aplicando:
+
           <strong>
             nueva entrada - entrada anterior
           </strong>
 
           sobre el stock vigente.
-
-          <br><br>
-
-          Las cajas bono y unidades bono aumentan
-          el inventario pero no generan costo.
-
-          <br><br>
-
-          El costo por caja se calcula como:
-          <strong>
-            costo por unidad × unidades por caja
-          </strong>
         </div>
 
         ${
-          movement.expenseId
-            ? `
+      movement.expenseId
+        ? `
               <div
                 class="movement-edit-linked"
               >
@@ -7800,18 +9241,16 @@
                 las cantidades pagadas.
               </div>
             `
-            : `
+        : `
               <div
                 class="movement-edit-warning"
               >
                 <i class="fas fa-info-circle"></i>
 
                 Esta entrada no tiene un gasto vinculado.
-                Se actualizarán el movimiento y el producto,
-                pero no existe un gasto histórico que ajustar.
               </div>
             `
-        }
+    }
 
       </div>
     `;
@@ -7889,13 +9328,24 @@
         product
       );
 
-    const unitsPerBox =
+    const oldUnitsPerBox =
+      Math.max(
+        1,
+        integerOrZero(
+          movement.unidadesPorCaja ??
+          movement.unitsPerBox
+        ) ||
+        oldBreakdown.unitsPerBox ||
+        1
+      );
+
+    const newUnitsPerBox =
       Math.max(
         1,
         integerOrZero(
           unitsPerBoxInput.value
         ) ||
-          oldBreakdown.unitsPerBox
+        oldUnitsPerBox
       );
 
     const cajas =
@@ -7920,12 +9370,12 @@
 
     const paidUnits =
       cajas *
-        unitsPerBox +
+      newUnitsPerBox +
       unidades;
 
     const bonusUnits =
       cajasBono *
-        unitsPerBox +
+      newUnitsPerBox +
       unidadesBono;
 
     const newEntry =
@@ -7933,7 +9383,16 @@
       bonusUnits;
 
     const oldEntry =
-      oldBreakdown.totalUnits;
+      (
+        oldBreakdown.cajas *
+        oldUnitsPerBox
+      ) +
+      oldBreakdown.unidades +
+      (
+        oldBreakdown.cajasBono *
+        oldUnitsPerBox
+      ) +
+      oldBreakdown.unidadesBono;
 
     const difference =
       newEntry -
@@ -7957,9 +9416,9 @@
       );
 
     const costPerUnit =
-      unitsPerBox > 0
+      newUnitsPerBox > 0
         ? costPerBox /
-          unitsPerBox
+        newUnitsPerBox
         : 0;
 
     const purchaseCost =
@@ -7994,6 +9453,20 @@
 
     preview.innerHTML = `
       <div>
+        Unidades/caja anterior
+        <strong>
+          ${oldUnitsPerBox}
+        </strong>
+      </div>
+
+      <div>
+        Nuevas unidades/caja
+        <strong>
+          ${newUnitsPerBox}
+        </strong>
+      </div>
+
+      <div>
         Cajas
         <strong>
           ${cajas}
@@ -8008,7 +9481,7 @@
       </div>
 
       <div>
-        Unidades
+        Unidades sueltas
         <strong>
           ${unidades}
         </strong>
@@ -8053,20 +9526,25 @@
         Diferencia
         <strong
           style="
-            color:${
-              difference > 0
-                ? "#166534"
-                : difference < 0
-                  ? "#b91c1c"
-                  : "#374151"
-            };
+            color:${difference > 0
+        ? "#166534"
+        : difference < 0
+          ? "#b91c1c"
+          : "#374151"
+      };
           "
         >
-          ${
-            difference > 0
-              ? "+"
-              : ""
-          }${difference}
+          ${difference > 0
+        ? "+"
+        : ""
+      }${difference}
+        </strong>
+      </div>
+
+      <div>
+        Stock actual
+        <strong>
+          ${currentStock}
         </strong>
       </div>
 
@@ -8074,11 +9552,10 @@
         Stock resultante
         <strong
           style="
-            color:${
-              resultingStock < 0
-                ? "#b91c1c"
-                : "#1d4ed8"
-            };
+            color:${resultingStock < 0
+        ? "#b91c1c"
+        : "#1d4ed8"
+      };
           "
         >
           ${resultingStock}
@@ -8089,8 +9566,8 @@
         Costo por caja
         <strong>
           ${currency(
-            costPerBox
-          )}
+        costPerBox
+      )}
         </strong>
       </div>
 
@@ -8098,8 +9575,8 @@
         Costo por unidad
         <strong>
           ${currency(
-            costPerUnit
-          )}
+        costPerUnit
+      )}
         </strong>
       </div>
 
@@ -8107,8 +9584,8 @@
         Precio de venta
         <strong>
           ${currency(
-            salePrice
-          )}
+        salePrice
+      )}
         </strong>
       </div>
 
@@ -8116,8 +9593,8 @@
         Costo de entrada
         <strong>
           ${currency(
-            purchaseCost
-          )}
+        purchaseCost
+      )}
         </strong>
       </div>
     `;
@@ -8145,7 +9622,9 @@
         values.fechaOperacion
       );
 
-    if (!operationDate) {
+    if (
+      !operationDate
+    ) {
       throw new Error(
         "La fecha de operación no es válida."
       );
@@ -8155,6 +9634,55 @@
       buildOperationTimestamp(
         operationDate
       );
+
+    /*
+     * Resolver proveedor ANTES de abrir la transacción.
+     *
+     * El proveedor se guarda en el movimiento y NO se modifica
+     * automáticamente el proveedor global del producto.
+     */
+    const providerText =
+      String(
+        values.proveedorTexto ||
+        ""
+      ).trim();
+
+    const selectedProvider =
+      providerText
+        ? resolveProviderSelection(
+          providerText
+        )
+        : null;
+
+    if (
+      providerText &&
+      !selectedProvider
+    ) {
+      throw new Error(
+        `No se encontró un proveedor que coincida con "${providerText}" por nombre o razón social.`
+      );
+    }
+
+    const selectedProviderId =
+      selectedProvider
+        ? String(
+          selectedProvider.id
+        ).trim()
+        : "";
+
+    const selectedProviderName =
+      selectedProvider
+        ? getProviderName(
+          selectedProvider
+        )
+        : "";
+
+    const selectedProviderReason =
+      selectedProvider
+        ? getProviderBusinessName(
+          selectedProvider
+        )
+        : "";
 
     let updatedMovement =
       null;
@@ -8187,7 +9715,7 @@
         if (
           String(
             oldMovementRaw.tipoMovimiento ||
-              ""
+            ""
           )
             .trim()
             .toLowerCase() !==
@@ -8211,10 +9739,12 @@
         const productId =
           String(
             oldMovementRaw.productId ||
-              ""
+            ""
           ).trim();
 
-        if (!productId) {
+        if (
+          !productId
+        ) {
           throw new Error(
             "El movimiento no tiene un producto asociado."
           );
@@ -8270,22 +9800,29 @@
 
         /*
          * ========================================================
-         * NUEVO DESGLOSE
+         * UNIDADES POR CAJA ANTERIORES
          * ========================================================
          */
 
-        const unitsPerBox =
+        const oldUnitsPerBox =
           Math.max(
             1,
             integerOrZero(
-              values.unidadesPorCaja
+              oldMovementRaw.unidadesPorCaja ??
+              oldMovementRaw.unitsPerBox
             ) ||
-              oldBreakdown.unitsPerBox ||
-              integerOrZero(
-                productData.unitsPerBox
-              ) ||
-              1
+            oldBreakdown.unitsPerBox ||
+            integerOrZero(
+              productData.unitsPerBox
+            ) ||
+            1
           );
+
+        /*
+         * ========================================================
+         * NUEVO DESGLOSE
+         * ========================================================
+         */
 
         const newBoxes =
           integerOrZero(
@@ -8307,14 +9844,23 @@
             values.unidadesBono
           );
 
+        const unitsPerBox =
+          Math.max(
+            1,
+            integerOrZero(
+              values.unidadesPorCaja
+            ) ||
+            oldUnitsPerBox
+          );
+
         const newPaidUnits =
           newBoxes *
-            unitsPerBox +
+          unitsPerBox +
           newUnits;
 
         const newBonusUnitsTotal =
           newBonusBoxes *
-            unitsPerBox +
+          unitsPerBox +
           newBonusUnits;
 
         const newEntry =
@@ -8325,16 +9871,6 @@
          * ========================================================
          * COSTO
          * ========================================================
-         *
-         * values.costoPorCaja es el valor editable.
-         *
-         * costoPorUnidad =
-         *      costoPorCaja / unidadesPorCaja
-         *
-         * Se recalcula nuevamente:
-         *
-         * costoPorCaja =
-         *      costoPorUnidad * unidadesPorCaja
          */
 
         let newCostPerBox =
@@ -8349,7 +9885,8 @@
           0;
 
         if (
-          newCostPerBox > 0
+          newCostPerBox >
+          0
         ) {
           newCostPerUnit =
             newCostPerBox /
@@ -8371,7 +9908,7 @@
 
         /*
          * ========================================================
-         * PRECIO DE VENTA
+         * PRECIO
          * ========================================================
          */
 
@@ -8390,7 +9927,16 @@
          */
 
         const oldEntry =
-          oldBreakdown.totalUnits;
+          (
+            oldBreakdown.cajas *
+            oldUnitsPerBox
+          ) +
+          oldBreakdown.unidades +
+          (
+            oldBreakdown.cajasBono *
+            oldUnitsPerBox
+          ) +
+          oldBreakdown.unidadesBono;
 
         const currentStock =
           getCurrentStockUnits(
@@ -8406,7 +9952,8 @@
           difference;
 
         if (
-          nextStock < 0
+          nextStock <
+          0
         ) {
           throw new Error(
             `No se puede reducir la entrada a ${newEntry} unidades porque el stock actual (${currentStock}) quedaría en ${nextStock}.`
@@ -8415,14 +9962,14 @@
 
         /*
          * ========================================================
-         * COSTO DE LA ENTRADA
+         * COSTO DE ENTRADA ANTERIOR
          * ========================================================
-         *
-         * Solo las unidades pagadas generan costo.
          */
 
         const oldPaidUnits =
-          oldBreakdown.paidUnits;
+          oldBreakdown.cajas *
+          oldUnitsPerBox +
+          oldBreakdown.unidades;
 
         let oldCostPerUnit =
           numberOrZero(
@@ -8439,35 +9986,41 @@
             );
 
           oldCostPerUnit =
-            oldBreakdown.unitsPerBox >
+            oldUnitsPerBox >
             0
               ? oldCostPerBox /
-                oldBreakdown.unitsPerBox
+              oldUnitsPerBox
               : 0;
         }
 
         const oldCostTotal =
           oldMovement.costoTotal !==
-              undefined &&
+            undefined &&
             oldMovement.costoTotal !==
-              null
-          ? Math.max(
+            null
+            ? Math.max(
               0,
               numberOrZero(
                 oldMovement.costoTotal
               )
             )
-          : Math.max(
+            : Math.max(
               0,
               oldPaidUnits *
-                oldCostPerUnit
+              oldCostPerUnit
             );
+
+        /*
+         * ========================================================
+         * NUEVO COSTO
+         * ========================================================
+         */
 
         const newCostTotal =
           Math.max(
             0,
             newPaidUnits *
-              newCostPerUnit
+            newCostPerUnit
           );
 
         /*
@@ -8482,7 +10035,7 @@
         const expenseId =
           String(
             oldMovement.expenseId ||
-              ""
+            ""
           ).trim();
 
         if (
@@ -8525,13 +10078,15 @@
               Math.max(
                 0,
                 oldExpenseAmount +
-                  expenseDifference
+                expenseDifference
               );
 
             expenseData = {
               expenseRef,
+
               data:
                 oldExpense,
+
               amount:
                 nextExpenseAmount
             };
@@ -8574,19 +10129,12 @@
             newEntry,
 
           saldoAnterior:
-            numberOrZero(
-              oldMovementRaw.saldoAnterior
-            ),
+            currentStock -
+            oldEntry,
 
           saldoActual:
-            numberOrZero(
-              oldMovementRaw.saldoAnterior
-            ) +
-            newEntry,
+            nextStock,
 
-          /*
-           * Desglose
-           */
           cajas:
             newBoxes,
 
@@ -8614,8 +10162,7 @@
           unidadesPorCaja:
             unitsPerBox,
 
-          unitsPerBox:
-            unitsPerBox,
+          unitsPerBox,
 
           entradaPagada:
             newPaidUnits,
@@ -8623,9 +10170,6 @@
           entradaBono:
             newBonusUnitsTotal,
 
-          /*
-           * Costos
-           */
           costoUnitario:
             newCostPerUnit,
 
@@ -8644,18 +10188,12 @@
           costoTotal:
             newCostTotal,
 
-          /*
-           * Precio de venta
-           */
           precioVenta:
             newSalePrice,
 
           price:
             newSalePrice,
 
-          /*
-           * Otros
-           */
           fechaOperacion:
             getLocalDateInputValue(
               operationDate
@@ -8675,6 +10213,40 @@
 
           numeroDocumento:
             values.numeroDocumento,
+
+          /*
+           * =====================================================
+           * PROVEEDOR ESPECÍFICO DEL MOVIMIENTO
+           * =====================================================
+           *
+           * Esto es independiente del proveedor del producto.
+           *
+           * Si el input queda vacío:
+           *     proveedor = null / vacío.
+           *
+           * Si se selecciona uno:
+           *     se guardan ID, nombre y razón social.
+           */
+
+          proveedorId:
+            selectedProviderId ||
+            null,
+
+          proveedorNombre:
+            selectedProviderName,
+
+          proveedorRazonSocial:
+            selectedProviderReason,
+
+          providerId:
+            selectedProviderId ||
+            null,
+
+          providerName:
+            selectedProviderName,
+
+          providerBusinessName:
+            selectedProviderReason,
 
           detalle:
             [
@@ -8698,6 +10270,14 @@
               `Costo total: ${currency(
                 newCostTotal
               )}`,
+              selectedProviderName
+                ? `Proveedor: ${selectedProviderName}`
+                : "Proveedor: Sin proveedor",
+
+              selectedProviderReason
+                ? `Razón Social: ${selectedProviderReason}`
+                : "Razón Social: Sin especificar",
+
               `Fecha de operación: ${formatOperationDate(
                 operationDate
               )}`
@@ -8738,6 +10318,9 @@
          * ========================================================
          * PRODUCTO ACTUALIZADO
          * ========================================================
+         *
+         * El proveedor global del producto NO se cambia aquí.
+         * Solo se modifica el movimiento.
          */
 
         const nextProductData = {
@@ -8750,7 +10333,7 @@
           boxes:
             Math.floor(
               nextStock /
-                unitsPerBox
+              unitsPerBox
             ),
 
           unitsPerBox,
@@ -8763,6 +10346,21 @@
 
           price:
             newSalePrice,
+
+          /*
+           * IMPORTANTE:
+           *
+           * NO se agregan:
+           *
+           * proveedorId
+           * proveedorNombre
+           * proveedorRazonSocial
+           *
+           * a este objeto.
+           *
+           * Así el proveedor editado queda exclusivamente
+           * asociado a esta entrada.
+           */
 
           referenciaLibro:
             values.referenciaLibro ||
@@ -8796,12 +10394,6 @@
           nextProductData
         );
 
-        /*
-         * ========================================================
-         * CACHE
-         * ========================================================
-         */
-
         updatedMovement = {
           ...oldMovementRaw,
           ...nextMovementData,
@@ -8832,7 +10424,7 @@
           boxes:
             Math.floor(
               nextStock /
-                unitsPerBox
+              unitsPerBox
             ),
 
           unitsPerBox,
@@ -8974,7 +10566,9 @@
         movement.productId
       );
 
-    if (!product) {
+    if (
+      !product
+    ) {
       await Swal.fire(
         "Producto no encontrado",
         "El producto asociado al movimiento ya no está disponible.",
@@ -9002,7 +10596,7 @@
           ),
 
         width:
-          "920px",
+          "980px",
 
         showCancelButton:
           true,
@@ -9021,237 +10615,255 @@
             "inventory-movement-edit-modal"
         },
 
-        didOpen: () => {
-          const selectors = [
-            "#movement-edit-boxes",
-            "#movement-edit-bonus-boxes",
-            "#movement-edit-units",
-            "#movement-edit-bonus-units",
-            "#movement-edit-cost-box",
-            "#movement-edit-sale-price"
-          ];
+        didOpen:
+          () => {
+            const selectors = [
+              "#movement-edit-boxes",
+              "#movement-edit-bonus-boxes",
+              "#movement-edit-units",
+              "#movement-edit-bonus-units",
+              "#movement-edit-units-per-box",
+              "#movement-edit-cost-box",
+              "#movement-edit-sale-price"
+            ];
 
-          selectors.forEach(
-            selector => {
-              const element =
-                document.querySelector(
-                  selector
+            selectors.forEach(
+              selector => {
+                const element =
+                  document.querySelector(
+                    selector
+                  );
+
+                if (
+                  !element
+                ) {
+                  return;
+                }
+
+                element.addEventListener(
+                  "input",
+                  () => {
+                    updateMovementEditPreview(
+                      product,
+                      normalizedMovement
+                    );
+                  }
+                );
+
+                element.addEventListener(
+                  "change",
+                  () => {
+                    updateMovementEditPreview(
+                      product,
+                      normalizedMovement
+                    );
+                  }
+                );
+              }
+            );
+
+            updateMovementEditPreview(
+              product,
+              normalizedMovement
+            );
+          },
+
+        preConfirm:
+          () => {
+            const fechaOperacion =
+              String(
+                document.getElementById(
+                  "movement-edit-date"
+                )?.value ||
+                ""
+              ).trim();
+
+            const cajas =
+              integerOrZero(
+                document.getElementById(
+                  "movement-edit-boxes"
+                )?.value
+              );
+
+            const cajasBono =
+              integerOrZero(
+                document.getElementById(
+                  "movement-edit-bonus-boxes"
+                )?.value
+              );
+
+            const unidades =
+              integerOrZero(
+                document.getElementById(
+                  "movement-edit-units"
+                )?.value
+              );
+
+            const unidadesBono =
+              integerOrZero(
+                document.getElementById(
+                  "movement-edit-bonus-units"
+                )?.value
+              );
+
+            const unidadesPorCaja =
+              Math.max(
+                1,
+                integerOrZero(
+                  document.getElementById(
+                    "movement-edit-units-per-box"
+                  )?.value
+                ) || 1
+              );
+
+            const costoPorCaja =
+              Math.max(
+                0,
+                numberOrZero(
+                  document.getElementById(
+                    "movement-edit-cost-box"
+                  )?.value
+                )
+              );
+
+            const precioVenta =
+              Math.max(
+                0,
+                numberOrZero(
+                  document.getElementById(
+                    "movement-edit-sale-price"
+                  )?.value
+                )
+              );
+
+            const proveedorTexto =
+              String(
+                document.getElementById(
+                  "movement-edit-provider"
+                )?.value ||
+                ""
+              ).trim();
+
+            const referenciaLibro =
+              String(
+                document.getElementById(
+                  "movement-edit-reference"
+                )?.value ||
+                ""
+              ).trim();
+
+            const numeroDocumento =
+              String(
+                document.getElementById(
+                  "movement-edit-document"
+                )?.value ||
+                ""
+              ).trim();
+
+            const operationDate =
+              parseOperationDate(
+                fechaOperacion
+              );
+
+            if (
+              !operationDate
+            ) {
+              Swal.showValidationMessage(
+                "Debes seleccionar una fecha válida."
+              );
+
+              return;
+            }
+
+            /*
+             * Validación de proveedor:
+             *
+             * Vacío = quitar proveedor del movimiento.
+             *
+             * Texto = debe coincidir con un proveedor existente
+             * por nombre, razón social o combinación.
+             */
+            if (
+              proveedorTexto
+            ) {
+              const provider =
+                resolveProviderSelection(
+                  proveedorTexto
                 );
 
               if (
-                !element
+                !provider
               ) {
+                Swal.showValidationMessage(
+                  `No se encontró el proveedor "${escapeHtml(
+                    proveedorTexto
+                  )}". Puedes buscarlo por nombre o razón social.`
+                );
+
                 return;
               }
-
-              element.addEventListener(
-                "input",
-                () => {
-                  updateMovementEditPreview(
-                    product,
-                    normalizedMovement
-                  );
-                }
-              );
-
-              element.addEventListener(
-                "change",
-                () => {
-                  updateMovementEditPreview(
-                    product,
-                    normalizedMovement
-                  );
-                }
-              );
             }
-          );
 
-          updateMovementEditPreview(
-            product,
-            normalizedMovement
-          );
-        },
+            if (
+              unidadesPorCaja <=
+              0
+            ) {
+              Swal.showValidationMessage(
+                "Las unidades por caja deben ser mayores que cero."
+              );
 
-        preConfirm: () => {
-          const fechaOperacion =
-            String(
-              document.getElementById(
-                "movement-edit-date"
-              )?.value ||
-                ""
-            ).trim();
+              return;
+            }
 
-          const cajas =
-            integerOrZero(
-              document.getElementById(
-                "movement-edit-boxes"
-              )?.value
-            );
-
-          const cajasBono =
-            integerOrZero(
-              document.getElementById(
-                "movement-edit-bonus-boxes"
-              )?.value
-            );
-
-          const unidades =
-            integerOrZero(
-              document.getElementById(
-                "movement-edit-units"
-              )?.value
-            );
-
-          const unidadesBono =
-            integerOrZero(
-              document.getElementById(
-                "movement-edit-bonus-units"
-              )?.value
-            );
-
-          const unidadesPorCaja =
-            Math.max(
-              1,
-              integerOrZero(
-                document.getElementById(
-                  "movement-edit-units-per-box"
-                )?.value
-              ) || 1
-            );
-
-          const costoPorCaja =
-            Math.max(
-              0,
-              numberOrZero(
-                document.getElementById(
-                  "movement-edit-cost-box"
-                )?.value
-              )
-            );
-
-          const precioVenta =
-            Math.max(
-              0,
-              numberOrZero(
-                document.getElementById(
-                  "movement-edit-sale-price"
-                )?.value
-              )
-            );
-
-          const referenciaLibro =
-            String(
-              document.getElementById(
-                "movement-edit-reference"
-              )?.value ||
-                ""
-            ).trim();
-
-          const numeroDocumento =
-            String(
-              document.getElementById(
-                "movement-edit-document"
-              )?.value ||
-                ""
-            ).trim();
-
-          const operationDate =
-            parseOperationDate(
-              fechaOperacion
-            );
-
-          if (
-            !operationDate
-          ) {
-            Swal.showValidationMessage(
-              "Debes seleccionar una fecha válida."
-            );
-
-            return;
-          }
-
-          if (
-            cajas < 0 ||
-            cajasBono < 0 ||
-            unidades < 0 ||
-            unidadesBono < 0
-          ) {
-            Swal.showValidationMessage(
-              "Las cantidades no pueden ser negativas."
-            );
-
-            return;
-          }
-
-          if (
-            unidadesPorCaja <=
-            0
-          ) {
-            Swal.showValidationMessage(
-              "Las unidades por caja deben ser mayores que cero."
-            );
-
-            return;
-          }
-
-          if (
-            costoPorCaja <
-            0
-          ) {
-            Swal.showValidationMessage(
-              "El costo por caja no puede ser negativo."
-            );
-
-            return;
-          }
-
-          const paidUnits =
-            cajas *
+            const paidUnits =
+              cajas *
               unidadesPorCaja +
-            unidades;
+              unidades;
 
-          const bonusUnits =
-            cajasBono *
+            const bonusUnits =
+              cajasBono *
               unidadesPorCaja +
-            unidadesBono;
+              unidadesBono;
 
-          const totalUnits =
-            paidUnits +
-            bonusUnits;
+            const totalUnits =
+              paidUnits +
+              bonusUnits;
 
-          if (
-            totalUnits <=
-            0
-          ) {
-            Swal.showValidationMessage(
-              "Debes ingresar al menos una cantidad."
-            );
+            if (
+              totalUnits <=
+              0
+            ) {
+              Swal.showValidationMessage(
+                "Debes ingresar al menos una cantidad."
+              );
 
-            return;
+              return;
+            }
+
+            return {
+              fechaOperacion,
+
+              cajas,
+
+              cajasBono,
+
+              unidades,
+
+              unidadesBono,
+
+              unidadesPorCaja,
+
+              costoPorCaja,
+
+              precioVenta,
+
+              proveedorTexto,
+
+              referenciaLibro,
+
+              numeroDocumento
+            };
           }
-
-          return {
-            fechaOperacion,
-
-            cajas,
-
-            cajasBono,
-
-            unidades,
-
-            unidadesBono,
-
-            unidadesPorCaja,
-
-            costoPorCaja,
-
-            precioVenta,
-
-            referenciaLibro,
-
-            numeroDocumento
-          };
-        }
       });
 
     if (
@@ -9266,7 +10878,7 @@
           "Actualizando entrada",
 
         text:
-          "Calculando diferencia de stock, costos y valores del producto.",
+          "Calculando diferencia de stock, costos, proveedor y valores del movimiento.",
 
         allowOutsideClick:
           false,
@@ -9274,9 +10886,10 @@
         allowEscapeKey:
           false,
 
-        didOpen: () => {
-          Swal.showLoading();
-        }
+        didOpen:
+          () => {
+            Swal.showLoading();
+          }
       });
 
       const resultData =
@@ -9307,19 +10920,63 @@
                 Producto:
                 <strong>
                   ${escapeHtml(
-                    resultData.product.name ||
-                      product.name ||
-                      ""
-                  )}
+            resultData.product.name ||
+            product.name ||
+            ""
+          )}
                 </strong>
               </p>
+
+              <p>
+                Proveedor del movimiento:
+                <strong>
+                  ${escapeHtml(
+            resultData.movement.proveedorNombre ||
+            "Sin proveedor"
+          )}
+                </strong>
+              </p>
+
+              ${
+                resultData.movement.proveedorRazonSocial
+                  ? `
+                    <p>
+                      Razón Social / Denominación:
+                      <strong>
+                        ${escapeHtml(
+                          resultData.movement.proveedorRazonSocial
+                        )}
+                      </strong>
+                    </p>
+                  `
+                  : ""
+              }
 
               <p>
                 Cajas:
                 <strong>
                   ${integerOrZero(
-                    resultData.movement.cajas
-                  )}
+            resultData.movement.cajas
+          )}
+                </strong>
+              </p>
+
+              <p>
+                Unidades por caja:
+                <strong>
+                  ${integerOrZero(
+            resultData.movement.unidadesPorCaja
+          )}
+                </strong>
+              </p>
+
+              <p>
+                Entrada pagada:
+                <strong>
+                  ${integerOrZero(
+            resultData.movement.entradaPagada
+          )}
+                  unidades
                 </strong>
               </p>
 
@@ -9327,17 +10984,8 @@
                 Cajas bono:
                 <strong>
                   ${integerOrZero(
-                    resultData.movement.cajasBono
-                  )}
-                </strong>
-              </p>
-
-              <p>
-                Unidades:
-                <strong>
-                  ${integerOrZero(
-                    resultData.movement.unidades
-                  )}
+            resultData.movement.cajasBono
+          )}
                 </strong>
               </p>
 
@@ -9345,8 +10993,8 @@
                 Unidades bono:
                 <strong>
                   ${integerOrZero(
-                    resultData.movement.unidadesBono
-                  )}
+            resultData.movement.unidadesBono
+          )}
                 </strong>
               </p>
 
@@ -9354,8 +11002,8 @@
                 Entrada total:
                 <strong>
                   ${integerOrZero(
-                    resultData.movement.entrada
-                  )}
+            resultData.movement.entrada
+          )}
                   unidades
                 </strong>
               </p>
@@ -9364,8 +11012,8 @@
                 Costo por caja:
                 <strong>
                   ${currency(
-                    resultData.movement.costoPorCaja
-                  )}
+            resultData.movement.costoPorCaja
+          )}
                 </strong>
               </p>
 
@@ -9373,8 +11021,8 @@
                 Costo por unidad:
                 <strong>
                   ${currency(
-                    resultData.movement.costoUnitario
-                  )}
+            resultData.movement.costoUnitario
+          )}
                 </strong>
               </p>
 
@@ -9382,8 +11030,8 @@
                 Precio de venta:
                 <strong>
                   ${currency(
-                    resultData.movement.precioVenta
-                  )}
+            resultData.movement.precioVenta
+          )}
                 </strong>
               </p>
 
@@ -9391,8 +11039,8 @@
                 Costo total de la entrada:
                 <strong>
                   ${currency(
-                    resultData.movement.costoTotal
-                  )}
+            resultData.movement.costoTotal
+          )}
                 </strong>
               </p>
 
@@ -9400,8 +11048,8 @@
                 Nuevo stock:
                 <strong>
                   ${numberOrZero(
-                    resultData.product.stockCurrentUnits
-                  )}
+            resultData.product.stockCurrentUnits
+          )}
                   unidades
                 </strong>
               </p>
@@ -9418,16 +11066,7 @@
                       </strong>
                     </p>
                   `
-                  : `
-                    <p
-                      style="
-                        color:#92400e;
-                      "
-                    >
-                      Esta entrada no estaba vinculada
-                      a un gasto.
-                    </p>
-                  `
+                  : ""
               }
             </div>
           `,
@@ -9452,7 +11091,7 @@
       await Swal.fire(
         "Error",
         error.message ||
-          "No se pudo actualizar la entrada.",
+        "No se pudo actualizar la entrada.",
         "error"
       );
     }
@@ -9460,7 +11099,7 @@
 
   /*
    * ============================================================
-   * ADMINISTRADOR DE MOVIMIENTOS
+   * TABLA DE MOVIMIENTOS
    * ============================================================
    */
 
@@ -9471,29 +11110,23 @@
     const product =
       productId
         ? findProductById(
-            productId
-          )
+          productId
+        )
         : null;
 
     const defaultDateTo =
-      getLocalDateInputValue();
+      "";
 
     const defaultDateFrom =
-      getLocalDateInputValue(
-        new Date(
-          new Date().getFullYear(),
-          new Date().getMonth(),
-          1
-        )
-      );
+      "";
 
     return `
       <div
         class="movement-manager"
         id="movement-manager"
         data-product-id="${escapeHtml(
-          productId || ""
-        )}"
+      productId || ""
+    )}"
       >
 
         <div
@@ -9501,21 +11134,19 @@
         >
           <div>
             <strong>
-              ${
-                product
-                  ? `Entradas de ${escapeHtml(
-                      product.name
-                    )}`
-                  : "Entradas de inventario"
-              }
+              ${product
+        ? `Entradas de ${escapeHtml(
+          product.name
+        )}`
+        : "Entradas de inventario"
+      }
             </strong>
 
             <small>
-              ${
-                product
-                  ? "Historial de entradas de este producto."
-                  : "Historial general del local."
-              }
+              ${product
+        ? "Historial completo de entradas de este producto."
+        : "Historial completo de entradas del local."
+      }
             </small>
           </div>
 
@@ -9527,6 +11158,43 @@
             entradas
           </div>
         </div>
+
+        ${product
+        ? `
+              <div
+                class="movement-current-stock-summary"
+              >
+                <span>
+                  Stock actual:
+                  <strong>
+                    ${getCurrentStockUnits(
+          product
+        )}
+                  </strong>
+                  unidades
+                </span>
+
+                <span>
+                  Unidades/caja:
+                  <strong>
+                    ${getUnitsPerBox(
+          product
+        )}
+                  </strong>
+                </span>
+
+                <span>
+                  Cajas actuales:
+                  <strong>
+                    ${getStockBoxes(
+          product
+        )}
+                  </strong>
+                </span>
+              </div>
+            `
+        : ""
+      }
 
         <div
           class="movement-filters"
@@ -9556,41 +11224,28 @@
             >
           </div>
 
-          ${
-            product
-              ? ""
-              : `
+          ${product
+        ? ""
+        : `
                 <div class="inv-field">
                   <label>
-                    Producto
+                    Producto / Proveedor
                   </label>
 
                   <input
                     id="movement-filter-product"
                     type="text"
                     list="movement-filter-product-list"
-                    placeholder="Buscar producto..."
+                    placeholder="Nombre, código, proveedor o razón social..."
                     autocomplete="off"
                   >
 
                   <datalist id="movement-filter-product-list">
-                    ${currentProductsList
-                      .map(
-                        item =>
-                          `
-                          <option
-                            value="${escapeHtml(
-                              item.name ||
-                                ""
-                            )}"
-                          ></option>
-                        `
-                      )
-                      .join("")}
+                    ${getProductFilterOptionsHtml()}
                   </datalist>
                 </div>
               `
-          }
+      }
 
           <div
             class="movement-filter-actions"
@@ -9620,8 +11275,8 @@
           class="movement-table-wrapper"
         >
           ${renderMovementTableHtml(
-            movements
-          )}
+        movements
+      )}
         </div>
 
       </div>
@@ -9631,7 +11286,9 @@
   function renderMovementTableHtml(
     movements
   ) {
-    if (!movements.length) {
+    if (
+      !movements.length
+    ) {
       return `
         <div
           class="movement-empty"
@@ -9665,6 +11322,10 @@
 
               <th>
                 Producto
+              </th>
+
+              <th>
+                Proveedor
               </th>
 
               <th>
@@ -9707,34 +11368,55 @@
 
           <tbody>
             ${movements
-              .map(
-                movement => `
+        .map(
+          movement => `
                   <tr>
                     <td>
                       ${escapeHtml(
-                        getMovementOperationDateValue(
-                          movement
-                        ) ||
-                          "—"
-                      )}
+            getMovementOperationDateValue(
+              movement
+            ) ||
+            "—"
+          )}
                     </td>
 
                     <td>
                       <strong>
                         ${escapeHtml(
-                          movement.productCurrentName ||
-                            movement.productName ||
-                            "Producto"
-                        )}
+            movement.productCurrentName ||
+            movement.productName ||
+            "Producto"
+          )}
+                      </strong>
+
+                      ${movement.codigoProducto
+              ? `
+                            <small>
+                              Código:
+                              ${escapeHtml(
+                movement.codigoProducto
+              )}
+                            </small>
+                          `
+              : ""
+            }
+                    </td>
+
+                    <td>
+                      <strong>
+                        ${escapeHtml(
+              movement.proveedorNombre ||
+              "Sin proveedor"
+            )}
                       </strong>
 
                       ${
-                        movement.codigoProducto
+                        movement.proveedorRazonSocial
                           ? `
                             <small>
                               ${escapeHtml(
-                                movement.codigoProducto
-                              )}
+                            movement.proveedorRazonSocial
+                          )}
                             </small>
                           `
                           : ""
@@ -9744,107 +11426,118 @@
                     <td>
                       <strong>
                         ${integerOrZero(
-                          movement.cajas
-                        )}
+              movement.cajas
+            )}
                       </strong>
-                      cajas
+                      ${integerOrZero(
+              movement.cajas
+            ) === 1
+              ? "caja"
+              : "cajas"
+            }
 
-                      <br>
+                      ×
 
                       <strong>
                         ${integerOrZero(
-                          movement.unidades
-                        )}
+              movement.unidadesPorCaja
+            )}
                       </strong>
-                      unidades
 
-                      ${
-                        integerOrZero(
-                          movement.cajasBono
-                        ) > 0
-                          ? `
-                            <br>
+                      <small>
+                        ${integerOrZero(
+              movement.unidades
+            )}
+                        unidades sueltas
+                      </small>
+
+                      ${integerOrZero(
+              movement.cajasBono
+            ) > 0
+              ? `
                             <small>
-                              + ${integerOrZero(
-                                movement.cajasBono
-                              )}
+                              +
+                              ${integerOrZero(
+                movement.cajasBono
+              )}
                               cajas bono
                             </small>
                           `
-                          : ""
-                      }
+              : ""
+            }
 
-                      ${
-                        integerOrZero(
-                          movement.unidadesBono
-                        ) > 0
-                          ? `
-                            <br>
+                      ${integerOrZero(
+              movement.unidadesBono
+            ) > 0
+              ? `
                             <small>
-                              + ${integerOrZero(
-                                movement.unidadesBono
-                              )}
+                              +
+                              ${integerOrZero(
+                movement.unidadesBono
+              )}
                               unidades bono
                             </small>
                           `
-                          : ""
-                      }
+              : ""
+            }
 
                       <br>
 
                       <small>
                         Total:
-                        ${integerOrZero(
-                          movement.entrada
-                        )}
+                        <strong>
+                          ${integerOrZero(
+              movement.entrada
+            )}
+                        </strong>
                         unidades
                       </small>
                     </td>
 
                     <td>
                       ${currency(
-                        movement.costoUnitario
-                      )}
+              movement.costoUnitario
+            )}
                     </td>
 
                     <td>
                       ${currency(
-                        movement.costoPorCaja
-                      )}
+              movement.costoPorCaja
+            )}
                     </td>
 
                     <td>
                       <strong>
                         ${currency(
-                          movement.costoTotal
-                        )}
+              movement.costoTotal
+            )}
                       </strong>
                     </td>
 
                     <td>
                       ${currency(
-                        movement.precioVenta
-                      )}
+              movement.precioVenta
+            )}
                     </td>
 
                     <td>
                       ${escapeHtml(
-                        movement.referenciaLibro ||
-                          "—"
-                      )}
+              movement.referenciaLibro ||
+              "—"
+            )}
                     </td>
 
                     <td>
                       ${escapeHtml(
-                        movement.numeroDocumento ||
-                          "—"
-                      )}
+              movement.numeroDocumento ||
+              "—"
+            )}
                     </td>
 
                     <td>
                       ${integerOrZero(
-                        movement.saldoActual
-                      )}
+              movement.saldoActual
+            )}
                     </td>
 
                     <td>
@@ -9852,8 +11545,8 @@
                         type="button"
                         class="btn-outline movement-edit-button"
                         data-movement-id="${escapeHtml(
-                          movement.id
-                        )}"
+              movement.id
+            )}"
                       >
                         <i class="fas fa-edit"></i>
                         Editar
@@ -9861,8 +11554,8 @@
                     </td>
                   </tr>
                 `
-              )
-              .join("")}
+        )
+        .join("")}
           </tbody>
         </table>
       </div>
@@ -9890,9 +11583,9 @@
           String(
             movement.productId
           ).trim() !==
-            String(
-              productId
-            ).trim()
+          String(
+            productId
+          ).trim()
         ) {
           return false;
         }
@@ -9904,18 +11597,22 @@
 
         if (
           dateFrom &&
-          date &&
-          date <
+          (
+            !date ||
+            date <
             dateFrom
+          )
         ) {
           return false;
         }
 
         if (
           dateTo &&
-          date &&
-          date >
+          (
+            !date ||
+            date >
             dateTo
+          )
         ) {
           return false;
         }
@@ -9926,7 +11623,7 @@
           const productName =
             normalizeText(
               movement.productCurrentName ||
-                movement.productName
+              movement.productName
             );
 
           const code =
@@ -9934,13 +11631,59 @@
               movement.codigoProducto
             );
 
+          /*
+           * IMPORTANTE:
+           *
+           * La búsqueda del historial usa el proveedor DEL
+           * MOVIMIENTO, no únicamente el proveedor actual
+           * del producto.
+           */
+          const movementProviderName =
+            normalizeText(
+              movement.proveedorNombre
+            );
+
+          const movementProviderReason =
+            normalizeText(
+              movement.proveedorRazonSocial
+            );
+
+          /*
+           * Como fallback también se revisa el proveedor actual
+           * del producto.
+           */
+          const productProviderName =
+            normalizeText(
+              movement.productCurrentProvider
+            );
+
+          const productProviderReason =
+            normalizeText(
+              movement.productCurrentProviderReason
+            );
+
+          const matches =
+            productName.includes(
+              normalizedProductText
+            ) ||
+            code.includes(
+              normalizedProductText
+            ) ||
+            movementProviderName.includes(
+              normalizedProductText
+            ) ||
+            movementProviderReason.includes(
+              normalizedProductText
+            ) ||
+            productProviderName.includes(
+              normalizedProductText
+            ) ||
+            productProviderReason.includes(
+              normalizedProductText
+            );
+
           if (
-            !productName.includes(
-              normalizedProductText
-            ) &&
-            !code.includes(
-              normalizedProductText
-            )
+            !matches
           ) {
             return false;
           }
@@ -9969,8 +11712,8 @@
     let movements =
       productId
         ? await loadProductStockMovements(
-            productId
-          )
+          productId
+        )
         : await loadAllEntryMovements();
 
     movements =
@@ -9993,16 +11736,10 @@
         ),
 
       width:
-        "1280px",
+        "1380px",
 
       showCancelButton:
-        true,
-
-      confirmButtonText:
-        "Cerrar",
-
-      cancelButtonText:
-        "Cerrar",
+        false,
 
       showConfirmButton:
         false,
@@ -10015,148 +11752,212 @@
           "inventory-movement-manager-modal"
       },
 
-      didOpen: () => {
-        const applyButton =
-          document.getElementById(
-            "movement-filter-apply"
-          );
+      didOpen:
+        () => {
+          const applyButton =
+            document.getElementById(
+              "movement-filter-apply"
+            );
 
-        const clearButton =
-          document.getElementById(
-            "movement-filter-clear"
-          );
+          const clearButton =
+            document.getElementById(
+              "movement-filter-clear"
+            );
 
-        const renderFiltered =
-          () => {
-            const dateFrom =
-              String(
-                document.getElementById(
-                  "movement-filter-from"
-                )?.value ||
+          const renderFiltered =
+            () => {
+              const dateFrom =
+                String(
+                  document.getElementById(
+                    "movement-filter-from"
+                  )?.value ||
                   ""
-              ).trim();
+                ).trim();
 
-            const dateTo =
-              String(
-                document.getElementById(
-                  "movement-filter-to"
-                )?.value ||
+              const dateTo =
+                String(
+                  document.getElementById(
+                    "movement-filter-to"
+                  )?.value ||
                   ""
-              ).trim();
+                ).trim();
 
-            const productText =
-              String(
-                document.getElementById(
-                  "movement-filter-product"
-                )?.value ||
+              const productText =
+                String(
+                  document.getElementById(
+                    "movement-filter-product"
+                  )?.value ||
                   ""
-              ).trim();
+                ).trim();
 
-            if (
-              dateFrom &&
-              dateTo &&
-              dateFrom >
+              if (
+                dateFrom &&
+                dateTo &&
+                dateFrom >
                 dateTo
-            ) {
-              Swal.fire(
-                "Filtro inválido",
-                "La fecha inicial no puede ser posterior a la fecha final.",
-                "warning"
-              );
+              ) {
+                Swal.fire(
+                  "Filtro inválido",
+                  "La fecha inicial no puede ser posterior a la fecha final.",
+                  "warning"
+                );
 
-              return;
-            }
+                return;
+              }
 
-            const filtered =
-              filterMovements(
-                movements,
-                {
-                  productId,
-                  dateFrom,
-                  dateTo,
-                  productText
-                }
-              );
+              const filtered =
+                filterMovements(
+                  movements,
+                  {
+                    productId,
+                    dateFrom,
+                    dateTo,
+                    productText
+                  }
+                );
 
-            const summary =
-              document.getElementById(
-                "movement-summary"
-              );
+              const summary =
+                document.getElementById(
+                  "movement-summary"
+                );
 
-            const wrapper =
-              document.getElementById(
-                "movement-table-wrapper"
-              );
+              const wrapper =
+                document.getElementById(
+                  "movement-table-wrapper"
+                );
 
-            if (summary) {
-              summary.textContent =
-                `${filtered.length} entrada${
-                  filtered.length ===
-                  1
+              if (
+                summary
+              ) {
+                summary.textContent =
+                  `${filtered.length} entrada${filtered.length ===
+                    1
                     ? ""
                     : "s"
-                }`;
-            }
+                  }`;
+              }
 
-            if (wrapper) {
-              wrapper.innerHTML =
-                renderMovementTableHtml(
-                  filtered
+              if (
+                wrapper
+              ) {
+                wrapper.innerHTML =
+                  renderMovementTableHtml(
+                    filtered
+                  );
+              }
+
+              bindMovementEditButtons();
+            };
+
+          if (
+            applyButton
+          ) {
+            applyButton.addEventListener(
+              "click",
+              renderFiltered
+            );
+          }
+
+          if (
+            clearButton
+          ) {
+            clearButton.addEventListener(
+              "click",
+              () => {
+                const from =
+                  document.getElementById(
+                    "movement-filter-from"
+                  );
+
+                const to =
+                  document.getElementById(
+                    "movement-filter-to"
+                  );
+
+                const product =
+                  document.getElementById(
+                    "movement-filter-product"
+                  );
+
+                if (
+                  from
+                ) {
+                  from.value =
+                    "";
+                }
+
+                if (
+                  to
+                ) {
+                  to.value =
+                    "";
+                }
+
+                if (
+                  product
+                ) {
+                  product.value =
+                    "";
+                }
+
+                renderFiltered();
+              }
+            );
+          }
+
+          const productFilter =
+            document.getElementById(
+              "movement-filter-product"
+            );
+
+          if (
+            productFilter
+          ) {
+            [
+              "input",
+              "change"
+            ].forEach(
+              eventName => {
+                productFilter.addEventListener(
+                  eventName,
+                  () => {
+                    renderFiltered();
+                  }
                 );
-            }
+              }
+            );
+          }
 
-            bindMovementEditButtons();
-          };
+          const dateFrom =
+            document.getElementById(
+              "movement-filter-from"
+            );
 
-        if (
-          applyButton
-        ) {
-          applyButton.addEventListener(
-            "click",
-            renderFiltered
-          );
+          const dateTo =
+            document.getElementById(
+              "movement-filter-to"
+            );
+
+          [
+            dateFrom,
+            dateTo
+          ]
+            .filter(
+              Boolean
+            )
+            .forEach(
+              element => {
+                element.addEventListener(
+                  "change",
+                  () => {
+                    renderFiltered();
+                  }
+                );
+              }
+            );
+
+          bindMovementEditButtons();
         }
-
-        if (
-          clearButton
-        ) {
-          clearButton.addEventListener(
-            "click",
-            () => {
-              const from =
-                document.getElementById(
-                  "movement-filter-from"
-                );
-
-              const to =
-                document.getElementById(
-                  "movement-filter-to"
-                );
-
-              const product =
-                document.getElementById(
-                  "movement-filter-product"
-                );
-
-              if (from) {
-                from.value = "";
-              }
-
-              if (to) {
-                to.value = "";
-              }
-
-              if (product) {
-                product.value = "";
-              }
-
-              renderFiltered();
-            }
-          );
-        }
-
-        bindMovementEditButtons();
-      }
     });
   }
 
@@ -10184,10 +11985,12 @@
                 String(
                   button.dataset
                     .movementId ||
-                    ""
+                  ""
                 ).trim();
 
-              if (!movementId) {
+              if (
+                !movementId
+              ) {
                 return;
               }
 
@@ -10196,7 +11999,9 @@
                   movementId
                 );
 
-              if (!movement) {
+              if (
+                !movement
+              ) {
                 await Swal.fire(
                   "Movimiento no encontrado",
                   "El movimiento ya no está disponible en la caché de sesión.",
@@ -10221,10 +12026,12 @@
     const target =
       String(
         movementId ||
-          ""
+        ""
       ).trim();
 
-    if (!target) {
+    if (
+      !target
+    ) {
       return null;
     }
 
@@ -10251,12 +12058,32 @@
           cached.data
         );
 
-      movement.productCurrentName =
+      const product =
         findProductById(
           movement.productId
-        )?.name ||
+        );
+
+      movement.productCurrentName =
+        product?.name ||
         movement.productName ||
         "Producto";
+
+      movement.productCurrentProvider =
+        getProductProviderName(
+          product
+        );
+
+      movement.productCurrentProviderReason =
+        getProductProviderReason(
+          product
+        );
+
+      movement.productCurrentStock =
+        product
+          ? getCurrentStockUnits(
+            product
+          )
+          : movement.saldoActual;
 
       return movement;
     }
@@ -10285,9 +12112,9 @@
     if (
       !(
         currentRole ===
-          "administrador" ||
+        "administrador" ||
         currentRole ===
-          "admin"
+        "admin"
       )
     ) {
       await Swal.fire(
@@ -10395,26 +12222,27 @@
 
   /*
    * ============================================================
-   * BOTÓN GENERAL DE MOVIMIENTOS
+   * BOTÓN GENERAL
    * ============================================================
    */
 
   function ensureGlobalMovementsButton() {
-    if (
+    const existing =
       document.getElementById(
         "btnMovements"
-      )
-    ) {
-      return document.getElementById(
-        "btnMovements"
       );
-    }
-
-    if (!btnAdd) {
-      return null;
-    }
 
     if (
+      existing
+    ) {
+      return existing;
+    }
+
+    const btnAdd =
+      getInventoryAddButton();
+
+    if (
+      !btnAdd ||
       !canEditInventory
     ) {
       return null;
@@ -10460,22 +12288,124 @@
 
   /*
    * ============================================================
-   * BÚSQUEDA
+   * BÚSQUEDA PRINCIPAL
    * ============================================================
    */
 
   function applySearch() {
-    if (!inventoryDT) {
+    const searchInput =
+      getInventorySearchInput();
+
+    const value =
+      searchInput
+        ? searchInput.value.trim()
+        : "";
+
+    if (
+      inventoryDT
+    ) {
+      inventoryDT
+        .search(
+          value
+        )
+        .draw();
+
       return;
     }
 
-    inventoryDT
-      .search(
-        searchInput
-          ? searchInput.value.trim()
-          : ""
+    const normalized =
+      normalizeText(
+        value
+      );
+
+    const filtered =
+      !normalized
+        ? currentProductsList
+        : currentProductsList.filter(
+          product =>
+            normalizeText(
+              product.name
+            ).includes(
+              normalized
+            ) ||
+            normalizeText(
+              getProductCode(
+                product
+              )
+            ).includes(
+              normalized
+            ) ||
+            normalizeText(
+              getProductProviderName(
+                product
+              )
+            ).includes(
+              normalized
+            ) ||
+            normalizeText(
+              getProductProviderReason(
+                product
+              )
+            ).includes(
+              normalized
+            )
+        );
+
+    renderInventoryFallback(
+      filtered.map(
+        buildRowData
       )
-      .draw();
+    );
+  }
+
+  /*
+   * ============================================================
+   * EVENTOS
+   * ============================================================
+   */
+
+  function bindInventoryPageEvents() {
+    const searchInput =
+      getInventorySearchInput();
+
+    const btnAdd =
+      getInventoryAddButton();
+
+    if (
+      searchInput &&
+      searchInput.dataset.inventorySearchBound !==
+      "1"
+    ) {
+      searchInput.dataset.inventorySearchBound =
+        "1";
+
+      [
+        "input",
+        "keyup",
+        "change"
+      ].forEach(
+        eventName => {
+          searchInput.addEventListener(
+            eventName,
+            applySearch
+          );
+        }
+      );
+    }
+
+    if (
+      btnAdd &&
+      btnAdd.dataset.inventoryAddBound !==
+      "1"
+    ) {
+      btnAdd.dataset.inventoryAddBound =
+        "1";
+
+      btnAdd.addEventListener(
+        "click",
+        openBatchAddModal
+      );
+    }
   }
 
   /*
@@ -10521,16 +12451,6 @@
         border-radius:12px;
         background:#eff6ff;
         text-align:left;
-      }
-
-      .batch-operation-date-box .inv-field {
-        max-width:100%;
-      }
-
-      .batch-operation-date-box input[type="date"] {
-        width:100%;
-        min-height:40px;
-        box-sizing:border-box;
       }
 
       .batch-operation-date-preview {
@@ -10625,10 +12545,6 @@
         grid-column:span 2;
       }
 
-      .batch-product-combobox {
-        width:100%;
-      }
-
       .batch-product-status {
         min-height:18px;
       }
@@ -10696,12 +12612,6 @@
         margin:5px 0;
       }
 
-      /*
-       * ========================================================
-       * MOVIMIENTOS
-       * ========================================================
-       */
-
       .movement-manager {
         text-align:left;
       }
@@ -10739,6 +12649,23 @@
         white-space:nowrap;
       }
 
+      .movement-current-stock-summary {
+        display:flex;
+        flex-wrap:wrap;
+        gap:14px;
+        margin-bottom:12px;
+        padding:11px 12px;
+        border-radius:10px;
+        background:#ecfdf5;
+        border:1px solid #bbf7d0;
+        color:#166534;
+        font-size:.8rem;
+      }
+
+      .movement-current-stock-summary strong {
+        color:#065f46;
+      }
+
       .movement-filters {
         display:grid;
         grid-template-columns:
@@ -10755,7 +12682,6 @@
         display:flex;
         align-items:end;
         gap:8px;
-        padding-bottom:0;
       }
 
       .movement-filter-actions button {
@@ -10822,12 +12748,6 @@
         font-size:2rem;
         color:#94a3b8;
       }
-
-      /*
-       * ========================================================
-       * EDICIÓN DE MOVIMIENTO
-       * ========================================================
-       */
 
       .movement-edit-form {
         text-align:left;
@@ -10918,6 +12838,12 @@
         background:#ecfdf5;
         border:1px solid #bbf7d0;
         color:#166534;
+      }
+
+      #movement-edit-provider {
+        width:100%;
+        min-height:40px;
+        box-sizing:border-box;
       }
 
       @media (max-width:1100px) {
@@ -11021,6 +12947,8 @@
     if (
       inventoryInitialized
     ) {
+      bindInventoryPageEvents();
+
       return;
     }
 
@@ -11030,11 +12958,15 @@
     try {
       injectInventoryStyles();
 
+      bindInventoryPageEvents();
+
       await resolveInventoryContext(
         user
       );
 
-      if (!currentLocalId) {
+      if (
+        !currentLocalId
+      ) {
         throw new Error(
           "El usuario no tiene un local asignado."
         );
@@ -11046,7 +12978,7 @@
       ) {
         window.renderNavigationForRole(
           currentUserInventoryContext.role ||
-            ""
+          ""
         );
       }
 
@@ -11054,9 +12986,13 @@
 
       ensureGlobalMovementsButton();
 
+      bindInventoryPageEvents();
+
       await loadInventoryProviders();
 
       await loadInventoryData();
+
+      applySearch();
     } catch (
       error
     ) {
@@ -11068,79 +13004,143 @@
         error
       );
 
-      await Swal.fire({
-        icon:
-          "error",
+      if (
+        typeof Swal !==
+        "undefined"
+      ) {
+        await Swal.fire({
+          icon:
+            "error",
 
-        title:
-          "Error de inventario",
+          title:
+            "Error de inventario",
 
-        text:
-          error.message ||
-          "No se pudo cargar el inventario."
-      });
+          text:
+            error.message ||
+            "No se pudo cargar el inventario."
+        });
+      }
     }
   }
 
   /*
    * ============================================================
-   * EVENTOS
+   * DOM READY
    * ============================================================
    */
 
-  document.addEventListener(
-    "DOMContentLoaded",
-    () => {
-      injectInventoryStyles();
+  function initializePageEventsWhenPossible() {
+    injectInventoryStyles();
 
-      if (btnAdd) {
-        btnAdd.addEventListener(
-          "click",
-          openBatchAddModal
-        );
-      }
+    bindInventoryPageEvents();
+  }
 
-      if (searchInput) {
-        searchInput.addEventListener(
-          "input",
-          applySearch
-        );
+  if (
+    document.readyState ===
+    "loading"
+  ) {
+    document.addEventListener(
+      "DOMContentLoaded",
+      initializePageEventsWhenPossible,
+      {
+        once:
+          true
       }
-    }
-  );
+    );
+  } else {
+    initializePageEventsWhenPossible();
+  }
 
   /*
    * ============================================================
-   * AUTH
+   * CONTROLADOR MVC
    * ============================================================
    */
 
-  auth.onAuthStateChanged(
-    user => {
-      const currentPage =
-        window.location.pathname
-          .split("/")
-          .pop()
-          .toLowerCase();
+  const inventoryModel =
+    window.InventoryMVC
+      ?.models
+      ?.inventory ||
+    {};
 
-      if (!user) {
+  const inventoryController = {
+    name:
+      "inventory",
+
+    page:
+      inventoryModel.page ||
+      "inventory.html",
+
+    roles:
+      inventoryModel.roles ||
+      [],
+
+    init:
+      initializeInventory
+  };
+
+  window.InventoryMVC.controllers.inventory =
+    inventoryController;
+
+  if (
+    window.AppRouter &&
+    typeof window.AppRouter.registerSecurePageController ===
+    "function"
+  ) {
+    window.AppRouter.registerSecurePageController(
+      inventoryController
+    );
+  } else {
+    const initializeFallback =
+      user => {
+        const currentPage =
+          window.location.pathname
+            .split("/")
+            .pop()
+            .toLowerCase();
+
         if (
-          currentPage !==
-            "index.html" &&
-          currentPage !==
-            "login.html"
+          !user
         ) {
-          window.location.href =
-            "index.html";
+          if (
+            currentPage !==
+            "index.html" &&
+            currentPage !==
+            "login.html"
+          ) {
+            window.location.href =
+              "index.html";
+          }
+
+          return;
         }
 
-        return;
-      }
+        initializeInventory(
+          user
+        );
+      };
 
-      initializeInventory(
-        user
+    if (
+      document.readyState ===
+      "loading"
+    ) {
+      document.addEventListener(
+        "DOMContentLoaded",
+        () => {
+          auth.onAuthStateChanged(
+            initializeFallback
+          );
+        },
+        {
+          once:
+            true
+        }
+      );
+    } else {
+      auth.onAuthStateChanged(
+        initializeFallback
       );
     }
-  );
+  }
 
 })();

@@ -8,26 +8,16 @@
 
     <link rel="stylesheet" href="assets/css/styles.css">
 
-    <link
-        rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
-    />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
 
-    <link
-        href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
-        rel="stylesheet"
-    />
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet" />
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 </head>
 
 <body>
 
-    <nav
-        class="navbar"
-        role="navigation"
-        aria-label="Barra de navegación"
-    >
+    <nav class="navbar" role="navigation" aria-label="Barra de navegación">
         <div class="navbar-logo">
             <a href="#">MiEmpresa</a>
         </div>
@@ -78,100 +68,56 @@
                     Hola, Usuario
                 </span>
 
-                <button
-                    id="logoutButton"
-                    class="btn-outline"
-                    type="button"
-                >
+                <button id="logoutButton" class="btn-outline" type="button">
                     Cerrar sesión
                 </button>
             </div>
         </div>
 
-        <button
-            class="menu-toggle"
-            id="menuToggle"
-            type="button"
-            aria-controls="fullscreenMenu"
-            aria-expanded="false"
-            aria-label="Abrir menú"
-        >
-            <i
-                class="fas fa-bars"
-                aria-hidden="true"
-            ></i>
+        <button class="menu-toggle" id="menuToggle" type="button" aria-controls="fullscreenMenu" aria-expanded="false"
+            aria-label="Abrir menú">
+            <i class="fas fa-bars" aria-hidden="true"></i>
         </button>
     </nav>
 
-    <div
-        class="fullscreen-menu"
-        id="fullscreenMenu"
-        aria-hidden="true"
-    >
-        <div
-            class="close-menu"
-            id="closeMenu"
-            role="button"
-            aria-label="Cerrar menú"
-            tabindex="0"
-        >
+    <div class="fullscreen-menu" id="fullscreenMenu" aria-hidden="true">
+        <div class="close-menu" id="closeMenu" role="button" aria-label="Cerrar menú" tabindex="0">
             <i class="fas fa-times"></i>
         </div>
 
-        <ul
-            class="menu-links"
-            role="menu"
-        >
+        <ul class="menu-links" role="menu">
             <li role="none">
-                <a
-                    role="menuitem"
-                    href="dashboard.html"
-                >
+                <a role="menuitem" href="dashboard.html">
                     Inicio
                 </a>
             </li>
 
             <li role="none">
-                <a
-                    role="menuitem"
-                    href="inventory.html"
-                >
+                <a role="menuitem" href="inventory.html">
                     Inventario
                 </a>
             </li>
 
             <li role="none">
-                <a
-                    role="menuitem"
-                    href="sales.html"
-                >
+                <a role="menuitem" href="sales.html">
                     Ventas
                 </a>
             </li>
 
             <li role="none">
-                <a
-                    role="menuitem"
-                    href="gastos.html"
-                >
+                <a role="menuitem" href="gastos.html">
                     Gastos
                 </a>
             </li>
 
             <li role="none">
-                <a
-                    role="menuitem"
-                    href="attendance.html"
-                >
+                <a role="menuitem" href="attendance.html">
                     Asistencia
                 </a>
             </li>
 
             <li role="none">
-                <a
-                    role="menuitem"
-                    href="employees.html"
-                >
+                <a role="menuitem" href="employees.html">
                     Empleados
                 </a>
             </li>
@@ -182,11 +128,7 @@
                 Hola, Usuario
             </span>
 
-            <button
-                id="logoutButtonMobile"
-                class="btn-outline"
-                type="button"
-            >
+            <button id="logoutButtonMobile" class="btn-outline" type="button">
                 Cerrar sesión
             </button>
         </div>
@@ -198,24 +140,19 @@
             Control de Gastos
         </h1>
 
-        <section
-            class="top-summary"
-            style="
+        <section class="top-summary" style="
                 display:flex;
                 gap:12px;
                 flex-wrap:wrap;
                 margin-bottom:18px;
-            "
-        >
-            <div
-                style="
+            ">
+            <div style="
                     flex:1;
                     min-width:220px;
                     padding:14px;
                     border:1px solid #ddd;
                     border-radius:10px;
-                "
-            >
+                ">
                 <strong>
                     Ventas de la fecha
                 </strong>
@@ -225,15 +162,13 @@
                 </div>
             </div>
 
-            <div
-                style="
+            <div style="
                     flex:1;
                     min-width:220px;
                     padding:14px;
                     border:1px solid #ddd;
                     border-radius:10px;
-                "
-            >
+                ">
                 <strong>
                     Gastos de la fecha
                 </strong>
@@ -243,15 +178,13 @@
                 </div>
             </div>
 
-            <div
-                style="
+            <div style="
                     flex:1;
                     min-width:220px;
                     padding:14px;
                     border:1px solid #ddd;
                     border-radius:10px;
-                "
-            >
+                ">
                 <strong>
                     Ganancia neta
                 </strong>
@@ -262,41 +195,29 @@
             </div>
         </section>
 
-        <section
-            class="table-container"
-            style="margin-bottom:18px;"
-        >
+        <section class="table-container" style="margin-bottom:18px;">
             <h2>
                 Registrar gasto
             </h2>
 
-            <div
-                class="top-controls"
-                style="
+            <div class="top-controls" style="
                     display:flex;
                     gap:12px;
                     align-items:flex-end;
                     margin-bottom:12px;
                     flex-wrap:wrap;
-                "
-            >
+                ">
 
-                <div
-                    style="
+                <div style="
                         flex:1;
                         min-width:240px;
-                    "
-                >
+                    ">
                     <label for="expenseConcept">
                         Concepto
                     </label>
 
-                    <input
-                        type="text"
-                        id="expenseConcept"
-                        placeholder="Ej: Transporte, almuerzo, mantenimiento"
-                        autocomplete="off"
-                    >
+                    <input type="text" id="expenseConcept" placeholder="Ej: Transporte, almuerzo, mantenimiento"
+                        autocomplete="off">
                 </div>
 
                 <div style="width:180px;">
@@ -304,10 +225,7 @@
                         Categoría
                     </label>
 
-                    <select
-                        id="expenseCategory"
-                        style="width:100%"
-                    >
+                    <select id="expenseCategory" style="width:100%">
                         <option value="Transporte">
                             Transporte
                         </option>
@@ -347,14 +265,7 @@
                         Monto
                     </label>
 
-                    <input
-                        type="number"
-                        id="expenseAmount"
-                        min="0"
-                        step="0.01"
-                        value="0"
-                        inputmode="decimal"
-                    >
+                    <input type="number" id="expenseAmount" min="0" step="0.01" value="0" inputmode="decimal">
                 </div>
 
                 <div style="width:180px;">
@@ -362,10 +273,7 @@
                         Método
                     </label>
 
-                    <select
-                        id="expensePayment"
-                        style="width:100%"
-                    >
+                    <select id="expensePayment" style="width:100%">
                         <option value="Efectivo">
                             Efectivo
                         </option>
@@ -389,132 +297,83 @@
                         Fecha del gasto
                     </label>
 
-                    <input
-                        type="date"
-                        id="expenseDate"
-                        style="width:100%;"
-                    >
+                    <input type="date" id="expenseDate" style="width:100%;">
                 </div>
 
-                <div
-                    style="
+                <div style="
                         flex:1;
                         min-width:240px;
-                    "
-                >
+                    ">
                     <label for="expenseNotes">
                         Observación
                     </label>
 
-                    <input
-                        type="text"
-                        id="expenseNotes"
-                        placeholder="Opcional"
-                        autocomplete="off"
-                    >
+                    <input type="text" id="expenseNotes" placeholder="Opcional" autocomplete="off">
                 </div>
 
-                <div
-                    class="top-actions"
-                    style="
+                <div class="top-actions" style="
                         display:flex;
                         gap:8px;
                         align-items:flex-end;
                         flex-wrap:wrap;
                         width:100%;
-                    "
-                >
-                    <button
-                        id="btnAddExpense"
-                        class="btn-primary"
-                        type="button"
-                    >
+                    ">
+                    <button id="btnAddExpense" class="btn-primary" type="button">
                         <i class="fas fa-plus"></i>
                         Agregar gasto
                     </button>
 
-                    <button
-                        id="btnClearExpenseForm"
-                        class="btn-outline"
-                        type="button"
-                    >
+                    <button id="btnClearExpenseForm" class="btn-outline" type="button">
                         Limpiar
                     </button>
                 </div>
             </div>
         </section>
 
-        <section
-            class="table-container"
-            style="margin-bottom:18px;"
-        >
+        <section class="table-container" style="margin-bottom:18px;">
 
             <h2>
                 Filtrar gastos por fecha
             </h2>
 
-            <div
-                class="top-controls"
-                style="
+            <div class="top-controls" style="
                     display:flex;
                     gap:12px;
                     align-items:flex-end;
                     flex-wrap:wrap;
-                "
-            >
+                ">
                 <div style="width:220px;">
                     <label for="expenseFilterDate">
                         Fecha
                     </label>
 
-                    <input
-                        type="date"
-                        id="expenseFilterDate"
-                        style="width:100%;"
-                    >
+                    <input type="date" id="expenseFilterDate" style="width:100%;">
                 </div>
 
-                <div
-                    style="
+                <div style="
                         display:flex;
                         gap:8px;
                         flex-wrap:wrap;
-                    "
-                >
-                    <button
-                        id="btnExpenseFilterToday"
-                        class="btn-outline"
-                        type="button"
-                    >
+                    ">
+                    <button id="btnExpenseFilterToday" class="btn-outline" type="button">
                         Hoy
                     </button>
 
-                    <button
-                        id="btnExpenseFilterYesterday"
-                        class="btn-outline"
-                        type="button"
-                    >
+                    <button id="btnExpenseFilterYesterday" class="btn-outline" type="button">
                         Ayer
                     </button>
 
-                    <button
-                        id="btnExpenseFilterReset"
-                        class="btn-outline"
-                        type="button"
-                    >
+                    <button id="btnExpenseFilterReset" class="btn-outline" type="button">
                         Restablecer
                     </button>
                 </div>
             </div>
 
-            <div
-                id="expenseSelectedDateLabel"
-                style="
+            <div id="expenseSelectedDateLabel" style="
                     margin-top:10px;
                     font-size:14px;
                     color:#666;
-                "
-            >
+                ">
                 Mostrando gastos de hoy.
             </div>
 
@@ -526,10 +385,7 @@
                 Gastos registrados
             </h2>
 
-            <table
-                id="expensesTable"
-                class="table"
-            >
+            <table id="expensesTable" class="table">
                 <thead>
                     <tr>
                         <th>
@@ -585,8 +441,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <!-- app.js DEBE cargarse antes de gastos.js -->
-    <script src="assets/js/app.js"></script>
-    <script src="assets/js/gastos.js"></script>
+    <script type="module" src="assets/js/app.js"></script>
 
 </body>
 

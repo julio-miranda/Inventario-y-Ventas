@@ -2449,67 +2449,93 @@
 
   /*
    * ============================================================
-   * AUTH
+   * CONTROLADOR MVC
    * ============================================================
+   *
+   * proveedores.controller.js tambien se carga en inventory.html
+   * para exponer proveedoresAPI. En ese caso no arranca la vista;
+   * loadProviders() resolvera el contexto cuando inventario lo
+   * necesite.
    */
 
-  const initFromAuth =
-    user => {
-      if (!user) {
-        return;
-      }
+  const proveedoresModel =
+    window.InventoryMVC
+      ?.models
+      ?.proveedores || {};
 
-      const currentPage =
-        window.location.pathname
-          .split("/")
-          .pop()
-          .toLowerCase();
+  const proveedoresController = {
+    name:
+      "proveedores",
 
-      /*
-       * proveedores.js también puede cargarse desde
-       * inventory.html para que inventoryAPI/proveedoresAPI
-       * estén disponibles.
-       *
-       * Por ello solo inicializa la tabla visual cuando
-       * realmente estamos en proveedores.html.
-       */
-      if (
-        currentPage ===
-        "proveedores.html"
-      ) {
-        initializeProvidersModule(
-          user
-        );
-      } else if (
-        currentPage ===
-        "inventory.html"
-      ) {
-        /*
-         * En inventario no se necesita construir la tabla
-         * de proveedores. Solo se prepara el contexto para
-         * que proveedoresAPI pueda utilizar app.js.
-         */
-        resolveContext().catch(
-          error => {
-            console.error(
-              "No se pudo preparar el contexto de proveedores para inventario:",
-              error
-            );
-          }
-        );
-      }
-    };
+    page:
+      proveedoresModel.page ||
+      "proveedores.html",
+
+    roles:
+      proveedoresModel.roles ||
+      [],
+
+    init:
+      initializeProvidersModule
+  };
+
+  window.InventoryMVC.controllers.proveedores =
+    proveedoresController;
 
   if (
-    auth.currentUser
+    window.AppRouter &&
+    typeof window.AppRouter.registerSecurePageController ===
+      "function"
   ) {
-    initFromAuth(
-      auth.currentUser
+    window.AppRouter.registerSecurePageController(
+      proveedoresController
     );
   } else {
-    auth.onAuthStateChanged(
-      initFromAuth
-    );
+    const initFromAuth =
+      user => {
+        if (!user) {
+          return;
+        }
+
+        const currentPage =
+          window.location.pathname
+            .split("/")
+            .pop()
+            .toLowerCase();
+
+        if (
+          currentPage ===
+          "proveedores.html"
+        ) {
+          initializeProvidersModule(
+            user
+          );
+        } else if (
+          currentPage ===
+          "inventory.html"
+        ) {
+          resolveContext().catch(
+            error => {
+              console.error(
+                "No se pudo preparar el contexto de proveedores para inventario:",
+                error
+              );
+            }
+          );
+        }
+      };
+
+    if (
+      auth.currentUser
+    ) {
+      initFromAuth(
+        auth.currentUser
+      );
+    } else {
+      auth.onAuthStateChanged(
+        initFromAuth
+      );
+    }
   }
 
   /*

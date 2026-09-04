@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -29,25 +30,14 @@
       </div>
     </div>
 
-    <button
-      class="menu-toggle"
-      id="menuToggle"
-      type="button"
-      aria-controls="fullscreenMenu"
-      aria-expanded="false"
-      aria-label="Abrir menú"
-    >
+    <button class="menu-toggle" id="menuToggle" type="button" aria-controls="fullscreenMenu" aria-expanded="false"
+      aria-label="Abrir menú">
       <i class="fas fa-bars"></i>
     </button>
   </nav>
 
   <div class="fullscreen-menu" id="fullscreenMenu" aria-hidden="true">
-    <button
-      class="close-menu"
-      id="closeMenu"
-      type="button"
-      aria-label="Cerrar menú"
-    >
+    <button class="close-menu" id="closeMenu" type="button" aria-label="Cerrar menú">
       <i class="fas fa-times"></i>
     </button>
 
@@ -119,11 +109,8 @@
 
         <div class="filter-field filter-search">
           <label for="globalSearch">Buscar</label>
-          <input
-            type="text"
-            id="globalSearch"
-            placeholder="Local, contribuyente, documento, NIT, NRC, ubicación, correo..."
-          >
+          <input type="text" id="globalSearch"
+            placeholder="Local, contribuyente, documento, NIT, NRC, ubicación, correo...">
         </div>
 
         <div class="filter-field">
@@ -264,7 +251,11 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-  <script src="assets/js/app.js"></script>
-  <script src="assets/js/locals.js"></script>
+  <!--
+        app.js:
+        autenticación, contexto, permisos, caché y router seguro.
+    -->
+  <script type="module" src="assets/js/app.js"></script>
 </body>
+
 </html>

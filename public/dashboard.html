@@ -2,9 +2,10 @@
 <html lang="es">
 
 <head>
-  <meta charset="UTF-8" />
 
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <title>
     Dashboard - Sistema de Gestión
@@ -16,13 +17,19 @@
 
   <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
 
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
 </head>
 
 <body>
+
+  <!-- =========================================================
+       NAVBAR
+       ========================================================= -->
 
   <nav class="navbar" role="navigation" aria-label="Barra principal">
 
@@ -39,6 +46,8 @@
       <div class="navbar-links">
 
         <ul>
+
+          <!-- app.js reemplazará estos enlaces según el rol -->
 
           <li>
             <a href="dashboard.html" class="active">
@@ -61,12 +70,6 @@
           <li>
             <a href="gastos.html">
               Gastos
-            </a>
-          </li>
-
-          <li>
-            <a href="attendance.html">
-              Asistencia
             </a>
           </li>
 
@@ -103,6 +106,11 @@
 
   </nav>
 
+
+  <!-- =========================================================
+       MENÚ MÓVIL
+       ========================================================= -->
+
   <div class="fullscreen-menu" id="fullscreenMenu" aria-hidden="true">
 
     <button class="close-menu" id="closeMenu" type="button" aria-label="Cerrar menú">
@@ -112,6 +120,8 @@
     </button>
 
     <ul class="menu-links">
+
+      <!-- app.js reemplazará estos enlaces -->
 
       <li>
         <a href="dashboard.html" class="active">
@@ -138,12 +148,6 @@
       </li>
 
       <li>
-        <a href="attendance.html">
-          Asistencia
-        </a>
-      </li>
-
-      <li>
         <a href="employees.html">
           Empleados
         </a>
@@ -165,7 +169,17 @@
 
   </div>
 
+
+  <!-- =========================================================
+       CONTENIDO PRINCIPAL
+       ========================================================= -->
+
   <main class="dashboard">
+
+
+    <!-- =======================================================
+         HERO
+         ======================================================= -->
 
     <section class="dashboard-hero">
 
@@ -196,6 +210,11 @@
 
     </section>
 
+
+    <!-- =======================================================
+         FILTRO DE FECHAS
+         ======================================================= -->
+
     <section class="filter-panel dashboard-filter">
 
       <div class="section-header compact">
@@ -216,6 +235,7 @@
 
       </div>
 
+
       <div class="filter-grid">
 
         <div class="filter-field">
@@ -228,6 +248,7 @@
 
         </div>
 
+
         <div class="filter-field">
 
           <label for="rangeTo">
@@ -237,6 +258,7 @@
           <input type="date" id="rangeTo">
 
         </div>
+
 
         <div class="filter-field filter-search">
 
@@ -249,6 +271,7 @@
         </div>
 
       </div>
+
 
       <div class="filter-actions">
 
@@ -276,7 +299,13 @@
 
     </section>
 
+
+    <!-- =======================================================
+         ESTADÍSTICAS
+         ======================================================= -->
+
     <section class="stats-container">
+
 
       <div class="stat-card">
 
@@ -290,6 +319,7 @@
 
       </div>
 
+
       <div class="stat-card">
 
         <h3>
@@ -301,6 +331,7 @@
         </p>
 
       </div>
+
 
       <div class="stat-card">
 
@@ -314,6 +345,7 @@
 
       </div>
 
+
       <div class="stat-card">
 
         <h3>
@@ -326,6 +358,7 @@
 
       </div>
 
+
       <div class="stat-card">
 
         <h3>
@@ -337,6 +370,7 @@
         </p>
 
       </div>
+
 
       <div class="stat-card">
 
@@ -352,7 +386,13 @@
 
     </section>
 
+
+    <!-- =======================================================
+         GRÁFICO + ALERTAS
+         ======================================================= -->
+
     <section class="dashboard-grid">
+
 
       <article class="chart-card">
 
@@ -373,6 +413,7 @@
 
         </div>
 
+
         <div class="chart-container">
 
           <canvas id="salesChart"></canvas>
@@ -381,7 +422,9 @@
 
       </article>
 
+
       <aside class="side-panel">
+
 
         <div class="panel-card">
 
@@ -401,6 +444,7 @@
 
           </div>
 
+
           <div id="lowStockPanel" class="low-stock-panel">
 
             <div class="loading">
@@ -410,6 +454,7 @@
           </div>
 
         </div>
+
 
         <div class="panel-actions">
 
@@ -423,11 +468,18 @@
 
         </div>
 
+
         <div id="profitStatus" class="info-card"></div>
+
 
       </aside>
 
     </section>
+
+
+    <!-- =======================================================
+         HISTORIAL DE VENTAS
+         ======================================================= -->
 
     <section class="table-section">
 
@@ -448,6 +500,7 @@
 
       </div>
 
+
       <div class="table-toolbar">
 
         <div class="small" id="salesRangeLabel">
@@ -459,6 +512,7 @@
         </div>
 
       </div>
+
 
       <div class="table-container">
 
@@ -492,6 +546,7 @@
 
           </thead>
 
+
           <tbody>
 
             <tr>
@@ -509,6 +564,11 @@
       </div>
 
     </section>
+
+
+    <!-- =======================================================
+         HISTORIAL DE GASTOS
+         ======================================================= -->
 
     <section class="table-section">
 
@@ -529,6 +589,7 @@
 
       </div>
 
+
       <div class="table-toolbar">
 
         <div class="small" id="expenseRangeLabel">
@@ -540,6 +601,7 @@
         </div>
 
       </div>
+
 
       <div class="table-container">
 
@@ -585,6 +647,7 @@
 
           </thead>
 
+
           <tbody>
 
             <tr>
@@ -602,6 +665,11 @@
       </div>
 
     </section>
+
+
+    <!-- =======================================================
+         MOVIMIENTOS DE INVENTARIO
+         ======================================================= -->
 
     <section class="table-section">
 
@@ -622,6 +690,7 @@
 
       </div>
 
+
       <div class="table-toolbar">
 
         <div class="small" id="movementRangeLabel">
@@ -633,6 +702,7 @@
         </div>
 
       </div>
+
 
       <div class="table-container">
 
@@ -698,6 +768,7 @@
 
           </thead>
 
+
           <tbody>
 
             <tr>
@@ -718,24 +789,35 @@
 
   </main>
 
-  <!-- Firebase -->
+
+  <!-- =========================================================
+       FIREBASE
+       ========================================================= -->
+
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
-  <!-- SweetAlert -->
+
+  <!-- =========================================================
+       SWEETALERT
+       ========================================================= -->
+
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-  <!-- Aplicación -->
-  <script src="assets/js/app.js"></script>
+  <!-- =========================================================
+       UTILIDADES DE GRÁFICOS
+       ========================================================= -->
 
-  <!-- Gráficos -->
   <script src="assets/js/chart-utils.js"></script>
 
-  <!-- Dashboard -->
-  <script src="assets/js/dashboard.js"></script>
+  <!-- =========================================================
+       APLICACIÓN BASE
+       ========================================================= -->
+
+  <script type="module" src="assets/js/app.js"></script>
 
 </body>
 

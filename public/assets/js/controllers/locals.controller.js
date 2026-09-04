@@ -1,4 +1,4 @@
-// assets/js/locals.js
+// public/assets/js/controllers/locals.controller.js
 // Módulo exclusivo del rol Desarrollador.
 //
 // Funciones:
@@ -73,6 +73,27 @@
 //
 // No se hace una lectura posterior del documento escrito.
 //
+
+"use strict";
+
+/*
+ * ============================================================
+ * REFERENCIAS GLOBALES
+ * ============================================================
+ */
+
+const firebase =
+  window.firebase;
+
+const auth =
+  window.auth;
+
+const db =
+  window.db;
+
+const Swal =
+  window.Swal;
+
 
 /*
  * ============================================================
@@ -165,6 +186,67 @@ const selectedLocalCard =
     "selectedLocalCard"
   );
 
+
+/*
+ * ============================================================
+ * VALIDACIÓN DE DEPENDENCIAS
+ * ============================================================
+ */
+
+function ensureDependencies() {
+
+  if (
+    !firebase
+  ) {
+
+    throw new Error(
+      "Firebase no está disponible."
+    );
+
+  }
+
+
+  if (
+    !auth
+  ) {
+
+    throw new Error(
+      "Firebase Authentication no está disponible."
+    );
+
+  }
+
+
+  if (
+    !db
+  ) {
+
+    throw new Error(
+      "Firestore no está disponible."
+    );
+
+  }
+
+
+  if (
+    !Swal
+  ) {
+
+    throw new Error(
+      "SweetAlert2 no está disponible."
+    );
+
+  }
+
+}
+
+
+/*
+ * ============================================================
+ * CONSTANTES
+ * ============================================================
+ */
+
 const LOCAL_COLLECTION =
   window.LOCAL_COLLECTION_NAME ||
   "local";
@@ -179,22 +261,27 @@ const ATTEMPTS_COLLECTION =
 
 const POSITION_OPTIONS =
   window.POSITION_OPTIONS || [
+
     "Administrador",
     "Desarrollador",
     "Vendedor",
     "Cajero",
     "Bodega",
     "Asistencia"
+
   ];
 
 window.POSITION_OPTIONS =
   POSITION_OPTIONS;
 
 const DOCUMENT_TYPE_OPTIONS = [
+
   "DUI",
   "Pasaporte",
   "Otro"
+
 ];
+
 
 /*
  * ============================================================
@@ -203,6 +290,7 @@ const DOCUMENT_TYPE_OPTIONS = [
  */
 
 let currentUserInfo = {
+
   uid:
     "",
 
@@ -214,6 +302,7 @@ let currentUserInfo = {
 
   role:
     ""
+
 };
 
 let localsCache =
@@ -234,6 +323,9 @@ let moduleInitialized =
 let developerDataLoadPromise =
   null;
 
+let initializationPromise =
+  null;
+
 let isCreatingUser =
   false;
 
@@ -242,6 +334,7 @@ let isEditingUser =
 
 let isTogglingUser =
   false;
+
 
 /*
  * ============================================================
@@ -252,34 +345,57 @@ let isTogglingUser =
 function normalizeRoleLocal(
   role = ""
 ) {
+
   return String(
     role || ""
   )
     .trim()
     .toLowerCase();
+
 }
+
 
 function isDeveloperRole(
   role = ""
 ) {
+
+  if (
+    typeof window.isDeveloperRole ===
+    "function"
+  ) {
+
+    return window.isDeveloperRole(
+      role
+    );
+
+  }
+
+
   const normalized =
     normalizeRoleLocal(
       role
     );
 
+
   return (
+
     normalized ===
       "desarrollador" ||
+
     normalized ===
       "developer"
+
   );
+
 }
+
 
 function escapeHtml(
   value = ""
 ) {
+
   return String(
-    value
+    value ?? ""
   )
     .replaceAll(
       "&",
@@ -301,230 +417,321 @@ function escapeHtml(
       "'",
       "&#039;"
     );
+
 }
+
 
 function numberOrZero(
   value
 ) {
+
   const number =
     Number(
       value
     );
+
 
   return Number.isFinite(
     number
   )
     ? number
     : 0;
+
 }
+
 
 function getTimestampMs(
   value
 ) {
+
   if (
+
     value ===
       null ||
+
     value ===
       undefined ||
+
     value ===
-    ""
+      ""
+
   ) {
+
     return 0;
+
   }
+
 
   if (
     typeof value.toMillis ===
     "function"
   ) {
+
     return value.toMillis();
+
   }
+
 
   if (
     typeof value.toDate ===
     "function"
   ) {
+
     const date =
       value.toDate();
+
 
     return Number.isFinite(
       date.getTime()
     )
       ? date.getTime()
       : 0;
+
   }
 
+
   if (
+
     typeof value ===
       "object" &&
+
     typeof value.seconds ===
       "number"
+
   ) {
+
     return (
       value.seconds *
       1000
     );
+
   }
+
 
   if (
     typeof value ===
     "number"
   ) {
+
     return value;
+
   }
+
 
   if (
     value instanceof
     Date
   ) {
+
     return value.getTime();
+
   }
+
 
   const date =
     new Date(
       value
     );
 
+
   return Number.isFinite(
     date.getTime()
   )
     ? date.getTime()
     : 0;
+
 }
+
 
 function formatDateTime(
   value
 ) {
+
   const timestamp =
     getTimestampMs(
       value
     );
 
+
   if (
     !timestamp
   ) {
+
     return "—";
+
   }
+
 
   return new Date(
     timestamp
   ).toLocaleString(
     "es-ES"
   );
+
 }
+
 
 function formatDateOnly(
   value
 ) {
+
   const timestamp =
     getTimestampMs(
       value
     );
 
+
   if (
     !timestamp
   ) {
+
     return "—";
+
   }
+
 
   return new Date(
     timestamp
   ).toLocaleDateString(
     "es-ES"
   );
+
 }
+
 
 function formatTimeOnly(
   value
 ) {
+
   const timestamp =
     getTimestampMs(
       value
     );
 
+
   if (
     !timestamp
   ) {
+
     return "—";
+
   }
+
 
   return new Date(
     timestamp
   ).toLocaleTimeString(
+
     "es-ES",
+
     {
+
       hour:
         "2-digit",
 
       minute:
         "2-digit"
+
     }
+
   );
+
 }
+
 
 function getFirestoreErrorMessage(
   error,
   fallback =
     "Ocurrió un error."
 ) {
+
   const code =
     String(
       error?.code ||
-        ""
+      ""
     ).toLowerCase();
+
 
   const message =
     String(
       error?.message ||
-        ""
+      ""
     );
 
+
   if (
+
     code ===
       "permission-denied" ||
+
     code.includes(
       "permission-denied"
     ) ||
+
     message
       .toLowerCase()
       .includes(
         "missing or insufficient permissions"
       )
+
   ) {
+
     return (
+
       "Firestore rechazó la operación por permisos. " +
-      "Verifica que las reglas publicadas permitan al " +
-      "Desarrollador modificar este recurso."
+
+      "Verifica que las reglas publicadas permitan " +
+
+      "al Desarrollador modificar este recurso."
+
     );
+
   }
 
+
   if (
+
     code ===
       "not-found" ||
+
     code.includes(
       "not-found"
     )
+
   ) {
+
     return (
-      "El documento que se intentó modificar no existe."
+
+      "El documento que se intentó modificar " +
+
+      "no existe."
+
     );
+
   }
+
 
   return (
     message ||
     fallback
   );
+
 }
+
 
 async function showOperationError(
   error,
   fallbackMessage
 ) {
+
   console.error(
-    "Error Firestore:",
+    "[Locals] Error Firestore:",
     error
   );
 
+
   await Swal.fire({
+
     icon:
       "error",
 
@@ -536,8 +743,11 @@ async function showOperationError(
         error,
         fallbackMessage
       )
+
   });
+
 }
+
 
 /*
  * ============================================================
@@ -546,37 +756,60 @@ async function showOperationError(
  */
 
 function getStoredCurrentUser() {
+
   try {
+
     return JSON.parse(
+
       localStorage.getItem(
         "currentUser"
       ) ||
-        "null"
+      "null"
+
     );
+
   } catch {
+
     return null;
+
   }
+
 }
+
 
 function setStoredCurrentUser(
   patch = {}
 ) {
+
   try {
+
     const current =
       getStoredCurrentUser() ||
       {};
 
+
     localStorage.setItem(
+
       "currentUser",
+
       JSON.stringify({
+
         ...current,
+
         ...patch
+
       })
+
     );
+
   } catch {
-    // No hacer nada.
+
+    // ignore
+
   }
+
 }
+
 
 /*
  * ============================================================
@@ -585,73 +818,104 @@ function setStoredCurrentUser(
  */
 
 function hasAppSessionCacheApi() {
+
   return (
+
     typeof window.getSessionCollection ===
       "function" &&
+
     typeof window.setSessionCollection ===
       "function" &&
+
     typeof window.upsertSessionDocument ===
       "function" &&
+
     typeof window.removeSessionDocument ===
       "function"
+
   );
+
 }
+
 
 function readSessionCollection(
   collectionName
 ) {
+
   if (
     typeof window.getSessionCollection !==
     "function"
   ) {
+
     return [];
+
   }
+
 
   const result =
     window.getSessionCollection(
       collectionName
     );
 
+
   if (
     !Array.isArray(
       result
     )
   ) {
+
     return [];
+
   }
 
-  return result
-    .map(
-      item => ({
-        id:
-          item?.id ||
-          "",
 
-        ...(
-          item?.data ||
-          {}
-        )
-      })
-    );
+  return result.map(
+
+    item => ({
+
+      id:
+        item?.id ||
+        "",
+
+      ...(
+        item?.data ||
+        {}
+      )
+
+    })
+
+  );
+
 }
+
 
 function writeSessionCollection(
   collectionName,
   documents = []
 ) {
+
   if (
     typeof window.setSessionCollection !==
     "function"
   ) {
+
     throw new Error(
+
       "app.js no expuso setSessionCollection()."
+
     );
+
   }
 
+
   window.setSessionCollection(
+
     collectionName,
+
     documents.map(
+
       item => ({
+
         id:
           item.id,
 
@@ -659,67 +923,103 @@ function writeSessionCollection(
           {
             ...item
           }
+
       })
+
     )
+
   );
+
 }
+
 
 function upsertCachedDocument(
   collectionName,
   id,
   data
 ) {
+
   if (
     typeof window.upsertSessionDocument !==
     "function"
   ) {
+
     return;
+
   }
 
+
   window.upsertSessionDocument(
+
     collectionName,
+
     id,
+
     data
+
   );
+
 }
+
 
 function removeCachedDocument(
   collectionName,
   id
 ) {
+
   if (
     typeof window.removeSessionDocument !==
     "function"
   ) {
+
     return;
+
   }
 
+
   window.removeSessionDocument(
+
     collectionName,
+
     id
+
   );
+
 }
+
 
 function updateCachedDocumentsWhere(
   collectionName,
   predicate,
   patch = {}
 ) {
+
   if (
     typeof window.updateSessionDocumentsWhere !==
     "function"
   ) {
+
     return 0;
+
   }
 
+
   return (
+
     window.updateSessionDocumentsWhere(
+
       collectionName,
+
       predicate,
+
       patch
+
     ) || 0
+
   );
+
 }
+
 
 /*
  * ============================================================
@@ -730,29 +1030,40 @@ function updateCachedDocumentsWhere(
 async function getDeveloperContextFromApp(
   user
 ) {
+
   if (
     !user
   ) {
+
     return null;
+
   }
+
 
   if (
     typeof window.getCurrentUserContext !==
     "function"
   ) {
+
     return null;
+
   }
+
 
   const context =
     await window.getCurrentUserContext(
       user
     );
 
+
   if (
     !context
   ) {
+
     return null;
+
   }
+
 
   if (
     !isDeveloperRole(
@@ -761,67 +1072,91 @@ async function getDeveloperContextFromApp(
       ""
     )
   ) {
+
     return null;
+
   }
 
+
   return context;
+
 }
+
 
 function addContextProfileToUsersCache(
   context
 ) {
+
   if (
     !context
   ) {
+
     return null;
+
   }
+
 
   const canonicalUid =
     String(
       context.uid ||
-        ""
+      ""
     ).trim();
+
 
   if (
     !canonicalUid
   ) {
+
     return null;
+
   }
+
 
   const contextEmail =
     String(
       context.email ||
-        ""
+      ""
     )
       .trim()
       .toLowerCase();
 
+
   const existingIndex =
     usersCache.findIndex(
+
       employee =>
+
         String(
           employee.id ||
-            ""
+          ""
         ).trim() ===
           canonicalUid ||
+
         String(
           employee.uid ||
-            ""
+          ""
         ).trim() ===
           canonicalUid ||
+
         (
+
           contextEmail &&
+
           String(
             employee.email ||
-              ""
+            ""
           )
             .trim()
             .toLowerCase() ===
-            contextEmail
+          contextEmail
+
         )
+
     );
 
+
   const profileData = {
+
     uid:
       canonicalUid,
 
@@ -850,7 +1185,7 @@ function addContextProfileToUsersCache(
     id_local:
       String(
         context.id_local ||
-          ""
+        ""
       ).trim(),
 
     localNombre:
@@ -893,39 +1228,52 @@ function addContextProfileToUsersCache(
       numberOrZero(
         context.failedLoginAttempts
       )
+
   };
+
 
   if (
     existingIndex >=
     0
   ) {
+
     usersCache[
       existingIndex
     ] = {
+
       ...usersCache[
         existingIndex
       ],
 
       ...profileData
+
     };
+
 
     return usersCache[
       existingIndex
     ];
+
   }
 
+
   usersCache.push({
+
     id:
       canonicalUid,
 
     ...profileData
+
   });
+
 
   return usersCache[
     usersCache.length -
-      1
+    1
   ];
+
 }
+
 
 /*
  * ============================================================
@@ -936,49 +1284,85 @@ function addContextProfileToUsersCache(
 async function loadDeveloperCollectionOnce(
   collectionName
 ) {
+
   const cached =
     readSessionCollection(
       collectionName
     );
 
+
   let cacheStatus =
     null;
+
 
   if (
     typeof window.getSessionCacheStatus ===
     "function"
   ) {
+
     cacheStatus =
       window.getSessionCacheStatus();
+
   }
 
+
+  /*
+   * El app.js devuelve collections como objeto:
+   *
+   * {
+   *   local: { count, error },
+   *   empleados: { count, error }
+   * }
+   *
+   * Por tanto no debe utilizarse .includes().
+   */
+
   const collectionWasLoaded =
-    Array.isArray(
-      cacheStatus?.collections
-    ) &&
-    cacheStatus.collections.includes(
-      collectionName
+
+    Boolean(
+
+      cacheStatus?.collections &&
+
+      Object.prototype.hasOwnProperty.call(
+
+        cacheStatus.collections,
+
+        collectionName
+
+      )
+
     );
+
 
   if (
     collectionWasLoaded
   ) {
+
     return cached;
+
   }
+
 
   const snapshot =
     await db
+
       .collection(
         collectionName
       )
+
       .get();
+
 
   const documents =
     [];
 
+
   snapshot.forEach(
+
     doc => {
+
       documents.push({
+
         id:
           doc.id,
 
@@ -986,63 +1370,102 @@ async function loadDeveloperCollectionOnce(
           doc.data() ||
           {}
         )
+
       });
+
     }
+
   );
+
 
   writeSessionCollection(
+
     collectionName,
+
     documents
+
   );
 
+
   return documents;
+
 }
+
 
 async function ensureDeveloperSessionData(
   user =
     auth.currentUser
 ) {
+
   if (
     developerDataLoadPromise
   ) {
+
     return developerDataLoadPromise;
+
   }
 
+
   developerDataLoadPromise =
+
     (async () => {
+
+      ensureDependencies();
+
+
       if (
         !hasAppSessionCacheApi()
       ) {
+
         throw new Error(
+
           "app.js no está cargado correctamente o no expuso la API de caché de sesión."
+
         );
+
       }
+
 
       let context =
         null;
 
+
       if (
+
         user &&
+
         typeof window.getCurrentUserContext ===
-          "function"
+        "function"
+
       ) {
+
         try {
+
           context =
             await getDeveloperContextFromApp(
               user
             );
+
         } catch (
           error
         ) {
+
           console.warn(
+
             "[Locals] No se pudo obtener inmediatamente el contexto desde app.js:",
+
             error
+
           );
+
         }
+
       }
+
 
       const results =
         await Promise.all([
+
           loadDeveloperCollectionOnce(
             LOCAL_COLLECTION
           ),
@@ -1054,35 +1477,46 @@ async function ensureDeveloperSessionData(
           loadDeveloperCollectionOnce(
             ATTEMPTS_COLLECTION
           )
+
         ]);
+
 
       localsCache =
         normalizeLocals(
           results[0]
         );
 
+
       usersCache =
         normalizeUsers(
           results[1]
         );
+
 
       attemptsCache =
         normalizeAttempts(
           results[2]
         );
 
+
       if (
         context
       ) {
+
         addContextProfileToUsersCache(
           context
         );
 
+
         upsertCachedDocument(
+
           EMPLOYEE_COLLECTION,
+
           context.employeeId ||
-            context.uid,
+          context.uid,
+
           {
+
             uid:
               context.uid,
 
@@ -1152,24 +1586,35 @@ async function ensureDeveloperSessionData(
               numberOrZero(
                 context.failedLoginAttempts
               )
+
           }
+
         );
+
 
         usersCache =
           normalizeUsers(
+
             readSessionCollection(
               EMPLOYEE_COLLECTION
             )
+
           );
+
 
         addContextProfileToUsersCache(
           context
         );
+
       }
 
+
       console.log(
+
         "[Locals] Caché del desarrollador preparada:",
+
         {
+
           locales:
             localsCache.length,
 
@@ -1186,18 +1631,42 @@ async function ensureDeveloperSessionData(
           developerEmail:
             user?.email ||
             ""
+
         }
-      );
-    })()
-      .finally(
-        () => {
-          developerDataLoadPromise =
-            null;
-        }
+
       );
 
+
+      return {
+
+        locals:
+          localsCache,
+
+        users:
+          usersCache,
+
+        attempts:
+          attemptsCache
+
+      };
+
+    })()
+      .finally(
+
+        () => {
+
+          developerDataLoadPromise =
+            null;
+
+        }
+
+      );
+
+
   return developerDataLoadPromise;
+
 }
+
 
 /*
  * ============================================================
@@ -1208,82 +1677,115 @@ async function ensureDeveloperSessionData(
 function normalizeLocals(
   source = []
 ) {
+
   if (
     !Array.isArray(
       source
     )
   ) {
+
     return [];
+
   }
 
+
   return source.map(
+
     item => {
+
       const data =
         item ||
         {};
 
-      return {
-        id_local:
-          String(
-            data.id_local ||
-            data.id ||
-            ""
-          ).trim(),
 
-        id:
-          data.id ||
+      const normalizedId =
+        String(
+
           data.id_local ||
-          "",
+          data.id ||
+          ""
+
+        ).trim();
+
+
+      return {
 
         ...data,
 
+        id_local:
+          normalizedId,
+
+        id:
+          data.id ||
+          normalizedId,
+
         bloqueado:
+
           data.bloqueado ===
             true ||
+
           data.blocked ===
             true,
 
         activo:
+
           data.activo !==
             false &&
+
           data.active !==
             false
+
       };
+
     }
+
   );
+
 }
+
 
 function normalizeUsers(
   source = []
 ) {
+
   if (
     !Array.isArray(
       source
     )
   ) {
+
     return [];
+
   }
 
+
   return source.map(
+
     item => {
+
       const data =
         item ||
         {};
 
+
       return {
-        id:
-          data.id ||
-          "",
 
         ...data,
+
+        id:
+          data.id ||
+          data.uid ||
+          "",
 
         blocked:
           data.blocked ===
           true,
 
         active:
+
           data.active !==
             false &&
+
           data.blocked !==
             true,
 
@@ -1293,11 +1795,14 @@ function normalizeUsers(
           ),
 
         id_local:
+
           String(
+
             data.id_local ||
             data.idLocal ||
             data.localId ||
             ""
+
           ).trim(),
 
         localNombre:
@@ -1327,76 +1832,81 @@ function normalizeUsers(
         localUbicacion:
           data.localUbicacion ||
           ""
+
       };
+
     }
+
   );
+
 }
+
 
 function normalizeAttempts(
   source = []
 ) {
+
   if (
     !Array.isArray(
       source
     )
   ) {
+
     return [];
+
   }
 
+
   return source.map(
+
     item => ({
+
+      ...item,
+
       id:
         item.id ||
-        "",
+        ""
 
-      ...item
     })
+
   );
+
 }
 
+
 function refreshCachesFromApp() {
+
   localsCache =
     normalizeLocals(
+
       readSessionCollection(
         LOCAL_COLLECTION
       )
+
     );
+
 
   usersCache =
     normalizeUsers(
+
       readSessionCollection(
         EMPLOYEE_COLLECTION
       )
+
     );
+
 
   attemptsCache =
     normalizeAttempts(
+
       readSessionCollection(
         ATTEMPTS_COLLECTION
       )
+
     );
 
-  const user =
-    auth.currentUser;
-
-  if (
-    user &&
-    currentUserInfo.role &&
-    isDeveloperRole(
-      currentUserInfo.role
-    )
-  ) {
-    if (
-      typeof window.getCurrentUserContext ===
-      "function"
-    ) {
-      /*
-       * El contexto ya fue resuelto durante el arranque.
-       * No se hace una nueva lectura aquí.
-       */
-    }
-  }
 }
+
 
 /*
  * ============================================================
@@ -1407,141 +1917,198 @@ function refreshCachesFromApp() {
 function findCachedEmployeeByUserId(
   userId
 ) {
+
   const target =
     String(
       userId ||
-        ""
+      ""
     ).trim();
+
 
   if (
     !target
   ) {
+
     return null;
+
   }
 
+
   return (
+
     usersCache.find(
+
       employee =>
+
         String(
           employee.id ||
-            ""
+          ""
         ).trim() ===
           target ||
+
         String(
           employee.uid ||
-            ""
+          ""
         ).trim() ===
           target
+
     ) ||
+
     null
+
   );
+
 }
+
 
 function findCachedEmployeeByEmail(
   email
 ) {
+
   const target =
     String(
       email ||
-        ""
+      ""
     )
       .trim()
       .toLowerCase();
 
+
   if (
     !target
   ) {
+
     return null;
+
   }
 
+
   return (
+
     usersCache.find(
+
       employee =>
+
         String(
           employee.email ||
-            ""
+          ""
         )
           .trim()
           .toLowerCase() ===
         target
+
     ) ||
+
     null
+
   );
+
 }
+
 
 function findCachedEmployeeByUser(
   user
 ) {
+
   if (
     !user
   ) {
+
     return null;
+
   }
+
 
   const byId =
     findCachedEmployeeByUserId(
       user.uid
     );
 
+
   if (
     byId
   ) {
+
     return byId;
+
   }
+
 
   return findCachedEmployeeByEmail(
     user.email
   );
+
 }
+
 
 function findEmployeeForOperation(
   identifier
 ) {
+
   const target =
     String(
       identifier ||
-        ""
+      ""
     ).trim();
+
 
   if (
     !target
   ) {
+
     return null;
+
   }
 
+
   return (
+
     usersCache.find(
+
       employee =>
+
         String(
           employee.id ||
-            ""
+          ""
         ).trim() ===
           target ||
+
         String(
           employee.uid ||
-            ""
+          ""
         ).trim() ===
           target
+
     ) ||
+
     null
+
   );
+
 }
+
 
 function findLegacyEmployee(
   user
 ) {
+
   const employee =
     findCachedEmployeeByUser(
       user
     );
 
+
   if (
     !employee
   ) {
+
     return null;
+
   }
 
+
   return {
+
     id:
       employee.id,
 
@@ -1551,27 +2118,35 @@ function findLegacyEmployee(
       },
 
     source:
+
       String(
         employee.id ||
-          ""
+        ""
       ).trim() ===
         String(
           user?.uid ||
-            ""
+          ""
         ).trim()
+
         ? "document-id"
+
         : String(
             employee.uid ||
-              ""
+            ""
           ).trim() ===
             String(
               user?.uid ||
-                ""
+              ""
             ).trim()
+
           ? "uid"
+
           : "email"
+
   };
+
 }
+
 
 /*
  * ============================================================
@@ -1582,31 +2157,44 @@ function findLegacyEmployee(
 function cacheResolvedDeveloperProfile(
   context
 ) {
+
   if (
     !context?.uid
   ) {
+
     return null;
+
   }
+
 
   const profile =
     addContextProfileToUsersCache(
       context
     );
 
+
   const employeeDocumentId =
     String(
+
       context.employeeId ||
-        context.uid ||
-        ""
+      context.uid ||
+      ""
+
     ).trim();
+
 
   if (
     employeeDocumentId
   ) {
+
     upsertCachedDocument(
+
       EMPLOYEE_COLLECTION,
+
       employeeDocumentId,
+
       {
+
         uid:
           context.uid,
 
@@ -1676,12 +2264,18 @@ function cacheResolvedDeveloperProfile(
           numberOrZero(
             context.failedLoginAttempts
           )
+
       }
+
     );
+
   }
 
+
   return profile;
+
 }
+
 
 /*
  * ============================================================
@@ -1693,22 +2287,32 @@ async function migrateEmployeeToAuthUid(
   user,
   legacyEmployee
 ) {
+
   if (
+
     !user?.uid ||
+
     !legacyEmployee?.data
+
   ) {
+
     return null;
+
   }
+
 
   const canonical =
     findCachedEmployeeByUser(
       user
     );
 
+
   if (
     canonical
   ) {
+
     return {
+
       id:
         canonical.id,
 
@@ -1716,14 +2320,19 @@ async function migrateEmployeeToAuthUid(
         {
           ...canonical
         }
+
     };
+
   }
+
 
   const legacyData =
     legacyEmployee.data ||
     {};
 
+
   const migratedData = {
+
     ...legacyData,
 
     uid:
@@ -1741,24 +2350,34 @@ async function migrateEmployeeToAuthUid(
 
     migratedFromEmployeeId:
       legacyEmployee.id
+
   };
 
+
   await db
+
     .collection(
       EMPLOYEE_COLLECTION
     )
+
     .doc(
       user.uid
     )
+
     .set(
+
       migratedData,
+
       {
         merge:
           true
       }
+
     );
 
+
   const normalizedData = {
+
     ...legacyData,
 
     uid:
@@ -1774,29 +2393,43 @@ async function migrateEmployeeToAuthUid(
 
     updatedAt:
       Date.now()
+
   };
 
+
   upsertCachedDocument(
+
     EMPLOYEE_COLLECTION,
+
     user.uid,
+
     normalizedData
+
   );
+
 
   usersCache =
     normalizeUsers(
+
       readSessionCollection(
         EMPLOYEE_COLLECTION
       )
+
     );
 
+
   return {
+
     id:
       user.uid,
 
     data:
       normalizedData
+
   };
+
 }
+
 
 /*
  * ============================================================
@@ -1807,46 +2440,73 @@ async function migrateEmployeeToAuthUid(
 async function verifyDeveloperAccess(
   user
 ) {
+
   if (
+
     !user ||
+
     !user.uid
+
   ) {
+
     throw new Error(
+
       "No existe una sesión de Firebase válida."
+
     );
+
   }
+
 
   let appContext =
     null;
+
 
   if (
     typeof window.getCurrentUserContext ===
     "function"
   ) {
+
     try {
+
       appContext =
         await window.getCurrentUserContext(
           user
         );
+
     } catch (
       error
     ) {
+
       console.warn(
+
         "[Locals] No se pudo obtener contexto desde app.js:",
+
         error
+
       );
+
     }
+
   }
 
+
   if (
+
     appContext &&
+
     isDeveloperRole(
+
       appContext.role ||
-        appContext.position ||
-        ""
+      appContext.position ||
+      ""
+
     )
+
   ) {
+
     currentUserInfo = {
+
       uid:
         user.uid,
 
@@ -1864,13 +2524,17 @@ async function verifyDeveloperAccess(
         appContext.role ||
         appContext.position ||
         "Desarrollador"
+
     };
+
 
     cacheResolvedDeveloperProfile(
       appContext
     );
 
+
     setStoredCurrentUser({
+
       uid:
         currentUserInfo.uid,
 
@@ -1892,9 +2556,12 @@ async function verifyDeveloperAccess(
 
       id_local:
         ""
+
     });
 
+
     return {
+
       id:
         appContext.employeeId ||
         user.uid,
@@ -1908,33 +2575,45 @@ async function verifyDeveloperAccess(
         appContext.role ||
         appContext.position ||
         "Desarrollador"
+
     };
+
   }
+
 
   const cachedEmployee =
     findCachedEmployeeByUser(
       user
     );
 
+
   if (
     cachedEmployee
   ) {
+
     const role =
       cachedEmployee.position ||
       cachedEmployee.role ||
       "";
+
 
     if (
       !isDeveloperRole(
         role
       )
     ) {
+
       throw new Error(
+
         "Acceso denegado. El perfil autenticado no tiene el rol Desarrollador."
+
       );
+
     }
 
+
     currentUserInfo = {
+
       uid:
         user.uid,
 
@@ -1948,9 +2627,12 @@ async function verifyDeveloperAccess(
         "Usuario",
 
       role
+
     };
 
+
     return {
+
       id:
         cachedEmployee.id,
 
@@ -1958,31 +2640,48 @@ async function verifyDeveloperAccess(
         {
           ...cachedEmployee
         }
+
     };
+
   }
 
+
   throw new Error(
+
     "No existe un perfil asociado al usuario autenticado. " +
+
     "No se encontró un perfil válido por UID, document ID o correo."
+
   );
+
 }
 
+
 async function ensureDeveloperPermission() {
+
   const user =
     auth.currentUser;
+
 
   if (
     !user
   ) {
+
     throw new Error(
+
       "La sesión de Firebase no está activa."
+
     );
+
   }
+
 
   await verifyDeveloperAccess(
     user
   );
+
 }
+
 
 /*
  * ============================================================
@@ -1993,96 +2692,138 @@ async function ensureDeveloperPermission() {
 function getLocalName(
   local = {}
 ) {
+
   return String(
+
     local.nombre ||
     local.name ||
     local.localName ||
     ""
+
   ).trim();
+
 }
+
 
 function getLocalContributorName(
   local = {}
 ) {
+
   return String(
+
     local.nombreContribuyente ||
     local.nombre_contribuyente ||
     local.contribuyenteNombre ||
     local.taxpayerName ||
     ""
+
   ).trim();
+
 }
+
 
 function getLocalDocumentType(
   local = {}
 ) {
+
   return String(
+
     local.tipoDocumento ||
     local.tipo_documento ||
     local.documentType ||
     ""
+
   ).trim();
+
 }
+
 
 function getLocalNIT(
   local = {}
 ) {
+
   return String(
+
     local.nit ||
     local.NIT ||
     ""
+
   ).trim();
+
 }
+
 
 function getLocalNRC(
   local = {}
 ) {
+
   return String(
+
     local.nrc ||
     local.NRC ||
     ""
+
   ).trim();
+
 }
+
 
 function getLocalDocumentNumber(
   local = {}
 ) {
+
   return String(
+
     local.numeroDocumento ||
     local.numero_documento ||
     local.documentNumber ||
     local.nDocumento ||
     ""
+
   ).trim();
+
 }
+
 
 function getLocalUbicacion(
   local = {}
 ) {
+
   return String(
+
     local.ubicacion ||
     local.location ||
     local.direccion ||
     local.address ||
     ""
+
   ).trim();
+
 }
+
 
 function getUserLocalId(
   user = {}
 ) {
+
   return String(
+
     user.id_local ||
     user.idLocal ||
     user.localId ||
     ""
+
   ).trim();
+
 }
+
 
 function getUserLocalInfo(
   user = {}
 ) {
+
   return {
+
     id_local:
       getUserLocalId(
         user
@@ -2129,126 +2870,172 @@ function getUserLocalInfo(
         user.localUbicacion ||
         ""
       ).trim()
+
   };
+
 }
 
+
 function getSelectedLocal() {
+
   return (
+
     localsCache.find(
+
       local =>
+
         String(
           local.id_local
         ) ===
         String(
           selectedLocalId
         )
+
     ) ||
+
     null
+
   );
+
 }
+
 
 function getLocalUsers(
   localId = ""
 ) {
+
   const target =
     String(
       localId ||
-        ""
+      ""
     ).trim();
 
-  /*
-   * Sin local seleccionado:
-   *
-   * mostrar todos los usuarios.
-   *
-   * Esto es intencional para el Desarrollador.
-   */
+
   if (
     !target
   ) {
+
     return [
       ...usersCache
     ];
+
   }
 
+
   return usersCache.filter(
+
     user =>
+
       String(
         getUserLocalId(
           user
         )
       ) ===
       target
+
   );
+
 }
+
 
 function getLocalAttempts(
   localId = ""
 ) {
+
   const target =
     String(
       localId ||
-        ""
+      ""
     ).trim();
+
 
   if (
     !target
   ) {
+
     return [
       ...attemptsCache
     ];
+
   }
 
+
   return attemptsCache.filter(
+
     attempt => {
+
       const attemptLocal =
         String(
+
           attempt.id_local ||
           attempt.localId ||
           ""
+
         ).trim();
 
+
       if (
+
         attemptLocal &&
+
         attemptLocal ===
-          target
+        target
+
       ) {
+
         return true;
+
       }
+
 
       const byEmail =
         usersCache.find(
+
           user =>
+
             String(
               user.email ||
-                ""
+              ""
             )
               .trim()
               .toLowerCase() ===
+
             String(
               attempt.email ||
-                ""
+              ""
             )
               .trim()
               .toLowerCase()
+
         );
 
+
       if (
-        byEmail &&
-        String(
-          getUserLocalId(
-            byEmail
-          )
-        ) ===
-          target
+        byEmail
       ) {
-        return true;
+
+        return (
+
+          String(
+            getUserLocalId(
+              byEmail
+            )
+          ) ===
+          target
+
+        );
+
       }
 
+
       return false;
+
     }
+
   );
+
 }
+
 
 /*
  * ============================================================
@@ -2257,27 +3044,38 @@ function getLocalAttempts(
  */
 
 function getCurrentSearch() {
+
   return String(
+
     globalSearch?.value ||
-      ""
+    ""
+
   )
     .toLowerCase()
     .trim();
+
 }
+
 
 function matchesSearchLocal(
   local = {}
 ) {
+
   const query =
     getCurrentSearch();
+
 
   if (
     !query
   ) {
+
     return true;
+
   }
 
+
   const haystack = [
+
     getLocalName(
       local
     ),
@@ -2311,46 +3109,59 @@ function matchesSearchLocal(
     local.blockReason,
 
     local.blockedReason
+
   ]
-    .join(
-      " "
-    )
+    .join(" ")
     .toLowerCase();
+
 
   return haystack.includes(
     query
   );
+
 }
+
 
 function matchesSearchUser(
   user = {}
 ) {
+
   const query =
     getCurrentSearch();
+
 
   if (
     !query
   ) {
+
     return true;
+
   }
+
 
   const localInfo =
     getUserLocalInfo(
       user
     );
 
+
   const local =
     localsCache.find(
+
       item =>
+
         String(
           item.id_local
         ) ===
         String(
           localInfo.id_local
         )
+
     );
 
+
   const haystack = [
+
     user.id,
     user.uid,
     user.name,
@@ -2376,54 +3187,70 @@ function matchesSearchUser(
     user.lastLoginAt,
     user.lastAccessAt,
     user.blockReason
+
   ]
-    .join(
-      " "
-    )
+    .join(" ")
     .toLowerCase();
+
 
   return haystack.includes(
     query
   );
+
 }
+
 
 function matchesSearchAttempt(
   attempt = {}
 ) {
+
   const query =
     getCurrentSearch();
+
 
   if (
     !query
   ) {
+
     return true;
+
   }
+
 
   const byEmailLocal =
     usersCache.find(
+
       user =>
+
         String(
           user.email ||
-            ""
+          ""
         )
           .trim()
           .toLowerCase() ===
+
         String(
           attempt.email ||
-            ""
+          ""
         )
           .trim()
           .toLowerCase()
+
     );
+
 
   const localInfo =
     byEmailLocal
+
       ? getUserLocalInfo(
           byEmailLocal
         )
+
       : null;
 
+
   const haystack = [
+
     attempt.email,
     attempt.reason,
     attempt.message,
@@ -2445,16 +3272,18 @@ function matchesSearchAttempt(
     localInfo?.nrc,
     localInfo?.numeroDocumento,
     localInfo?.ubicacion
+
   ]
-    .join(
-      " "
-    )
+    .join(" ")
     .toLowerCase();
+
 
   return haystack.includes(
     query
   );
+
 }
+
 
 /*
  * ============================================================
@@ -2467,152 +3296,220 @@ function renderEmptyRow(
   colspan,
   text
 ) {
+
   if (
     !tbody
   ) {
+
     return;
+
   }
 
+
   tbody.innerHTML = `
+
     <tr>
+
       <td colspan="${colspan}">
+
         ${escapeHtml(
           text
         )}
+
       </td>
+
     </tr>
+
   `;
+
 }
 
+
 function renderSelectedLocalCard() {
+
   if (
     !selectedLocalCard
   ) {
+
     return;
+
   }
+
 
   const local =
     getSelectedLocal();
 
+
   if (
     !local
   ) {
+
     selectedLocalCard.innerHTML = `
+
       <p
         class="hero-subtitle"
         style="margin-top:0"
       >
+
         <strong>
           Local seleccionado:
         </strong>
+
         Todos
+
       </p>
+
 
       <p class="hero-subtitle">
+
         Se muestran todos los locales
         y todos los usuarios.
+
       </p>
+
     `;
 
+
     return;
+
   }
 
+
   selectedLocalCard.innerHTML = `
+
     <p
       class="hero-subtitle"
       style="margin-top:0"
     >
-      <strong>Local:</strong>
+
+      <strong>
+        Local:
+      </strong>
+
       ${escapeHtml(
         getLocalName(
           local
         ) ||
         "—"
       )}
+
       <br>
+
 
       <strong>
         Contribuyente:
       </strong>
+
       ${escapeHtml(
         getLocalContributorName(
           local
         ) ||
         "—"
       )}
+
       <br>
+
 
       <strong>
         Tipo de documento:
       </strong>
+
       ${escapeHtml(
         getLocalDocumentType(
           local
         ) ||
         "—"
       )}
+
       <br>
 
-      <strong>NIT:</strong>
+
+      <strong>
+        NIT:
+      </strong>
+
       ${escapeHtml(
         getLocalNIT(
           local
         ) ||
         "—"
       )}
+
       <br>
 
-      <strong>NRC:</strong>
+
+      <strong>
+        NRC:
+      </strong>
+
       ${escapeHtml(
         getLocalNRC(
           local
         ) ||
         "—"
       )}
+
       <br>
+
 
       <strong>
         Número de documento:
       </strong>
+
       ${escapeHtml(
         getLocalDocumentNumber(
           local
         ) ||
         "—"
       )}
+
       <br>
+
 
       <strong>
         Ubicación:
       </strong>
+
       ${escapeHtml(
         getLocalUbicacion(
           local
         ) ||
         "—"
       )}
+
       <br>
+
 
       <strong>
         Estado:
       </strong>
+
       ${
         local.bloqueado
           ? "Bloqueado"
           : "Activo"
       }
+
     </p>
+
 
     <p class="hero-subtitle">
+
       El Desarrollador puede administrar
       usuarios de cualquier local.
+
     </p>
+
   `;
+
 }
 
+
 function updateSummary() {
+
   const totalLocals =
     localsCache.length;
+
 
   const visibleUsers =
     getLocalUsers(
@@ -2621,6 +3518,7 @@ function updateSummary() {
       matchesSearchUser
     );
 
+
   const visibleAttempts =
     getLocalAttempts(
       selectedLocalId
@@ -2628,215 +3526,315 @@ function updateSummary() {
       matchesSearchAttempt
     );
 
+
   const blocked =
     visibleUsers.filter(
+
       user =>
+
         user.blocked ===
           true ||
+
         user.active ===
           false
+
     ).length;
 
+
   const failed =
+
     visibleUsers.reduce(
+
       (
         sum,
         user
       ) =>
+
         sum +
+
         numberOrZero(
           user.failedLoginAttempts
         ),
+
       0
+
     ) +
+
     visibleAttempts.filter(
+
       attempt =>
+
         attempt.success ===
           false ||
+
         String(
           attempt.result ||
-            ""
+          ""
         )
           .toLowerCase() ===
         "fallido"
+
     ).length;
+
 
   if (
     statLocals
   ) {
+
     statLocals.textContent =
       totalLocals;
+
   }
+
 
   if (
     statUsers
   ) {
+
     statUsers.textContent =
       visibleUsers.length;
+
   }
+
 
   if (
     statBlocked
   ) {
+
     statBlocked.textContent =
       blocked;
+
   }
+
 
   if (
     statFailed
   ) {
+
     statFailed.textContent =
       failed;
+
   }
+
 
   if (
     localCountLabel
   ) {
+
     localCountLabel.textContent =
-      `${
-        localsCache.filter(
-          matchesSearchLocal
-        ).length
-      } registros`;
+
+      `${localsCache.filter(
+        matchesSearchLocal
+      ).length} registros`;
+
   }
+
 
   if (
     userCountLabel
   ) {
+
     userCountLabel.textContent =
+
       `${visibleUsers.length} registros`;
+
   }
+
 
   if (
     attemptCountLabel
   ) {
+
     attemptCountLabel.textContent =
+
       `${visibleAttempts.length} registros`;
+
   }
+
 }
 
+
 function renderLocalFilterOptions() {
+
   if (
     !localFilter
   ) {
+
     return;
+
   }
+
 
   const current =
     String(
       localFilter.value ||
-        ""
+      ""
     );
 
+
   localFilter.innerHTML = `
+
     <option value="">
+
       Todos los locales
+
     </option>
+
   `;
 
+
   localsCache
+
     .slice()
+
     .sort(
+
       (
         a,
         b
       ) =>
+
         String(
           getLocalName(
             a
           )
         ).localeCompare(
+
           String(
             getLocalName(
               b
             )
           )
+
         )
+
     )
+
     .forEach(
+
       local => {
+
         const option =
           document.createElement(
             "option"
           );
 
+
         option.value =
           String(
+
             local.id_local ||
             local.id ||
             ""
+
           );
 
+
         option.textContent =
+
           `${getLocalName(
             local
           )} — ` +
-          `${
-            getLocalContributorName(
-              local
-            ) ||
-            "Sin contribuyente"
-          }`;
+
+          `${getLocalContributorName(
+            local
+          ) ||
+          "Sin contribuyente"}`;
+
 
         localFilter.appendChild(
           option
         );
+
       }
+
     );
 
+
   localFilter.value =
+
     current &&
+
     localsCache.some(
+
       local =>
+
         String(
+
           local.id_local ||
           local.id
+
         ) ===
         current
+
     )
+
       ? current
+
       : "";
+
 
   selectedLocalId =
     localFilter.value ||
     "";
+
 }
 
+
 function renderLocals() {
+
   if (
     !localsTableBody
   ) {
+
     return;
+
   }
+
 
   const visible =
     localsCache.filter(
       matchesSearchLocal
     );
 
+
   if (
     !visible.length
   ) {
+
     renderEmptyRow(
+
       localsTableBody,
+
       11,
+
       "No hay locales registrados."
+
     );
 
+
     updateSummary();
+
     renderSelectedLocalCard();
 
     return;
+
   }
+
 
   localsTableBody.innerHTML =
     "";
 
+
   visible.forEach(
+
     local => {
+
       const usersCount =
         usersCache.filter(
+
           user =>
+
             String(
               getUserLocalId(
                 user
@@ -2845,12 +3843,18 @@ function renderLocals() {
             String(
               local.id_local
             )
+
         ).length;
 
+
       const lastAccess =
+
         usersCache
+
           .filter(
+
             user =>
+
               String(
                 getUserLocalId(
                   user
@@ -2859,117 +3863,163 @@ function renderLocals() {
               String(
                 local.id_local
               )
+
           )
+
           .map(
+
             user =>
+
               user.lastLoginAt ||
               user.lastAccessAt ||
               null
+
           )
-          .filter(Boolean)
+
+          .filter(
+            Boolean
+          )
+
           .sort(
+
             (
               a,
               b
             ) =>
+
               getTimestampMs(
                 b
               ) -
               getTimestampMs(
                 a
               )
+
           )[0];
+
 
       const tr =
         document.createElement(
           "tr"
         );
 
+
       tr.innerHTML = `
+
         <td>
+
           ${escapeHtml(
             getLocalName(
               local
             ) ||
             "—"
           )}
+
         </td>
 
+
         <td>
+
           ${escapeHtml(
             getLocalContributorName(
               local
             ) ||
             "—"
           )}
+
         </td>
 
+
         <td>
+
           ${escapeHtml(
             getLocalDocumentType(
               local
             ) ||
             "—"
           )}
+
         </td>
 
+
         <td>
+
           ${escapeHtml(
             getLocalNIT(
               local
             ) ||
             "—"
           )}
+
         </td>
 
+
         <td>
+
           ${escapeHtml(
             getLocalNRC(
               local
             ) ||
             "—"
           )}
+
         </td>
 
+
         <td>
+
           ${escapeHtml(
             getLocalDocumentNumber(
               local
             ) ||
             "—"
           )}
+
         </td>
 
+
         <td>
+
           ${escapeHtml(
             getLocalUbicacion(
               local
             ) ||
             "—"
           )}
+
         </td>
 
+
         <td>
+
           ${
             local.bloqueado
               ? "Bloqueado"
               : "Activo"
           }
+
         </td>
 
+
         <td>
+
           ${usersCount}
+
         </td>
 
+
         <td>
+
           ${escapeHtml(
             formatDateTime(
               lastAccess
             )
           )}
+
         </td>
 
+
         <td>
+
           <button
             type="button"
             class="btn-outline"
@@ -2980,6 +4030,7 @@ function renderLocals() {
           >
             Ver usuarios
           </button>
+
 
           <button
             type="button"
@@ -2992,6 +4043,7 @@ function renderLocals() {
             Editar
           </button>
 
+
           <button
             type="button"
             class="btn-outline"
@@ -3000,12 +4052,15 @@ function renderLocals() {
               local.id_local
             )}"
           >
+
             ${
               local.bloqueado
                 ? "Desbloquear"
                 : "Bloquear"
             }
+
           </button>
+
 
           <button
             type="button"
@@ -3015,121 +4070,183 @@ function renderLocals() {
               local.id_local
             )}"
           >
+
             Eliminar
+
           </button>
+
         </td>
+
       `;
+
 
       localsTableBody.appendChild(
         tr
       );
+
     }
+
   );
 
+
   localsTableBody
+
     .querySelectorAll(
       "button[data-action='select-local']"
     )
+
     .forEach(
+
       button => {
+
         button.addEventListener(
+
           "click",
+
           () => {
+
             selectedLocalId =
               String(
                 button.dataset.id ||
-                  ""
+                ""
               );
+
 
             if (
               localFilter
             ) {
+
               localFilter.value =
                 selectedLocalId;
+
             }
 
+
             renderAll();
+
           }
+
         );
+
       }
+
     );
 
+
   localsTableBody
+
     .querySelectorAll(
       "button[data-action='edit-local']"
     )
+
     .forEach(
+
       button => {
+
         button.addEventListener(
+
           "click",
+
           () =>
+
             editLocal(
+
               String(
                 button.dataset.id ||
-                  ""
+                ""
               )
+
             )
+
         );
+
       }
+
     );
 
+
   localsTableBody
+
     .querySelectorAll(
       "button[data-action='toggle-local']"
     )
+
     .forEach(
+
       button => {
+
         button.addEventListener(
+
           "click",
+
           () =>
+
             toggleLocalBlock(
+
               String(
                 button.dataset.id ||
-                  ""
+                ""
               )
+
             )
+
         );
+
       }
+
     );
 
+
   localsTableBody
+
     .querySelectorAll(
       "button[data-action='delete-local']"
     )
+
     .forEach(
+
       button => {
+
         button.addEventListener(
+
           "click",
+
           () =>
+
             deleteLocal(
+
               String(
                 button.dataset.id ||
-                  ""
+                ""
               )
+
             )
+
         );
+
       }
+
     );
 
+
   updateSummary();
+
   renderSelectedLocalCard();
+
 }
 
+
 function renderUsers() {
+
   if (
     !usersTableBody
   ) {
+
     return;
+
   }
 
-  /*
-   * Si no se selecciona un local:
-   *
-   * se muestran TODOS los usuarios.
-   *
-   * Esto es parte de la administración global
-   * del Desarrollador.
-   */
+
   const visible =
     getLocalUsers(
       selectedLocalId
@@ -3137,150 +4254,214 @@ function renderUsers() {
       matchesSearchUser
     );
 
+
   if (
     !visible.length
   ) {
+
     renderEmptyRow(
+
       usersTableBody,
+
       12,
+
       "No hay usuarios para este filtro."
+
     );
+
 
     updateSummary();
 
     return;
+
   }
+
 
   usersTableBody.innerHTML =
     "";
 
+
   visible
+
     .slice()
+
     .sort(
+
       (
         a,
         b
       ) =>
+
         String(
           a.name ||
-            ""
+          ""
         ).localeCompare(
+
           String(
             b.name ||
-              ""
+            ""
           )
+
         )
+
     )
+
     .forEach(
+
       user => {
+
         const localInfo =
           getUserLocalInfo(
             user
           );
 
+
         const blocked =
           user.blocked ===
           true;
 
+
         const active =
+
           user.active !==
             false &&
+
           !blocked;
+
 
         const failedAttempts =
           numberOrZero(
             user.failedLoginAttempts
           );
 
+
         const lastAccess =
+
           user.lastLoginAt ||
           user.lastAccessAt ||
           null;
+
 
         const tr =
           document.createElement(
             "tr"
           );
 
+
         tr.innerHTML = `
+
           <td>
+
             ${escapeHtml(
               user.name ||
               "—"
             )}
+
           </td>
 
+
           <td>
+
             ${escapeHtml(
               user.email ||
               "—"
             )}
+
           </td>
 
+
           <td>
+
             ${escapeHtml(
               user.position ||
               user.role ||
               "—"
             )}
+
           </td>
 
+
           <td>
+
             ${escapeHtml(
               user.phone ||
               "—"
             )}
+
           </td>
 
+
           <td>
+
             ${escapeHtml(
               localInfo.nombre ||
               "—"
             )}
+
           </td>
 
+
           <td>
+
             ${escapeHtml(
               localInfo.nombreContribuyente ||
               "—"
             )}
+
           </td>
 
+
           <td>
+
             ${escapeHtml(
               localInfo.nit ||
               "—"
             )}
+
           </td>
 
+
           <td>
+
             ${escapeHtml(
               localInfo.nrc ||
               "—"
             )}
+
           </td>
 
+
           <td>
+
             ${failedAttempts}
+
           </td>
 
+
           <td>
+
             ${escapeHtml(
               formatDateTime(
                 lastAccess
               )
             )}
+
           </td>
 
+
           <td>
+
             ${
               active
                 ? "Activo"
                 : "Bloqueado"
             }
+
           </td>
 
+
           <td>
+
             <button
               type="button"
               class="btn-edit"
@@ -3293,6 +4474,7 @@ function renderUsers() {
               Editar
             </button>
 
+
             <button
               type="button"
               class="btn-outline"
@@ -3302,68 +4484,108 @@ function renderUsers() {
                 user.uid
               )}"
             >
+
               ${
                 active
                   ? "Bloquear"
                   : "Desbloquear"
               }
+
             </button>
+
           </td>
+
         `;
+
 
         usersTableBody.appendChild(
           tr
         );
+
       }
+
     );
 
+
   usersTableBody
+
     .querySelectorAll(
       "button[data-action='edit-user']"
     )
+
     .forEach(
+
       button => {
+
         button.addEventListener(
+
           "click",
+
           () =>
+
             editUser(
+
               String(
                 button.dataset.id ||
-                  ""
+                ""
               )
+
             )
+
         );
+
       }
+
     );
 
+
   usersTableBody
+
     .querySelectorAll(
       "button[data-action='toggle-user']"
     )
+
     .forEach(
+
       button => {
+
         button.addEventListener(
+
           "click",
+
           () =>
+
             toggleUserBlock(
+
               String(
                 button.dataset.id ||
-                  ""
+                ""
               )
+
             )
+
         );
+
       }
+
     );
 
+
   updateSummary();
+
 }
 
+
 function renderAttempts() {
+
   if (
     !attemptsTableBody
   ) {
+
     return;
+
   }
+
 
   const visible =
     getLocalAttempts(
@@ -3372,62 +4594,89 @@ function renderAttempts() {
       matchesSearchAttempt
     );
 
+
   if (
     !visible.length
   ) {
+
     renderEmptyRow(
+
       attemptsTableBody,
+
       6,
-      "No hay intentos fallidos para este filtro."
+
+      "No hay intentos de acceso para este filtro."
+
     );
+
 
     updateSummary();
 
     return;
+
   }
+
 
   attemptsTableBody.innerHTML =
     "";
 
+
   visible
+
     .slice()
+
     .sort(
+
       (
         a,
         b
       ) =>
+
         getTimestampMs(
           b.createdAt
         ) -
         getTimestampMs(
           a.createdAt
         )
+
     )
+
     .forEach(
+
       attempt => {
+
         const byEmailLocal =
           usersCache.find(
+
             user =>
+
               String(
                 user.email ||
-                  ""
+                ""
               )
                 .trim()
                 .toLowerCase() ===
+
               String(
                 attempt.email ||
-                  ""
+                ""
               )
                 .trim()
                 .toLowerCase()
+
           );
 
+
         const localInfo =
+
           byEmailLocal
+
             ? getUserLocalInfo(
                 byEmailLocal
               )
+
             : {
+
                 nombre:
                   attempt.localNombre ||
                   "—",
@@ -3455,96 +4704,144 @@ function renderAttempts() {
                 ubicacion:
                   attempt.localUbicacion ||
                   ""
+
               };
 
+
         const result =
+
           attempt.success ===
               false ||
-            String(
-              attempt.result ||
-                ""
-            ).toLowerCase() ===
-              "fallido"
+
+          String(
+            attempt.result ||
+            ""
+          )
+            .toLowerCase() ===
+            "fallido"
+
             ? "Fallido"
+
             : "Correcto";
+
 
         const tr =
           document.createElement(
             "tr"
           );
 
+
         tr.innerHTML = `
+
           <td>
+
             ${escapeHtml(
               attempt.email ||
               "—"
             )}
+
           </td>
 
+
           <td>
+
             ${escapeHtml(
               localInfo.nombre ||
               "—"
             )}
+
           </td>
 
+
           <td>
+
             ${escapeHtml(
               result
             )}
+
           </td>
 
+
           <td>
+
             ${escapeHtml(
               attempt.reason ||
               attempt.message ||
               "—"
             )}
+
           </td>
 
+
           <td>
+
             ${escapeHtml(
               formatDateOnly(
                 attempt.createdAt
               )
             )}
+
           </td>
 
+
           <td>
+
             ${escapeHtml(
               formatTimeOnly(
                 attempt.createdAt
               )
             )}
+
           </td>
+
         `;
+
 
         attemptsTableBody.appendChild(
           tr
         );
+
       }
+
     );
+
 
   updateSummary();
+
 }
+
 
 function renderAll() {
+
   renderLocalFilterOptions();
+
   renderLocals();
+
   renderUsers();
+
   renderAttempts();
+
   renderSelectedLocalCard();
+
 }
+
 
 function syncSelectionFromFilter() {
+
   selectedLocalId =
+
     String(
+
       localFilter?.value ||
-        ""
+      ""
+
     );
 
+
   renderAll();
+
 }
+
 
 /*
  * ============================================================
@@ -3553,116 +4850,182 @@ function syncSelectionFromFilter() {
  */
 
 function getAuthApiKey() {
+
   try {
+
     return firebase
+
       .app()
+
       .options
+
       .apiKey;
+
   } catch {
+
     return null;
+
   }
+
 }
+
 
 function mapAuthRestError(
   errorMessage = ""
 ) {
+
   const message =
     String(
       errorMessage ||
-        ""
+      ""
     ).toUpperCase();
+
 
   switch (
     message
   ) {
+
     case "EMAIL_EXISTS":
+
       return (
+
         "Ese correo ya está registrado en Authentication."
+
       );
+
 
     case "OPERATION_NOT_ALLOWED":
+
       return (
+
         "El inicio de sesión con correo y contraseña " +
+
         "no está habilitado en Firebase Authentication."
+
       );
+
 
     case "WEAK_PASSWORD : PASSWORD SHOULD BE AT LEAST 6 CHARACTERS":
+
     case "WEAK_PASSWORD":
+
       return (
+
         "La contraseña debe tener al menos 6 caracteres."
+
       );
 
+
     case "INVALID_EMAIL":
+
       return (
         "El correo ingresado no es válido."
       );
 
+
     default:
+
       return (
+
         errorMessage ||
+
         "No se pudo crear la cuenta en Authentication."
+
       );
+
   }
+
 }
+
 
 async function createAuthUserWithEmailPassword(
   email,
   password
 ) {
+
   const apiKey =
     getAuthApiKey();
+
 
   if (
     !apiKey
   ) {
+
     throw new Error(
+
       "No se pudo leer la API key de Firebase."
+
     );
+
   }
+
 
   const response =
     await fetch(
+
       `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(
         apiKey
       )}`,
+
       {
+
         method:
           "POST",
 
         headers: {
+
           "Content-Type":
             "application/json"
+
         },
 
         body:
           JSON.stringify({
+
             email,
+
             password,
+
             returnSecureToken:
               true
+
           })
+
       }
+
     );
+
 
   const data =
     await response.json();
 
+
   if (
     !response.ok
   ) {
+
     const errorMessage =
+
       data?.error?.message ||
+
       "No se pudo crear la cuenta.";
 
+
     throw new Error(
+
       mapAuthRestError(
         errorMessage
       )
+
     );
+
   }
 
+
   return data;
+
 }
+
 
 /*
  * ============================================================
@@ -3673,9 +5036,13 @@ async function createAuthUserWithEmailPassword(
 function buildDocumentTypeOptions(
   selectedValue = ""
 ) {
+
   return DOCUMENT_TYPE_OPTIONS
+
     .map(
+
       type => `
+
         <option
           value="${escapeHtml(
             type
@@ -3687,28 +5054,38 @@ function buildDocumentTypeOptions(
               : ""
           }
         >
+
           ${escapeHtml(
             type
           )}
+
         </option>
+
       `
+
     )
+
     .join("");
+
 }
+
 
 function buildLocalModalHtml(
   initial = {}
 ) {
+
   return `
+
     <input
       id="localName"
       class="swal2-input"
       placeholder="Nombre del local"
       value="${escapeHtml(
         initial.nombre ||
-          ""
+        ""
       )}"
     >
+
 
     <input
       id="localContributorName"
@@ -3716,9 +5093,10 @@ function buildLocalModalHtml(
       placeholder="Nombre del contribuyente"
       value="${escapeHtml(
         initial.nombreContribuyente ||
-          ""
+        ""
       )}"
     >
+
 
     <select
       id="localDocumentType"
@@ -3728,15 +5106,21 @@ function buildLocalModalHtml(
         padding:12px 10px;
       "
     >
+
       <option value="">
+
         Seleccione tipo de documento
+
       </option>
+
 
       ${buildDocumentTypeOptions(
         initial.tipoDocumento ||
-          ""
+        ""
       )}
+
     </select>
+
 
     <input
       id="localNIT"
@@ -3744,9 +5128,10 @@ function buildLocalModalHtml(
       placeholder="NIT"
       value="${escapeHtml(
         initial.nit ||
-          ""
+        ""
       )}"
     >
+
 
     <input
       id="localNRC"
@@ -3754,9 +5139,10 @@ function buildLocalModalHtml(
       placeholder="NRC"
       value="${escapeHtml(
         initial.nrc ||
-          ""
+        ""
       )}"
     >
+
 
     <input
       id="localDocumentNumber"
@@ -3764,9 +5150,10 @@ function buildLocalModalHtml(
       placeholder="Número de documento"
       value="${escapeHtml(
         initial.numeroDocumento ||
-          ""
+        ""
       )}"
     >
+
 
     <input
       id="localLocation"
@@ -3774,9 +5161,10 @@ function buildLocalModalHtml(
       placeholder="Ubicación"
       value="${escapeHtml(
         initial.ubicacion ||
-          ""
+        ""
       )}"
     >
+
 
     <div
       style="
@@ -3786,148 +5174,216 @@ function buildLocalModalHtml(
         margin-top:6px;
       "
     >
+
       El ID del local se utiliza para relacionar
       los usuarios y se guarda como
       <strong>id_local</strong>.
+
     </div>
+
   `;
+
 }
 
+
 function readLocalModalValues() {
+
   return {
+
     nombre:
       String(
+
         document.getElementById(
           "localName"
         )?.value ||
-          ""
+        ""
+
       ).trim(),
+
 
     nombreContribuyente:
       String(
+
         document.getElementById(
           "localContributorName"
         )?.value ||
-          ""
+        ""
+
       ).trim(),
+
 
     tipoDocumento:
       String(
+
         document.getElementById(
           "localDocumentType"
         )?.value ||
-          ""
+        ""
+
       ).trim(),
+
 
     nit:
       String(
+
         document.getElementById(
           "localNIT"
         )?.value ||
-          ""
+        ""
+
       ).trim(),
+
 
     nrc:
       String(
+
         document.getElementById(
           "localNRC"
         )?.value ||
-          ""
+        ""
+
       ).trim(),
+
 
     numeroDocumento:
       String(
+
         document.getElementById(
           "localDocumentNumber"
         )?.value ||
-          ""
+        ""
+
       ).trim(),
+
 
     ubicacion:
       String(
+
         document.getElementById(
           "localLocation"
         )?.value ||
-          ""
+        ""
+
       ).trim()
+
   };
+
 }
+
 
 function validateLocalValues(
   values
 ) {
+
   if (
     !values.nombre
   ) {
+
     Swal.showValidationMessage(
+
       "El nombre del local es obligatorio."
+
     );
 
     return false;
+
   }
+
 
   if (
     !values.nombreContribuyente
   ) {
+
     Swal.showValidationMessage(
+
       "El nombre del contribuyente es obligatorio."
+
     );
 
     return false;
+
   }
+
 
   if (
     !values.tipoDocumento
   ) {
+
     Swal.showValidationMessage(
+
       "El tipo de documento es obligatorio."
+
     );
 
     return false;
+
   }
+
 
   if (
     !values.nit
   ) {
+
     Swal.showValidationMessage(
+
       "El NIT es obligatorio."
+
     );
 
     return false;
+
   }
+
 
   if (
     !values.nrc
   ) {
+
     Swal.showValidationMessage(
+
       "El NRC es obligatorio."
+
     );
 
     return false;
+
   }
+
 
   if (
     !values.numeroDocumento
   ) {
+
     Swal.showValidationMessage(
+
       "El número de documento es obligatorio."
+
     );
 
     return false;
+
   }
+
 
   if (
     !values.ubicacion
   ) {
+
     Swal.showValidationMessage(
+
       "La ubicación es obligatoria."
+
     );
 
     return false;
+
   }
 
+
   return true;
+
 }
+
 
 /*
  * ============================================================
@@ -3936,11 +5392,15 @@ function validateLocalValues(
  */
 
 async function createLocal() {
+
   try {
+
     await ensureDeveloperPermission();
+
 
     const result =
       await Swal.fire({
+
         title:
           "Nuevo local",
 
@@ -3960,40 +5420,57 @@ async function createLocal() {
           false,
 
         preConfirm: () => {
+
           const values =
             readLocalModalValues();
+
 
           if (
             !validateLocalValues(
               values
             )
           ) {
+
             return;
+
           }
 
+
           return values;
+
         }
+
       });
+
 
     if (
       !result.isConfirmed
     ) {
+
       return;
+
     }
+
 
     const values =
       result.value;
 
+
     await ensureDeveloperPermission();
+
 
     const ref =
       db
+
         .collection(
           LOCAL_COLLECTION
         )
+
         .doc();
 
+
     const payload = {
+
       id_local:
         ref.id,
 
@@ -4025,26 +5502,35 @@ async function createLocal() {
         true,
 
       createdAt:
-        firebase.firestore.FieldValue
+        firebase.firestore
+          .FieldValue
           .serverTimestamp(),
 
       updatedAt:
-        firebase.firestore.FieldValue
+        firebase.firestore
+          .FieldValue
           .serverTimestamp(),
 
       createdBy:
         currentUserInfo.uid ||
         null
+
     };
+
 
     await ref.set(
       payload
     );
 
+
     upsertCachedDocument(
+
       LOCAL_COLLECTION,
+
       ref.id,
+
       {
+
         ...payload,
 
         id_local:
@@ -4055,27 +5541,43 @@ async function createLocal() {
 
         updatedAt:
           Date.now()
+
       }
+
     );
+
 
     refreshCachesFromApp();
 
     renderAll();
 
+
     await Swal.fire(
+
       "Local guardado",
+
       "El local fue creado correctamente.",
+
       "success"
+
     );
+
   } catch (
     error
   ) {
+
     await showOperationError(
+
       error,
+
       "No se pudo crear el local."
+
     );
+
   }
+
 }
+
 
 /*
  * ============================================================
@@ -4086,51 +5588,74 @@ async function createLocal() {
 async function editLocal(
   localId
 ) {
+
   try {
+
     await ensureDeveloperPermission();
+
 
     const local =
       localsCache.find(
+
         item =>
+
           String(
             item.id_local
           ) ===
           String(
             localId
           )
+
       );
+
 
     if (
       !local
     ) {
+
       throw new Error(
+
         "No se encontró el local seleccionado."
+
       );
+
     }
+
 
     const result =
       await Swal.fire({
+
         title:
           "Editar local",
 
         html: `
+
           <div
             style="
               text-align:left;
               margin-bottom:10px;
             "
           >
+
             <div class="small">
+
               ID local:
+
               <span class="mono">
+
                 ${escapeHtml(
                   local.id_local
                 )}
+
               </span>
+
             </div>
+
           </div>
 
+
           ${buildLocalModalHtml({
+
             nombre:
               getLocalName(
                 local
@@ -4165,7 +5690,9 @@ async function editLocal(
               getLocalUbicacion(
                 local
               )
+
           })}
+
         `,
 
         confirmButtonText:
@@ -4181,44 +5708,61 @@ async function editLocal(
           false,
 
         preConfirm: () => {
+
           const values =
             readLocalModalValues();
+
 
           if (
             !validateLocalValues(
               values
             )
           ) {
+
             return;
+
           }
 
+
           return values;
+
         }
+
       });
+
 
     if (
       !result.isConfirmed
     ) {
+
       return;
+
     }
+
 
     const values =
       result.value;
 
+
     await ensureDeveloperPermission();
+
 
     const localRef =
       db
+
         .collection(
           LOCAL_COLLECTION
         )
+
         .doc(
           String(
             local.id_local
           )
         );
 
+
     const localPatch = {
+
       nombre:
         values.nombre,
 
@@ -4241,34 +5785,64 @@ async function editLocal(
         values.ubicacion,
 
       updatedAt:
-        firebase.firestore.FieldValue
+        firebase.firestore
+          .FieldValue
           .serverTimestamp()
+
     };
+
 
     const localUsers =
       getLocalUsers(
         local.id_local
       );
 
+
     const batch =
       db.batch();
+
 
     batch.update(
       localRef,
       localPatch
     );
 
+
     localUsers.forEach(
+
       employee => {
+
+        const employeeId =
+          String(
+            employee.id ||
+            employee.uid ||
+            ""
+          ).trim();
+
+
+        if (
+          !employeeId
+        ) {
+
+          return;
+
+        }
+
+
         batch.update(
+
           db
+
             .collection(
               EMPLOYEE_COLLECTION
             )
+
             .doc(
-              employee.id
+              employeeId
             ),
+
           {
+
             localNombre:
               values.nombre,
 
@@ -4291,34 +5865,71 @@ async function editLocal(
               values.ubicacion,
 
             updatedAt:
-              firebase.firestore.FieldValue
+              firebase.firestore
+                .FieldValue
                 .serverTimestamp()
+
           }
+
         );
+
       }
+
     );
+
 
     await batch.commit();
 
+
     upsertCachedDocument(
+
       LOCAL_COLLECTION,
+
       String(
         local.id_local
       ),
+
       {
+
         ...localPatch,
 
         updatedAt:
           Date.now()
+
       }
+
     );
 
+
     localUsers.forEach(
+
       employee => {
+
+        const employeeId =
+          String(
+            employee.id ||
+            employee.uid ||
+            ""
+          ).trim();
+
+
+        if (
+          !employeeId
+        ) {
+
+          return;
+
+        }
+
+
         upsertCachedDocument(
+
           EMPLOYEE_COLLECTION,
-          employee.id,
+
+          employeeId,
+
           {
+
             localNombre:
               values.nombre,
 
@@ -4342,29 +5953,47 @@ async function editLocal(
 
             updatedAt:
               Date.now()
+
           }
+
         );
+
       }
+
     );
+
 
     refreshCachesFromApp();
 
     renderAll();
 
+
     await Swal.fire(
+
       "Actualizado",
+
       "El local y los usuarios asociados fueron actualizados correctamente.",
+
       "success"
+
     );
+
   } catch (
     error
   ) {
+
     await showOperationError(
+
       error,
+
       "No se pudo actualizar el local."
+
     );
+
   }
+
 }
+
 
 /*
  * ============================================================
@@ -4375,46 +6004,70 @@ async function editLocal(
 async function toggleLocalBlock(
   localId
 ) {
+
   try {
+
     await ensureDeveloperPermission();
+
 
     const local =
       localsCache.find(
+
         item =>
+
           String(
             item.id_local
           ) ===
           String(
             localId
           )
+
       );
+
 
     if (
       !local
     ) {
+
       throw new Error(
+
         "No se encontró el local seleccionado."
+
       );
+
     }
 
+
     const nextBlocked =
+
       !(
+
         local.bloqueado ===
           true ||
+
         local.blocked ===
           true
+
       );
+
 
     const result =
       await Swal.fire({
+
         title:
+
           nextBlocked
+
             ? "Bloquear local"
+
             : "Desbloquear local",
 
         text:
+
           nextBlocked
+
             ? "Todos los usuarios de este local quedarán bloqueados."
+
             : "Todos los usuarios de este local quedarán habilitados.",
 
         icon:
@@ -4424,42 +6077,55 @@ async function toggleLocalBlock(
           true,
 
         confirmButtonText:
+
           nextBlocked
             ? "Bloquear"
             : "Desbloquear",
 
         cancelButtonText:
           "Cancelar"
+
       });
+
 
     if (
       !result.isConfirmed
     ) {
+
       return;
+
     }
+
 
     await ensureDeveloperPermission();
 
+
     const localRef =
       db
+
         .collection(
           LOCAL_COLLECTION
         )
+
         .doc(
           String(
             local.id_local
           )
         );
 
+
     const localUsers =
       getLocalUsers(
         local.id_local
       );
 
+
     const batch =
       db.batch();
 
+
     const localPatch = {
+
       bloqueado:
         nextBlocked,
 
@@ -4467,26 +6133,54 @@ async function toggleLocalBlock(
         !nextBlocked,
 
       updatedAt:
-        firebase.firestore.FieldValue
+        firebase.firestore
+          .FieldValue
           .serverTimestamp()
+
     };
+
 
     batch.update(
       localRef,
       localPatch
     );
 
+
     localUsers.forEach(
+
       employee => {
+
+        const employeeId =
+          String(
+            employee.id ||
+            employee.uid ||
+            ""
+          ).trim();
+
+
+        if (
+          !employeeId
+        ) {
+
+          return;
+
+        }
+
+
         batch.update(
+
           db
+
             .collection(
               EMPLOYEE_COLLECTION
             )
+
             .doc(
-              employee.id
+              employeeId
             ),
+
           {
+
             blocked:
               nextBlocked,
 
@@ -4494,34 +6188,71 @@ async function toggleLocalBlock(
               !nextBlocked,
 
             updatedAt:
-              firebase.firestore.FieldValue
+              firebase.firestore
+                .FieldValue
                 .serverTimestamp()
+
           }
+
         );
+
       }
+
     );
+
 
     await batch.commit();
 
+
     upsertCachedDocument(
+
       LOCAL_COLLECTION,
+
       String(
         local.id_local
       ),
+
       {
+
         ...localPatch,
 
         updatedAt:
           Date.now()
+
       }
+
     );
 
+
     localUsers.forEach(
+
       employee => {
+
+        const employeeId =
+          String(
+            employee.id ||
+            employee.uid ||
+            ""
+          ).trim();
+
+
+        if (
+          !employeeId
+        ) {
+
+          return;
+
+        }
+
+
         upsertCachedDocument(
+
           EMPLOYEE_COLLECTION,
-          employee.id,
+
+          employeeId,
+
           {
+
             blocked:
               nextBlocked,
 
@@ -4530,31 +6261,49 @@ async function toggleLocalBlock(
 
             updatedAt:
               Date.now()
+
           }
+
         );
+
       }
+
     );
+
 
     refreshCachesFromApp();
 
     renderAll();
 
+
     await Swal.fire(
+
       "Listo",
+
       nextBlocked
         ? "Local bloqueado."
         : "Local desbloqueado.",
+
       "success"
+
     );
+
   } catch (
     error
   ) {
+
     await showOperationError(
+
       error,
+
       "No se pudo cambiar el estado del local."
+
     );
+
   }
+
 }
+
 
 /*
  * ============================================================
@@ -4565,47 +6314,68 @@ async function toggleLocalBlock(
 async function deleteLocal(
   localId
 ) {
+
   try {
+
     await ensureDeveloperPermission();
+
 
     const local =
       localsCache.find(
+
         item =>
+
           String(
             item.id_local
           ) ===
           String(
             localId
           )
+
       );
+
 
     if (
       !local
     ) {
+
       throw new Error(
+
         "No se encontró el local seleccionado."
+
       );
+
     }
+
 
     const users =
       getLocalUsers(
         local.id_local
       );
 
+
     if (
       users.length
     ) {
+
       await Swal.fire(
+
         "No se puede eliminar",
-        "Este local tiene usuarios asignados. Primero reubica o elimina esos usuarios.",
+
+        "Este local tiene usuarios asignados. Primero reubica esos usuarios a otro local.",
+
         "warning"
+
       );
 
       return;
+
     }
+
 
     const result =
       await Swal.fire({
+
         title:
           "Eliminar local",
 
@@ -4623,64 +6393,98 @@ async function deleteLocal(
 
         cancelButtonText:
           "Cancelar"
+
       });
+
 
     if (
       !result.isConfirmed
     ) {
+
       return;
+
     }
+
 
     await ensureDeveloperPermission();
 
+
     await db
+
       .collection(
         LOCAL_COLLECTION
       )
+
       .doc(
         String(
           local.id_local
         )
       )
+
       .delete();
 
+
     removeCachedDocument(
+
       LOCAL_COLLECTION,
+
       String(
         local.id_local
       )
+
     );
+
 
     refreshCachesFromApp();
 
+
     if (
+
       String(
         selectedLocalId
       ) ===
+
       String(
         local.id_local
       )
+
     ) {
+
       selectedLocalId =
         "";
+
     }
+
 
     renderAll();
 
+
     await Swal.fire(
+
       "Eliminado",
+
       "El local fue eliminado.",
+
       "success"
+
     );
+
   } catch (
     error
   ) {
+
     await showOperationError(
+
       error,
+
       "No se pudo eliminar el local."
+
     );
+
   }
+
 }
+
 
 /*
  * ============================================================
@@ -4692,16 +6496,19 @@ function buildUserModalHtml(
   localOptions = "",
   initial = {}
 ) {
+
   return `
+
     <input
       id="userName"
       class="swal2-input"
       placeholder="Nombre"
       value="${escapeHtml(
         initial.name ||
-          ""
+        ""
       )}"
     >
+
 
     <input
       id="userEmail"
@@ -4710,20 +6517,19 @@ function buildUserModalHtml(
       type="email"
       value="${escapeHtml(
         initial.email ||
-          ""
+        ""
       )}"
     >
+
 
     <input
       id="userPassword"
       class="swal2-input"
       placeholder="Contraseña temporal"
       type="password"
-      value="${escapeHtml(
-        initial.password ||
-          ""
-      )}"
+      value=""
     >
+
 
     <select
       id="userPosition"
@@ -4733,17 +6539,25 @@ function buildUserModalHtml(
         padding:12px 10px;
       "
     >
+
       <option value="">
+
         Seleccione posición
+
       </option>
 
+
       ${
+
         Array.isArray(
           POSITION_OPTIONS
         )
+
           ? POSITION_OPTIONS
               .map(
+
                 position => `
+
                   <option
                     value="${escapeHtml(
                       position
@@ -4755,16 +6569,24 @@ function buildUserModalHtml(
                         : ""
                     }
                   >
+
                     ${escapeHtml(
                       position
                     )}
+
                   </option>
+
                 `
+
               )
               .join("")
+
           : ""
+
       }
+
     </select>
+
 
     <input
       id="userPhone"
@@ -4772,9 +6594,10 @@ function buildUserModalHtml(
       placeholder="Teléfono"
       value="${escapeHtml(
         initial.phone ||
-          ""
+        ""
       )}"
     >
+
 
     <select
       id="userLocal"
@@ -4784,12 +6607,18 @@ function buildUserModalHtml(
         padding:12px 10px;
       "
     >
+
       <option value="">
+
         Seleccione local
+
       </option>
 
+
       ${localOptions}
+
     </select>
+
 
     <label
       style="
@@ -4800,6 +6629,7 @@ function buildUserModalHtml(
         font-size:0.95rem;
       "
     >
+
       <input
         id="userActive"
         type="checkbox"
@@ -4812,7 +6642,9 @@ function buildUserModalHtml(
       >
 
       Usuario activo
+
     </label>
+
 
     <div
       style="
@@ -4822,36 +6654,52 @@ function buildUserModalHtml(
         margin-top:6px;
       "
     >
+
       El usuario se crea en Authentication
       y luego se guarda en Firestore.
+
     </div>
+
   `;
+
 }
+
 
 function buildLocalOptions(
   selectedLocalId = ""
 ) {
+
   return localsCache
+
     .slice()
+
     .sort(
+
       (
         a,
         b
       ) =>
+
         String(
           getLocalName(
             a
           )
         ).localeCompare(
+
           String(
             getLocalName(
               b
             )
           )
+
         )
+
     )
+
     .map(
+
       local => `
+
         <option
           value="${escapeHtml(
             local.id_local
@@ -4867,83 +6715,117 @@ function buildLocalOptions(
               : ""
           }
         >
+
           ${escapeHtml(
             getLocalName(
               local
             ) ||
-              "Local"
+            "Local"
           )}
+
           —
+
           ${escapeHtml(
             getLocalContributorName(
               local
             ) ||
-              "Sin contribuyente"
+            "Sin contribuyente"
           )}
+
         </option>
+
       `
+
     )
+
     .join("");
+
 }
 
+
 function readUserModalValues() {
+
   return {
+
     name:
       String(
+
         document.getElementById(
           "userName"
         )?.value ||
-          ""
+        ""
+
       ).trim(),
+
 
     email:
       String(
+
         document.getElementById(
           "userEmail"
         )?.value ||
-          ""
+        ""
+
       ).trim(),
+
 
     password:
       String(
+
         document.getElementById(
           "userPassword"
         )?.value ||
-          ""
+        ""
+
       ).trim(),
+
 
     position:
       String(
+
         document.getElementById(
           "userPosition"
         )?.value ||
-          ""
+        ""
+
       ).trim(),
+
 
     phone:
       String(
+
         document.getElementById(
           "userPhone"
         )?.value ||
-          ""
+        ""
+
       ).trim(),
+
 
     id_local:
       String(
+
         document.getElementById(
           "userLocal"
         )?.value ||
-          ""
+        ""
+
       ).trim(),
+
 
     active:
       Boolean(
+
         document.getElementById(
           "userActive"
         )?.checked
+
       )
+
   };
+
 }
+
 
 /*
  * ============================================================
@@ -4954,75 +6836,106 @@ function readUserModalValues() {
 function getUserTargetLocalId(
   requestedLocalId = ""
 ) {
+
   const explicit =
     String(
       requestedLocalId ||
-        ""
+      ""
     ).trim();
+
 
   if (
     explicit
   ) {
+
     return explicit;
+
   }
+
 
   const selected =
     String(
       selectedLocalId ||
-        ""
+      ""
     ).trim();
 
+
   return selected;
+
 }
+
 
 function findLocalById(
   localId
 ) {
+
   const target =
     String(
       localId ||
-        ""
+      ""
     ).trim();
+
 
   if (
     !target
   ) {
+
     return null;
+
   }
 
+
   return (
+
     localsCache.find(
+
       local =>
+
         String(
           local.id_local
         ).trim() ===
         target
+
     ) ||
+
     null
+
   );
+
 }
+
 
 function buildUserLocalSummary(
   localId
 ) {
+
   const local =
     findLocalById(
       localId
     );
 
+
   if (
     !local
   ) {
+
     return "Sin local seleccionado";
+
   }
 
+
   return (
+
     getLocalName(
       local
     ) ||
+
     "Local"
+
   );
+
 }
+
 
 /*
  * ============================================================
@@ -5031,47 +6944,62 @@ function buildUserLocalSummary(
  */
 
 async function createUser() {
+
   if (
     isCreatingUser
   ) {
+
     return;
+
   }
+
 
   isCreatingUser =
     true;
 
+
   try {
+
     await ensureDeveloperPermission();
+
 
     if (
       !localsCache.length
     ) {
+
       await Swal.fire(
+
         "Sin locales",
+
         "Primero crea un local.",
+
         "warning"
+
       );
 
       return;
+
     }
 
-    /*
-     * El local actualmente seleccionado se utiliza como
-     * valor inicial, pero el desarrollador puede cambiarlo.
-     */
+
     const defaultLocalId =
       getUserTargetLocalId();
 
+
     const result =
       await Swal.fire({
+
         title:
           "Nuevo usuario",
 
         html:
+
           buildUserModalHtml(
+
             buildLocalOptions(
               defaultLocalId
             )
+
           ),
 
         confirmButtonText:
@@ -5087,158 +7015,203 @@ async function createUser() {
           false,
 
         preConfirm: () => {
+
           const values =
             readUserModalValues();
 
+
           if (
+
             !values.name ||
+
             !values.email ||
+
             !values.password ||
+
             !values.position ||
+
             !values.id_local
+
           ) {
+
             Swal.showValidationMessage(
+
               "Nombre, correo, contraseña, posición y local son obligatorios."
+
             );
 
+
             return;
+
           }
+
 
           if (
             values.password.length <
             6
           ) {
+
             Swal.showValidationMessage(
+
               "La contraseña debe tener al menos 6 caracteres."
+
             );
 
+
             return;
+
           }
+
 
           if (
             !findLocalById(
               values.id_local
             )
           ) {
+
             Swal.showValidationMessage(
+
               "El local seleccionado no existe."
+
             );
 
+
             return;
+
           }
 
+
           return values;
+
         }
+
       });
+
 
     if (
       !result.isConfirmed
     ) {
+
       return;
+
     }
+
 
     const values =
       result.value;
 
+
     await ensureDeveloperPermission();
 
-    /*
-     * ========================================================
-     * LOCAL DESTINO
-     * ========================================================
-     */
 
     const local =
       findLocalById(
         values.id_local
       );
 
+
     if (
       !local
     ) {
+
       throw new Error(
+
         "El local seleccionado no existe."
+
       );
+
     }
 
-    /*
-     * No se necesita una consulta para validar duplicados.
-     *
-     * La colección completa de empleados ya está en memoria.
-     *
-     * Authentication también impone unicidad global del correo.
-     */
+
     const normalizedEmail =
       values.email
+
         .trim()
+
         .toLowerCase();
+
 
     const exists =
       usersCache.some(
+
         employee =>
+
           String(
             employee.email ||
-              ""
+            ""
           )
             .trim()
             .toLowerCase() ===
           normalizedEmail
+
       );
+
 
     if (
       exists
     ) {
+
       await Swal.fire(
+
         "Validación",
+
         "Ya existe un usuario con ese correo electrónico.",
+
         "warning"
+
       );
 
       return;
+
     }
 
-    /*
-     * ========================================================
-     * CREAR CUENTA AUTH
-     * ========================================================
-     */
 
     const authUser =
       await createAuthUserWithEmailPassword(
+
         values.email,
+
         values.password
+
       );
+
 
     const authUid =
       String(
+
         authUser.localId ||
-          ""
+        ""
+
       ).trim();
+
 
     if (
       !authUid
     ) {
+
       throw new Error(
+
         "Firebase Authentication no devolvió el UID del nuevo usuario."
+
       );
+
     }
 
-    /*
-     * ========================================================
-     * DOCUMENTO EMPLEADO
-     * ========================================================
-     */
 
     const employeeRef =
       db
+
         .collection(
           EMPLOYEE_COLLECTION
         )
+
         .doc(
           authUid
         );
 
+
     const employeeData = {
+
       uid:
         authUid,
 
@@ -5249,6 +7222,9 @@ async function createUser() {
         normalizedEmail,
 
       position:
+        values.position,
+
+      role:
         values.position,
 
       phone:
@@ -5311,32 +7287,35 @@ async function createUser() {
         null,
 
       createdAt:
-        firebase.firestore.FieldValue
+        firebase.firestore
+          .FieldValue
           .serverTimestamp(),
 
       updatedAt:
-        firebase.firestore.FieldValue
+        firebase.firestore
+          .FieldValue
           .serverTimestamp(),
 
       createdBy:
         currentUserInfo.uid ||
         null
+
     };
+
 
     await employeeRef.set(
       employeeData
     );
 
-    /*
-     * ========================================================
-     * ACTUALIZAR CACHE
-     * ========================================================
-     */
 
     upsertCachedDocument(
+
       EMPLOYEE_COLLECTION,
+
       authUid,
+
       {
+
         ...employeeData,
 
         uid:
@@ -5347,24 +7326,30 @@ async function createUser() {
 
         updatedAt:
           Date.now()
+
       }
+
     );
+
 
     refreshCachesFromApp();
 
-    /*
-     * Mantener el local seleccionado.
-     */
+
     if (
       !selectedLocalId
     ) {
+
       selectedLocalId =
         values.id_local;
+
     }
+
 
     renderAll();
 
+
     await Swal.fire({
+
       icon:
         "success",
 
@@ -5372,22 +7357,34 @@ async function createUser() {
         "Usuario creado",
 
       text:
+
         `El usuario fue creado y asignado a ${buildUserLocalSummary(
           values.id_local
         )}.`
+
     });
+
   } catch (
     error
   ) {
+
     await showOperationError(
+
       error,
+
       "No se pudo crear el usuario."
+
     );
+
   } finally {
+
     isCreatingUser =
       false;
+
   }
+
 }
+
 
 /*
  * ============================================================
@@ -5398,50 +7395,67 @@ async function createUser() {
 async function editUser(
   userIdentifier
 ) {
+
   if (
     isEditingUser
   ) {
+
     return;
+
   }
+
 
   isEditingUser =
     true;
 
+
   try {
+
     await ensureDeveloperPermission();
 
-    /*
-     * Buscar primero en memoria.
-     *
-     * Se acepta:
-     *
-     * - document ID
-     * - UID
-     */
+
     const user =
       findEmployeeForOperation(
         userIdentifier
       );
 
+
     if (
       !user
     ) {
+
       throw new Error(
+
         "No se encontró el usuario seleccionado en la caché de sesión."
+
       );
+
     }
+
 
     const currentLocalId =
       getUserLocalId(
         user
       );
 
+
+    const currentPosition =
+
+      user.position ||
+
+      user.role ||
+
+      "";
+
+
     const result =
       await Swal.fire({
+
         title:
           "Editar usuario",
 
         html: `
+
           <div
             style="
               text-align:left;
@@ -5450,22 +7464,35 @@ async function editUser(
               color:#6b7280;
             "
           >
-            <strong>Usuario:</strong>
+
+            <strong>
+              Usuario:
+            </strong>
+
             ${escapeHtml(
               user.email ||
               "—"
             )}
+
             <br>
 
-            <strong>UID:</strong>
+
+            <strong>
+              UID:
+            </strong>
+
             <span class="mono">
+
               ${escapeHtml(
                 user.uid ||
                 user.id ||
                 "—"
               )}
+
             </span>
+
           </div>
+
 
           <input
             id="editUserName"
@@ -5473,9 +7500,10 @@ async function editUser(
             placeholder="Nombre"
             value="${escapeHtml(
               user.name ||
-                ""
+              ""
             )}"
           >
+
 
           <input
             id="editUserEmail"
@@ -5483,10 +7511,11 @@ async function editUser(
             placeholder="Correo"
             value="${escapeHtml(
               user.email ||
-                ""
+              ""
             )}"
             readonly
           >
+
 
           <select
             id="editUserPosition"
@@ -5496,38 +7525,56 @@ async function editUser(
               padding:12px 10px;
             "
           >
+
             <option value="">
+
               Seleccione posición
+
             </option>
 
+
             ${
+
               Array.isArray(
                 POSITION_OPTIONS
               )
+
                 ? POSITION_OPTIONS
+
                     .map(
+
                       position => `
+
                         <option
                           value="${escapeHtml(
                             position
                           )}"
                           ${
                             position ===
-                            user.position
+                            currentPosition
                               ? "selected"
                               : ""
                           }
                         >
+
                           ${escapeHtml(
                             position
                           )}
+
                         </option>
+
                       `
+
                     )
+
                     .join("")
+
                 : ""
+
             }
+
           </select>
+
 
           <input
             id="editUserPhone"
@@ -5535,9 +7582,10 @@ async function editUser(
             placeholder="Teléfono"
             value="${escapeHtml(
               user.phone ||
-                ""
+              ""
             )}"
           >
+
 
           <select
             id="editUserLocal"
@@ -5547,14 +7595,20 @@ async function editUser(
               padding:12px 10px;
             "
           >
+
             <option value="">
+
               Seleccione local
+
             </option>
+
 
             ${buildLocalOptions(
               currentLocalId
             )}
+
           </select>
+
 
           <label
             style="
@@ -5565,6 +7619,7 @@ async function editUser(
               font-size:0.95rem;
             "
           >
+
             <input
               id="editUserActive"
               type="checkbox"
@@ -5578,7 +7633,9 @@ async function editUser(
             >
 
             Usuario activo
+
           </label>
+
 
           <label
             style="
@@ -5589,6 +7646,7 @@ async function editUser(
               font-size:0.95rem;
             "
           >
+
             <input
               id="editUserBlocked"
               type="checkbox"
@@ -5601,7 +7659,9 @@ async function editUser(
             >
 
             Bloqueado
+
           </label>
+
 
           <div
             style="
@@ -5611,9 +7671,12 @@ async function editUser(
               margin-top:8px;
             "
           >
-            El Desarrollador puede cambiar el usuario
-            de un local a otro.
+
+            El Desarrollador puede cambiar
+            el usuario de un local a otro.
+
           </div>
+
         `,
 
         confirmButtonText:
@@ -5629,77 +7692,113 @@ async function editUser(
           false,
 
         preConfirm: () => {
+
           const name =
             String(
+
               document.getElementById(
                 "editUserName"
               )?.value ||
-                ""
+              ""
+
             ).trim();
+
 
           const position =
             String(
+
               document.getElementById(
                 "editUserPosition"
               )?.value ||
-                ""
+              ""
+
             ).trim();
+
 
           const phone =
             String(
+
               document.getElementById(
                 "editUserPhone"
               )?.value ||
-                ""
+              ""
+
             ).trim();
+
 
           const id_local =
             String(
+
               document.getElementById(
                 "editUserLocal"
               )?.value ||
-                ""
+              ""
+
             ).trim();
+
 
           const active =
             Boolean(
+
               document.getElementById(
                 "editUserActive"
               )?.checked
+
             );
+
 
           const blocked =
             Boolean(
+
               document.getElementById(
                 "editUserBlocked"
               )?.checked
+
             );
+
 
           if (
+
             !name ||
+
             !position ||
+
             !id_local
+
           ) {
+
             Swal.showValidationMessage(
+
               "Nombre, posición y local son obligatorios."
+
             );
 
+
             return;
+
           }
+
 
           if (
             !findLocalById(
               id_local
             )
           ) {
+
             Swal.showValidationMessage(
+
               "El local seleccionado no existe."
+
             );
 
+
             return;
+
           }
 
+
           return {
+
             name,
 
             position,
@@ -5711,67 +7810,81 @@ async function editUser(
             active,
 
             blocked
+
           };
+
         }
+
       });
+
 
     if (
       !result.isConfirmed
     ) {
+
       return;
+
     }
+
 
     const values =
       result.value;
 
+
     await ensureDeveloperPermission();
+
 
     const local =
       findLocalById(
         values.id_local
       );
 
+
     if (
       !local
     ) {
+
       throw new Error(
+
         "El local seleccionado no existe."
+
       );
+
     }
 
-    /*
-     * ========================================================
-     * RESOLVER DOCUMENT ID REAL
-     * ========================================================
-     *
-     * user.id puede ser:
-     *
-     * - UID
-     * - document ID histórico
-     *
-     * Nunca hacemos una lectura para descubrirlo;
-     * ya está en la caché.
-     */
+
     const employeeDocumentId =
       String(
+
         user.id ||
-          user.uid ||
-          ""
+        user.uid ||
+        ""
+
       ).trim();
+
 
     if (
       !employeeDocumentId
     ) {
+
       throw new Error(
+
         "No se pudo determinar el documento del usuario."
+
       );
+
     }
 
+
     const employeePatch = {
+
       name:
         values.name,
 
       position:
+        values.position,
+
+      role:
         values.position,
 
       phone:
@@ -5816,6 +7929,7 @@ async function editUser(
         ),
 
       active:
+
         values.blocked
           ? false
           : values.active,
@@ -5824,101 +7938,130 @@ async function editUser(
         values.blocked,
 
       updatedAt:
-        firebase.firestore.FieldValue
+        firebase.firestore
+          .FieldValue
           .serverTimestamp()
+
     };
 
+
     await db
+
       .collection(
         EMPLOYEE_COLLECTION
       )
+
       .doc(
         employeeDocumentId
       )
+
       .update(
         employeePatch
       );
 
-    /*
-     * Actualizar inmediatamente la caché.
-     */
+
     upsertCachedDocument(
+
       EMPLOYEE_COLLECTION,
+
       employeeDocumentId,
+
       {
+
         ...employeePatch,
 
         updatedAt:
           Date.now()
+
       }
+
     );
 
-    /*
-     * Si la caché usa el UID y el document ID es diferente,
-     * actualizar también la entrada encontrada por UID.
-     */
+
     const uid =
       String(
         user.uid ||
-          ""
+        ""
       ).trim();
 
+
     if (
+
       uid &&
+
       uid !==
-        employeeDocumentId
+      employeeDocumentId
+
     ) {
+
       updateCachedDocumentsWhere(
+
         EMPLOYEE_COLLECTION,
+
         document =>
+
           String(
             document.id ||
-              ""
+            ""
           ).trim() ===
             employeeDocumentId ||
+
           String(
             document.data?.uid ||
-              ""
+            ""
           ).trim() ===
             uid,
+
         employeePatch
+
       );
+
     }
 
-    /*
-     * Si se modificó el usuario actual, actualizar memoria
-     * local del contexto.
-     */
+
     const currentUid =
       String(
         currentUserInfo.uid ||
-          ""
+        ""
       ).trim();
+
 
     const editedUid =
       String(
+
         user.uid ||
-          user.id ||
-          ""
+
+        user.id ||
+
+        ""
+
       ).trim();
 
+
     if (
+
       currentUid &&
+
       editedUid ===
-        currentUid
+      currentUid
+
     ) {
-      currentUserInfo =
-        {
-          ...currentUserInfo,
 
-          name:
-            values.name,
+      currentUserInfo = {
 
-          role:
-            values.position
-        };
+        ...currentUserInfo,
+
+        name:
+          values.name,
+
+        role:
+          values.position
+
+      };
+
 
       setStoredCurrentUser({
+
         name:
           values.name,
 
@@ -5930,14 +8073,19 @@ async function editUser(
 
         id_local:
           ""
+
       });
+
     }
+
 
     refreshCachesFromApp();
 
     renderAll();
 
+
     await Swal.fire({
+
       icon:
         "success",
 
@@ -5945,22 +8093,34 @@ async function editUser(
         "Usuario actualizado",
 
       text:
+
         `El usuario quedó asignado a ${buildUserLocalSummary(
           values.id_local
         )}.`
+
     });
+
   } catch (
     error
   ) {
+
     await showOperationError(
+
       error,
+
       "No se pudo actualizar el usuario."
+
     );
+
   } finally {
+
     isEditingUser =
       false;
+
   }
+
 }
+
 
 /*
  * ============================================================
@@ -5971,102 +8131,135 @@ async function editUser(
 async function toggleUserBlock(
   userIdentifier
 ) {
+
   if (
     isTogglingUser
   ) {
+
     return;
+
   }
+
 
   isTogglingUser =
     true;
 
+
   try {
+
     await ensureDeveloperPermission();
 
-    /*
-     * Buscar exclusivamente desde la caché.
-     *
-     * No importa si el identificador recibido es:
-     *
-     * - document ID
-     * - UID
-     */
+
     const user =
       findEmployeeForOperation(
         userIdentifier
       );
 
+
     if (
       !user
     ) {
+
       throw new Error(
+
         "No se encontró el usuario seleccionado en la caché de sesión."
+
       );
+
     }
 
+
     const nextBlocked =
+
       !(
         user.blocked ===
         true
       );
 
+
     const currentLocal =
       findLocalById(
+
         getUserLocalId(
           user
         )
+
       );
+
 
     const result =
       await Swal.fire({
+
         title:
+
           nextBlocked
             ? "Bloquear usuario"
             : "Desbloquear usuario",
 
-        html:
-          `
-            <p>
-              ${
-                nextBlocked
-                  ? "El usuario no podrá iniciar sesión."
-                  : "El usuario podrá volver a iniciar sesión."
-              }
-            </p>
+        html: `
 
-            <p
-              style="
-                margin-top:6px;
-                color:#6b7280;
-              "
-            >
-              <strong>Usuario:</strong>
-              ${escapeHtml(
-                user.name ||
-                user.email ||
-                "—"
-              )}
+          <p>
 
-              <br>
+            ${
 
-              <strong>Correo:</strong>
-              ${escapeHtml(
-                user.email ||
-                "—"
-              )}
+              nextBlocked
 
-              <br>
+                ? "El usuario no podrá iniciar sesión."
 
-              <strong>Local:</strong>
-              ${escapeHtml(
-                getLocalName(
-                  currentLocal ||
-                  {}
-                ) ||
-                "—"
-              )}
-            </p>
-          `,
+                : "El usuario podrá volver a iniciar sesión."
+
+            }
+
+          </p>
+
+
+          <p
+            style="
+              margin-top:6px;
+              color:#6b7280;
+            "
+          >
+
+            <strong>
+              Usuario:
+            </strong>
+
+            ${escapeHtml(
+              user.name ||
+              user.email ||
+              "—"
+            )}
+
+            <br>
+
+
+            <strong>
+              Correo:
+            </strong>
+
+            ${escapeHtml(
+              user.email ||
+              "—"
+            )}
+
+            <br>
+
+
+            <strong>
+              Local:
+            </strong>
+
+            ${escapeHtml(
+              getLocalName(
+                currentLocal ||
+                {}
+              ) ||
+              "—"
+            )}
+
+          </p>
+
+        `,
 
         icon:
           "warning",
@@ -6075,38 +8268,54 @@ async function toggleUserBlock(
           true,
 
         confirmButtonText:
+
           nextBlocked
             ? "Bloquear"
             : "Desbloquear",
 
         cancelButtonText:
           "Cancelar"
+
       });
+
 
     if (
       !result.isConfirmed
     ) {
+
       return;
+
     }
+
 
     await ensureDeveloperPermission();
 
+
     const employeeDocumentId =
       String(
+
         user.id ||
-          user.uid ||
-          ""
+        user.uid ||
+        ""
+
       ).trim();
+
 
     if (
       !employeeDocumentId
     ) {
+
       throw new Error(
+
         "No se pudo determinar el documento del usuario."
+
       );
+
     }
 
+
     const employeePatch = {
+
       blocked:
         nextBlocked,
 
@@ -6114,82 +8323,105 @@ async function toggleUserBlock(
         !nextBlocked,
 
       updatedAt:
-        firebase.firestore.FieldValue
+        firebase.firestore
+          .FieldValue
           .serverTimestamp()
+
     };
 
-    /*
-     * ÚNICAMENTE se actualiza el documento del usuario.
-     *
-     * No se consulta empleados.
-     */
+
     await db
+
       .collection(
         EMPLOYEE_COLLECTION
       )
+
       .doc(
         employeeDocumentId
       )
+
       .update(
         employeePatch
       );
 
-    /*
-     * Actualizar caché.
-     */
+
     upsertCachedDocument(
+
       EMPLOYEE_COLLECTION,
+
       employeeDocumentId,
+
       {
+
         ...employeePatch,
 
         updatedAt:
           Date.now()
+
       }
+
     );
+
 
     const uid =
       String(
         user.uid ||
-          ""
+        ""
       ).trim();
 
+
     if (
+
       uid &&
+
       uid !==
-        employeeDocumentId
+      employeeDocumentId
+
     ) {
+
       updateCachedDocumentsWhere(
+
         EMPLOYEE_COLLECTION,
+
         document =>
+
           String(
             document.id ||
-              ""
+            ""
           ).trim() ===
             employeeDocumentId ||
+
           String(
             document.data?.uid ||
-              ""
+            ""
           ).trim() ===
             uid,
+
         employeePatch
+
       );
+
     }
+
 
     refreshCachesFromApp();
 
     renderAll();
 
+
     await Swal.fire({
+
       icon:
         "success",
 
       title:
+
         nextBlocked
           ? "Usuario bloqueado"
           : "Usuario desbloqueado",
 
       text:
+
         `${user.name ||
           user.email ||
           "El usuario"
@@ -6198,19 +8430,30 @@ async function toggleUserBlock(
             ? "bloqueado"
             : "desbloqueado"
         } correctamente.`
+
     });
+
   } catch (
     error
   ) {
+
     await showOperationError(
+
       error,
+
       "No se pudo cambiar el estado del usuario."
+
     );
+
   } finally {
+
     isTogglingUser =
       false;
+
   }
+
 }
+
 
 /*
  * ============================================================
@@ -6221,56 +8464,85 @@ async function toggleUserBlock(
 async function bootDeveloper(
   user
 ) {
-  /*
-   * ==========================================================
-   * 1. Resolver contexto desde app.js
-   * ==========================================================
-   */
+
+  if (
+    !user
+  ) {
+
+    throw new Error(
+
+      "No existe una sesión de Firebase válida."
+
+    );
+
+  }
+
 
   let context =
     null;
+
 
   if (
     typeof window.getCurrentUserContext ===
     "function"
   ) {
+
     context =
       await window.getCurrentUserContext(
         user
       );
+
   }
+
 
   if (
     !context
   ) {
+
     throw new Error(
+
       "No se pudo resolver el contexto del usuario autenticado."
+
     );
+
   }
+
 
   if (
     !isDeveloperRole(
+
       context.role ||
-        context.position ||
-        ""
+      context.position ||
+      ""
+
     )
   ) {
+
     throw new Error(
+
       "Acceso denegado. El usuario autenticado no tiene el rol Desarrollador."
+
     );
+
   }
+
 
   /*
    * El Desarrollador NO requiere id_local.
    */
+
   const developerContext = {
+
     ...context,
 
     id_local:
       ""
+
   };
 
+
   currentUserInfo = {
+
     uid:
       user.uid,
 
@@ -6288,295 +8560,379 @@ async function bootDeveloper(
       context.role ||
       context.position ||
       "Desarrollador"
+
   };
+
 
   cacheResolvedDeveloperProfile(
     developerContext
   );
 
-  /*
-   * ==========================================================
-   * 2. Garantizar caché global
-   * ==========================================================
-   */
 
   await ensureDeveloperSessionData(
     user
   );
 
-  /*
-   * ==========================================================
-   * 3. Verificar autorización
-   * ==========================================================
-   */
 
   await verifyDeveloperAccess(
     user
   );
 
-  /*
-   * ==========================================================
-   * 4. Sincronizar únicamente desde caché
-   * ==========================================================
-   */
 
   refreshCachesFromApp();
+
 
   cacheResolvedDeveloperProfile(
     developerContext
   );
 
-  /*
-   * Asegurar que la selección inicial no apunte
-   * a un local inexistente.
-   */
+
   if (
+
     selectedLocalId &&
+
     !findLocalById(
       selectedLocalId
     )
+
   ) {
+
     selectedLocalId =
       "";
+
   }
+
 }
 
-document.addEventListener(
-  "DOMContentLoaded",
-  () => {
-    if (
-      globalSearch
-    ) {
-      globalSearch.addEventListener(
-        "input",
-        renderAll
-      );
-    }
 
-    if (
-      localFilter
-    ) {
-      localFilter.addEventListener(
-        "change",
-        syncSelectionFromFilter
-      );
-    }
+/*
+ * ============================================================
+ * EVENTOS
+ * ============================================================
+ *
+ * IMPORTANTE:
+ *
+ * Este controller es cargado dinámicamente mediante:
+ *
+ *     import("./controllers/locals.controller.js")
+ *
+ * Por eso NO se utiliza:
+ *
+ *     document.addEventListener("DOMContentLoaded", ...)
+ *
+ * La inicialización se ejecuta exclusivamente mediante
+ * localsController.init(), llamado por AppRouter.
+ *
+ * ============================================================
+ */
 
-    /*
-     * ========================================================
-     * NUEVO LOCAL
-     * ========================================================
-     */
+function bindPageEvents() {
 
-    if (
-      btnNewLocal
-    ) {
-      btnNewLocal.addEventListener(
-        "click",
-        createLocal
-      );
-    }
+  if (
+    moduleInitialized
+  ) {
 
-    /*
-     * ========================================================
-     * NUEVO USUARIO
-     * ========================================================
-     *
-     * El desarrollador puede crear usuarios para cualquier
-     * local visible en la caché.
-     */
+    return;
 
-    if (
-      btnNewUser
-    ) {
-      btnNewUser.addEventListener(
-        "click",
-        createUser
-      );
-    }
+  }
 
-    /*
-     * ========================================================
-     * ACTUALIZAR
-     * ========================================================
-     *
-     * No consulta Firestore.
-     *
-     * Únicamente reconstruye la UI con la caché.
-     */
 
-    if (
-      btnRefresh
-    ) {
-      btnRefresh.addEventListener(
-        "click",
-        () => {
-          refreshCachesFromApp();
+  if (
+    globalSearch
+  ) {
 
-          renderAll();
-        }
-      );
-    }
+    globalSearch.addEventListener(
 
-    /*
-     * ========================================================
-     * AUTH
-     * ========================================================
-     */
+      "input",
 
-    auth.onAuthStateChanged(
-      async user => {
-        if (
-          !user
-        ) {
-          if (
-            typeof window.clearSessionDataCache ===
-            "function"
-          ) {
-            window.clearSessionDataCache();
-          }
+      renderAll
 
-          window.location.href =
-            "index.html";
+    );
 
-          return;
-        }
+  }
 
-        try {
-          await bootDeveloper(
-            user
-          );
-        } catch (
-          error
-        ) {
-          console.error(
-            "Error de autorización:",
-            error
-          );
 
-          await Swal.fire({
-            icon:
-              "error",
+  if (
+    localFilter
+  ) {
 
-            title:
-              "Acceso denegado",
+    localFilter.addEventListener(
 
-            text:
-              error.message ||
-              "No se pudo validar el perfil del usuario."
-          });
+      "change",
 
-          window.location.href =
-            "dashboard.html";
+      syncSelectionFromFilter
 
-          return;
-        }
+    );
+
+  }
+
+
+  if (
+    btnNewLocal
+  ) {
+
+    btnNewLocal.addEventListener(
+
+      "click",
+
+      createLocal
+
+    );
+
+  }
+
+
+  if (
+    btnNewUser
+  ) {
+
+    btnNewUser.addEventListener(
+
+      "click",
+
+      createUser
+
+    );
+
+  }
+
+
+  if (
+    btnRefresh
+  ) {
+
+    btnRefresh.addEventListener(
+
+      "click",
+
+      () => {
+
+        refreshCachesFromApp();
+
+        renderAll();
+
+      }
+
+    );
+
+  }
+
+}
+
+
+/*
+ * ============================================================
+ * INICIALIZACIÓN MVC
+ * ============================================================
+ */
+
+async function initializeLocalsPage(
+  user
+) {
+
+  if (
+    initializationPromise
+  ) {
+
+    return initializationPromise;
+
+  }
+
+
+  initializationPromise =
+
+    (async () => {
+
+      try {
+
+        await bootDeveloper(
+          user
+        );
+
+
+        bindPageEvents();
+
 
         if (
           typeof window.renderNavigationForRole ===
           "function"
         ) {
+
           window.renderNavigationForRole(
+
             "Desarrollador"
+
           );
+
         }
 
+
         const greetingText =
+
           `Hola, ${
             currentUserInfo.name
           } (Desarrollador)`;
 
+
         greetingEls.forEach(
+
           element => {
+
             element.textContent =
               greetingText;
+
           }
+
         );
+
 
         renderAll();
 
+
         moduleInitialized =
           true;
+
+
+        console.log(
+
+          "[Locals] Página de locales inicializada correctamente."
+
+        );
+
+
+        return {
+
+          user,
+
+          context:
+            currentUserInfo
+
+        };
+
+      } catch (
+        error
+      ) {
+
+        console.error(
+
+          "[Locals] Error de autorización:",
+
+          error
+
+        );
+
+
+        throw error;
+
       }
+
+    })();
+
+
+  try {
+
+    return await initializationPromise;
+
+  } finally {
+
+    initializationPromise =
+      null;
+
+  }
+
+}
+
+
+/*
+ * ============================================================
+ * CONTROLLER MVC
+ * ============================================================
+ */
+
+const localsController = {
+
+  name:
+    "locales",
+
+  page:
+    "locales.html",
+
+  pageFile:
+    "locales.html",
+
+  public:
+    false,
+
+  requiresLocal:
+    false,
+
+  roles: [
+
+    "Desarrollador"
+
+  ],
+
+
+  async init(
+    user
+  ) {
+
+    return initializeLocalsPage(
+      user
     );
 
-    /*
-     * ========================================================
-     * LOGOUT DESKTOP
-     * ========================================================
-     */
-
-    const logoutBtn =
-      document.getElementById(
-        "logoutButton"
-      );
-
-    if (
-      logoutBtn
-    ) {
-      logoutBtn.addEventListener(
-        "click",
-        async () => {
-          try {
-            await auth.signOut();
-          } finally {
-            if (
-              typeof window.clearSessionDataCache ===
-              "function"
-            ) {
-              window.clearSessionDataCache();
-            }
-
-            localStorage.removeItem(
-              "currentUser"
-            );
-
-            window.location.href =
-              "index.html";
-          }
-        }
-      );
-    }
-
-    /*
-     * ========================================================
-     * LOGOUT MOBILE
-     * ========================================================
-     */
-
-    const logoutBtnMobile =
-      document.getElementById(
-        "logoutButtonMobile"
-      );
-
-    if (
-      logoutBtnMobile
-    ) {
-      logoutBtnMobile.addEventListener(
-        "click",
-        async () => {
-          try {
-            await auth.signOut();
-          } finally {
-            if (
-              typeof window.clearSessionDataCache ===
-              "function"
-            ) {
-              window.clearSessionDataCache();
-            }
-
-            localStorage.removeItem(
-              "currentUser"
-            );
-
-            window.location.href =
-              "index.html";
-          }
-        }
-      );
-    }
   }
-);
+
+};
+
+
+/*
+ * ============================================================
+ * NAMESPACE MVC
+ * ============================================================
+ */
+
+window.InventoryMVC =
+  window.InventoryMVC ||
+  {
+
+    models: {},
+    views: {},
+    controllers: {}
+
+  };
+
+
+window.InventoryMVC.models =
+  window.InventoryMVC.models ||
+  {};
+
+
+window.InventoryMVC.views =
+  window.InventoryMVC.views ||
+  {};
+
+
+window.InventoryMVC.controllers =
+  window.InventoryMVC.controllers ||
+  {};
+
+
+/*
+ * Mantener ambos alias para compatibilidad:
+ *
+ *     controllers.locals
+ *     controllers.locales
+ *
+ * El router puede resolver cualquiera de ellos.
+ */
+
+window.InventoryMVC.controllers.locals =
+  localsController;
+
+window.InventoryMVC.controllers.locales =
+  localsController;
+
 
 /*
  * ============================================================
@@ -6622,3 +8978,44 @@ window.findEmployeeForOperation =
 
 window.getLocalUsers =
   getLocalUsers;
+
+window.renderLocals =
+  renderLocals;
+
+window.renderUsers =
+  renderUsers;
+
+window.renderAttempts =
+  renderAttempts;
+
+window.renderAllLocals =
+  renderAll;
+
+
+/*
+ * ============================================================
+ * EXPORTACIONES ES MODULE
+ * ============================================================
+ *
+ * router.js utiliza import() y después busca:
+ *
+ * - export default
+ * - export { controller }
+ * - localesController
+ * - LocalesController
+ * - etc.
+ *
+ * Por ello se exportan explícitamente ambos nombres.
+ * ============================================================
+ */
+
+export {
+
+  localsController,
+
+  localsController as localesController
+
+};
+
+
+export default localsController;

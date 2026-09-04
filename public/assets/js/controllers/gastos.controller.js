@@ -2629,146 +2629,228 @@
 
   /*
    * ==========================================================
-   * AUTH
+   * CONTROLADOR MVC
    * ==========================================================
    */
 
+  function resetExpenseStateForLogout() {
+    currentContextLoaded =
+      false;
+
+    dataLoadedFromSession =
+      false;
+
+    currentUserInfo = {
+      uid:
+        null,
+
+      employeeId:
+        "",
+
+      name:
+        "Usuario",
+
+      role:
+        "",
+
+      id_local:
+        ""
+    };
+
+    expensesCache =
+      [];
+
+    salesCache =
+      [];
+
+    selectedDateKey =
+      "";
+  }
+
+  async function initializeExpensesPage(
+    user
+  ) {
+    if (
+      !user
+    ) {
+      resetExpenseStateForLogout();
+
+      return;
+    }
+
+    try {
+      await initializeExpenseContext(
+        user
+      );
+
+      if (
+        !canManageExpenses(
+          currentUserInfo.role
+        )
+      ) {
+        await Swal.fire({
+          icon:
+            "error",
+
+          title:
+            "Acceso denegado",
+
+          text:
+            "No tienes permisos para administrar gastos."
+        });
+
+        if (
+          window.AppRouter &&
+          typeof window.AppRouter.redirectToRoute ===
+            "function"
+        ) {
+          window.AppRouter.redirectToRoute(
+            "dashboard.html"
+          );
+        } else {
+          window.location.href =
+            "dashboard.html";
+        }
+
+        return;
+      }
+
+      if (
+        !currentUserInfo.id_local
+      ) {
+        await Swal.fire({
+          icon:
+            "error",
+
+          title:
+            "Local no asignado",
+
+          text:
+            "Tu usuario no tiene un local asociado. No puedes administrar gastos hasta que se le asigne uno."
+        });
+
+        if (
+          window.AppRouter &&
+          typeof window.AppRouter.redirectToRoute ===
+            "function"
+        ) {
+          window.AppRouter.redirectToRoute(
+            "dashboard.html"
+          );
+        } else {
+          window.location.href =
+            "dashboard.html";
+        }
+
+        return;
+      }
+
+      await initializeExpenseData();
+
+    } catch (
+      error
+    ) {
+      console.error(
+        "Error inicializando gastos:",
+        error
+      );
+
+      await Swal.fire({
+        icon:
+          "error",
+
+        title:
+          "No se pudo cargar Gastos",
+
+        text:
+          error.message ||
+          "No se pudo resolver el usuario, su local o la caché de sesión."
+      });
+
+      if (
+        window.AppRouter &&
+        typeof window.AppRouter.redirectToRoute ===
+          "function"
+      ) {
+        window.AppRouter.redirectToRoute(
+          "dashboard.html"
+        );
+      } else {
+        window.location.href =
+          "dashboard.html";
+      }
+    }
+  }
+
+  const gastosModel =
+    window.InventoryMVC
+      ?.models
+      ?.gastos || {};
+
+  const gastosController = {
+    name:
+      "gastos",
+
+    page:
+      gastosModel.page ||
+      "gastos.html",
+
+    roles:
+      gastosModel.roles ||
+      [],
+
+    init:
+      initializeExpensesPage
+  };
+
+  window.InventoryMVC.controllers.gastos =
+    gastosController;
+
   if (
-    !window.auth ||
-    typeof window.auth.onAuthStateChanged !==
+    window.AppRouter &&
+    typeof window.AppRouter.registerSecurePageController ===
       "function"
   ) {
+    window.AppRouter.registerSecurePageController(
+      gastosController
+    );
+  } else if (
+    window.auth &&
+    typeof window.auth.onAuthStateChanged ===
+      "function"
+  ) {
+    window.auth.onAuthStateChanged(
+      async user => {
+        if (
+          !user
+        ) {
+          resetExpenseStateForLogout();
+
+          if (
+            typeof window.clearSessionDataCache ===
+            "function"
+          ) {
+            window.clearSessionDataCache();
+          }
+
+          window.location.href =
+            "index.html";
+
+          return;
+        }
+
+        await initializeExpensesPage(
+          user
+        );
+      }
+    );
+  } else {
     console.error(
       "[Gastos] app.js/auth no está disponible."
     );
 
     return;
   }
-
-  window.auth.onAuthStateChanged(
-    async user => {
-      if (
-        !user
-      ) {
-        currentContextLoaded =
-          false;
-
-        dataLoadedFromSession =
-          false;
-
-        currentUserInfo = {
-          uid:
-            null,
-
-          employeeId:
-            "",
-
-          name:
-            "Usuario",
-
-          role:
-            "",
-
-          id_local:
-            ""
-        };
-
-        expensesCache =
-          [];
-
-        salesCache =
-          [];
-
-        selectedDateKey =
-          "";
-
-        if (
-          typeof window.clearSessionDataCache ===
-          "function"
-        ) {
-          window.clearSessionDataCache();
-        }
-
-        window.location.href =
-          "index.html";
-
-        return;
-      }
-
-      try {
-        await initializeExpenseContext(
-          user
-        );
-
-        if (
-          !canManageExpenses(
-            currentUserInfo.role
-          )
-        ) {
-          await Swal.fire({
-            icon:
-              "error",
-
-            title:
-              "Acceso denegado",
-
-            text:
-              "No tienes permisos para administrar gastos."
-          });
-
-          window.location.href =
-            "dashboard.html";
-
-          return;
-        }
-
-        if (
-          !currentUserInfo.id_local
-        ) {
-          await Swal.fire({
-            icon:
-              "error",
-
-            title:
-              "Local no asignado",
-
-            text:
-              "Tu usuario no tiene un local asociado. No puedes administrar gastos hasta que se le asigne uno."
-          });
-
-          window.location.href =
-            "dashboard.html";
-
-          return;
-        }
-
-        await initializeExpenseData();
-
-      } catch (
-        error
-      ) {
-        console.error(
-          "Error inicializando gastos:",
-          error
-        );
-
-        await Swal.fire({
-          icon:
-            "error",
-
-          title:
-            "No se pudo cargar Gastos",
-
-          text:
-            error.message ||
-            "No se pudo resolver el usuario, su local o la caché de sesión."
-        });
-
-        window.location.href =
-          "dashboard.html";
-      }
-    }
-  );
 
   /*
    * ==========================================================

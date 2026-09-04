@@ -4,36 +4,28 @@
 
 <head>
     <meta charset="utf-8" />
+
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Ventas - Sistema de Gestión</title>
+
+    <title>
+        Ventas - Sistema de Gestión
+    </title>
 
     <link rel="stylesheet" href="assets/css/styles.css">
 
-    <link
-        rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
-    />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
-    <link
-        rel="stylesheet"
-        href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css"
-    />
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css" />
 
     <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 
-    <link
-        href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"
-        rel="stylesheet"
-    />
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
-    <link
-        href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
-        rel="stylesheet"
-    />
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet" />
 </head>
 
 <body>
@@ -41,42 +33,16 @@
     <nav class="navbar" role="navigation">
 
         <div class="navbar-logo">
-            <a href="#">MiEmpresa</a>
+            <a href="#">
+                MiEmpresa
+            </a>
         </div>
 
         <div class="navbar-right">
 
             <div class="navbar-links">
                 <ul>
-                    <li>
-                        <a href="dashboard.html">
-                            Inicio
-                        </a>
-                    </li>
-
-                    <li>
-                        <a href="inventory.html">
-                            Inventario
-                        </a>
-                    </li>
-
-                    <li>
-                        <a href="sales.html">
-                            Ventas
-                        </a>
-                    </li>
-
-                    <li>
-                        <a href="attendance.html">
-                            Asistencia
-                        </a>
-                    </li>
-
-                    <li>
-                        <a href="employees.html">
-                            Empleados
-                        </a>
-                    </li>
+                    <!-- app.js genera la navegación según el rol -->
                 </ul>
             </div>
 
@@ -86,69 +52,29 @@
                     Hola, Usuario
                 </span>
 
-                <button
-                    id="logoutButton"
-                    type="button"
-                >
+                <button id="logoutButton" type="button">
                     Cerrar sesión
                 </button>
 
             </div>
+
         </div>
 
-        <div
-            class="menu-toggle"
-            id="menuToggle"
-        >
+        <div class="menu-toggle" id="menuToggle" aria-expanded="false" aria-controls="fullscreenMenu">
             <i class="fas fa-bars"></i>
         </div>
 
     </nav>
 
-    <div
-        class="fullscreen-menu"
-        id="fullscreenMenu"
-    >
 
-        <div
-            class="close-menu"
-            id="closeMenu"
-        >
+    <div class="fullscreen-menu" id="fullscreenMenu" aria-hidden="true">
+
+        <div class="close-menu" id="closeMenu" tabindex="0">
             <i class="fas fa-times"></i>
         </div>
 
         <ul class="menu-links">
-
-            <li>
-                <a href="dashboard.html">
-                    Inicio
-                </a>
-            </li>
-
-            <li>
-                <a href="inventory.html">
-                    Inventario
-                </a>
-            </li>
-
-            <li>
-                <a href="sales.html">
-                    Ventas
-                </a>
-            </li>
-
-            <li>
-                <a href="attendance.html">
-                    Asistencia
-                </a>
-            </li>
-
-            <li>
-                <a href="employees.html">
-                    Empleados
-                </a>
-            </li>
-
+            <!-- app.js genera la navegación según el rol -->
         </ul>
 
         <div class="menu-user">
@@ -157,10 +83,7 @@
                 Hola, Usuario
             </span>
 
-            <button
-                id="logoutButtonMobile"
-                type="button"
-            >
+            <button id="logoutButtonMobile" type="button">
                 Cerrar sesión
             </button>
 
@@ -168,40 +91,35 @@
 
     </div>
 
+
     <main class="sales">
 
         <h1>
             Registrar Venta (Punto de Venta)
         </h1>
 
-        <div
-            class="top-controls"
-            style="
+
+        <div class="top-controls" style="
                 display:flex;
                 gap:12px;
                 align-items:flex-end;
                 margin-bottom:12px;
                 flex-wrap:wrap;
-            "
-        >
+            ">
 
-            <div
-                style="
+            <div style="
                     flex:1;
                     min-width:240px;
-                "
-            >
+                ">
 
                 <label for="productSelect">
                     Producto
                 </label>
 
-                <select
-                    id="productSelect"
-                    style="width:100%"
-                ></select>
+                <select id="productSelect" style="width:100%"></select>
 
             </div>
+
 
             <div style="width:140px;">
 
@@ -209,10 +127,7 @@
                     Vender por
                 </label>
 
-                <select
-                    id="saleMode"
-                    style="width:100%"
-                >
+                <select id="saleMode" style="width:100%">
 
                     <option value="unit">
                         Unidades
@@ -226,92 +141,62 @@
 
             </div>
 
-            <div
-                id="boxPriceGroup"
-                style="
+
+            <div id="boxPriceGroup" style="
                     width:170px;
                     display:none;
-                "
-            >
+                ">
 
                 <label for="boxPrice">
                     Precio por caja
                 </label>
 
-                <input
-                    type="number"
-                    id="boxPrice"
-                    min="0"
-                    step="0.01"
-                    value="0"
-                />
+                <input type="number" id="boxPrice" min="0" step="0.01" value="0" />
 
             </div>
+
 
             <div style="width:140px;">
 
-                <label
-                    for="saleQuantity"
-                    id="saleQuantityLabel"
-                >
+                <label for="saleQuantity" id="saleQuantityLabel">
                     Cantidad
                 </label>
 
-                <input
-                    type="number"
-                    id="saleQuantity"
-                    min="1"
-                    value="1"
-                />
+                <input type="number" id="saleQuantity" min="1" step="1" value="1" />
 
             </div>
 
-            <div
-                style="
+
+            <div style="
                     width:220px;
                     min-width:180px;
-                "
-            >
+                ">
 
                 <label for="referenciaLibro">
                     Referencia a libro
                 </label>
 
-                <input
-                    type="text"
-                    id="referenciaLibro"
-                    maxlength="100"
-                    placeholder="Ej. Libro 001 / Folio 25"
-                    autocomplete="off"
-                />
+                <input type="text" id="referenciaLibro" maxlength="100" placeholder="Ej. Libro 001 / Folio 25"
+                    autocomplete="off" />
 
             </div>
 
-            <div
-                class="top-actions"
-                style="
+
+            <div class="top-actions" style="
                     display:flex;
                     gap:8px;
                     align-items:flex-end;
                     flex-wrap:wrap;
                     width:100%;
-                "
-            >
+                ">
 
-                <button
-                    id="btnAddToCart"
-                    class="btn-primary"
-                    type="button"
-                >
+                <button id="btnAddToCart" class="btn-primary" type="button">
                     <i class="fas fa-cart-plus"></i>
                     Añadir
                 </button>
 
-                <button
-                    id="btnClearCart"
-                    class="btn-outline"
-                    type="button"
-                >
+
+                <button id="btnClearCart" class="btn-outline" type="button">
                     Limpiar
                 </button>
 
@@ -319,11 +204,13 @@
 
         </div>
 
+
         <section class="table-section sales-table-card">
 
             <div class="section-header">
 
                 <div>
+
                     <h2>
                         Carrito
                     </h2>
@@ -333,17 +220,13 @@
                         en más de una columna para ordenar por
                         varios campos.
                     </p>
+
                 </div>
 
             </div>
 
-            <!-- =====================================================
-                 FECHA Y HORA DE LA VENTA
-                 ===================================================== -->
 
-            <div
-                class="sale-datetime-panel"
-                style="
+            <div class="sale-datetime-panel" style="
                     display:flex;
                     gap:12px;
                     align-items:flex-end;
@@ -353,71 +236,56 @@
                     border:1px solid #ddd;
                     border-radius:8px;
                     background:#fafafa;
-                "
-            >
+                ">
 
-                <div
-                    style="
+                <div style="
                         min-width:180px;
                         flex:0 0 180px;
-                    "
-                >
-                    <label
-                        for="cartSaleDate"
-                    >
+                    ">
+
+                    <label for="cartSaleDate">
                         Fecha de la venta
                     </label>
 
-                    <input
-                        type="date"
-                        id="cartSaleDate"
-                        autocomplete="off"
-                        style="width:100%;"
-                    />
+                    <input type="date" id="cartSaleDate" autocomplete="off" style="width:100%;" />
+
                 </div>
 
-                <div
-                    style="
+
+                <div style="
                         min-width:150px;
                         flex:0 0 150px;
-                    "
-                >
-                    <label
-                        for="cartSaleTime"
-                    >
+                    ">
+
+                    <label for="cartSaleTime">
                         Hora de la venta
                     </label>
 
-                    <input
-                        type="time"
-                        id="cartSaleTime"
-                        autocomplete="off"
-                        style="width:100%;"
-                    />
+                    <input type="time" id="cartSaleTime" autocomplete="off" style="width:100%;" />
+
                 </div>
 
-                <div
-                    style="
+
+                <div style="
                         flex:1;
                         min-width:240px;
                         align-self:center;
-                    "
-                >
+                    ">
+
                     <small>
                         La fecha y hora se cargan automáticamente
                         con la hora local actual y pueden modificarse
                         antes de finalizar la venta.
                     </small>
+
                 </div>
 
             </div>
 
+
             <div class="table-container sales-dt-container">
 
-                <table
-                    id="cartTable"
-                    class="table sales-table"
-                >
+                <table id="cartTable" class="table sales-table">
 
                     <thead>
 
@@ -461,16 +329,15 @@
 
                 </table>
 
-                <div
-                    style="
+
+                <div style="
                         display:flex;
                         justify-content:space-between;
                         align-items:center;
                         margin-top:10px;
                         gap:12px;
                         flex-wrap:wrap;
-                    "
-                >
+                    ">
 
                     <div>
 
@@ -484,29 +351,20 @@
 
                     </div>
 
-                    <div
-                        style="
+
+                    <div style="
                             display:flex;
                             gap:8px;
                             flex-wrap:wrap;
-                        "
-                    >
+                        ">
 
-                        <button
-                            id="btnFinalize"
-                            class="btn-primary"
-                            type="button"
-                            disabled
-                        >
+                        <button id="btnFinalize" class="btn-primary" type="button" disabled>
                             <i class="fas fa-check"></i>
                             Finalizar Venta
                         </button>
 
-                        <button
-                            id="btnSaveDraft"
-                            class="btn-outline"
-                            type="button"
-                        >
+
+                        <button id="btnSaveDraft" class="btn-outline" type="button">
                             Guardar borrador
                         </button>
 
@@ -518,10 +376,8 @@
 
         </section>
 
-        <section
-            class="table-section sales-table-card"
-            style="margin-top:18px;"
-        >
+
+        <section class="table-section sales-table-card" style="margin-top:18px;">
 
             <div class="section-header">
 
@@ -540,12 +396,10 @@
 
             </div>
 
+
             <div class="table-container sales-dt-container">
 
-                <table
-                    id="salesTable"
-                    class="table sales-table"
-                >
+                <table id="salesTable" class="table sales-table">
 
                     <thead>
 
@@ -597,16 +451,21 @@
 
     </main>
 
+
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-    <!-- app.js primero para disponer de auth, db y contexto -->
-    <script src="assets/js/app.js"></script>
 
-    <script src="assets/js/sales.js"></script>
+    <!--
+        app.js:
+        autenticación, contexto, permisos, caché y router seguro.
+    -->
+    <script type="module" src="assets/js/app.js"></script>
 
 </body>
 

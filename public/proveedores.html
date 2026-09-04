@@ -3,45 +3,26 @@
 
 <head>
     <meta charset="UTF-8" />
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <title>Proveedores - Sistema de Gestión</title>
 
-    <link
-        rel="stylesheet"
-        href="assets/css/styles.css"
-    >
+    <link rel="stylesheet" href="assets/css/styles.css">
 
-    <link
-        rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
-    />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
 
-    <link
-        rel="stylesheet"
-        href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css"
-    >
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
     <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 
-    <link
-        href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
-        rel="stylesheet"
-    >
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
 </head>
 
 <body>
 
-    <nav
-        class="navbar"
-        role="navigation"
-        aria-label="Main navigation"
-    >
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
 
         <div class="navbar-logo">
             <a href="#">
@@ -49,16 +30,9 @@
             </a>
         </div>
 
-        <div
-            class="navbar-right"
-            id="navbarRight"
-        >
+        <div class="navbar-right" id="navbarRight">
 
-            <div
-                class="navbar-links"
-                role="navigation"
-                aria-label="Links principales"
-            >
+            <div class="navbar-links" role="navigation" aria-label="Links principales">
                 <ul>
                     <li>
                         <a href="dashboard.html">
@@ -98,38 +72,22 @@
                 </ul>
             </div>
 
-            <div
-                class="navbar-user"
-                role="region"
-                aria-label="Usuario"
-            >
+            <div class="navbar-user" role="region" aria-label="Usuario">
 
                 <span class="userGreeting">
                     Hola, Usuario
                 </span>
 
-                <button
-                    id="logoutButton"
-                    type="button"
-                >
+                <button id="logoutButton" type="button">
                     Cerrar sesión
                 </button>
 
             </div>
         </div>
 
-        <button
-            class="menu-toggle"
-            id="menuToggle"
-            type="button"
-            aria-controls="fullscreenMenu"
-            aria-expanded="false"
-            aria-label="Abrir menú"
-        >
-            <i
-                class="fas fa-bars"
-                aria-hidden="true"
-            ></i>
+        <button class="menu-toggle" id="menuToggle" type="button" aria-controls="fullscreenMenu" aria-expanded="false"
+            aria-label="Abrir menú">
+            <i class="fas fa-bars" aria-hidden="true"></i>
 
             <span class="sr-only">
                 Abrir menú
@@ -138,18 +96,9 @@
 
     </nav>
 
-    <div
-        class="fullscreen-menu"
-        id="fullscreenMenu"
-        aria-hidden="true"
-    >
+    <div class="fullscreen-menu" id="fullscreenMenu" aria-hidden="true">
 
-        <button
-            class="close-menu"
-            id="closeMenu"
-            type="button"
-            aria-label="Cerrar menú"
-        >
+        <button class="close-menu" id="closeMenu" type="button" aria-label="Cerrar menú">
             <i class="fas fa-times"></i>
         </button>
 
@@ -197,20 +146,14 @@
                 Hola, Usuario
             </span>
 
-            <button
-                id="logoutButtonMobile"
-                type="button"
-            >
+            <button id="logoutButtonMobile" type="button">
                 Cerrar sesión
             </button>
 
         </div>
     </div>
 
-    <main
-        class="dashboard"
-        role="main"
-    >
+    <main class="dashboard" role="main">
 
         <section class="stats-container">
 
@@ -228,21 +171,12 @@
 
         <div class="inventory-toolbar">
 
-            <input
-                id="providersSearch"
-                type="search"
-                class="inventory-search"
-                placeholder="Buscar proveedor..."
-                aria-label="Buscar proveedores"
-            />
+            <input id="providersSearch" type="search" class="inventory-search" placeholder="Buscar proveedor..."
+                aria-label="Buscar proveedores" />
 
             <div class="inventory-actions">
 
-                <button
-                    id="btnAddProvider"
-                    class="btn-primary"
-                    type="button"
-                >
+                <button id="btnAddProvider" class="btn-primary" type="button">
                     <i class="fas fa-plus"></i>
 
                     Nuevo proveedor
@@ -258,15 +192,9 @@
             en los formularios de productos.
         </p>
 
-        <section
-            class="table-container"
-            style="margin-bottom:16px;"
-        >
+        <section class="table-container" style="margin-bottom:16px;">
 
-            <table
-                id="providersTable"
-                class="table"
-            >
+            <table id="providersTable" class="table">
 
                 <thead>
                     <tr>
@@ -318,9 +246,11 @@
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-    <script src="assets/js/app.js"></script>
-
-    <script src="assets/js/proveedores.js"></script>
+    <!--
+        app.js:
+        autenticación, contexto, permisos, caché y router seguro.
+    -->
+    <script type="module" src="assets/js/app.js"></script>
 
 </body>
 
