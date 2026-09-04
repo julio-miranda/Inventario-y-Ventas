@@ -1877,9 +1877,7 @@ function getTextFromProducts(
 
       }
 
-    )
-
-    .join(
+    ).join(
       " | "
     );
 }
@@ -4317,8 +4315,211 @@ async function ensureJSZipLoaded() {
 
 /*
  * ============================================================
- * EXCEL
+ * EXCEL - UTILIDADES XML
  * ============================================================
+ */
+
+
+/*
+ * Elimina un elemento XML completo, tanto si está escrito como:
+ *
+ * <tag ...>...</tag>
+ *
+ * como si está escrito como:
+ *
+ * <tag .../>
+ *
+ * Se utiliza únicamente para los elementos de configuración de
+ * impresión que controlamos nosotros.
+ */
+
+function removeXmlElement(
+  xml,
+  tagName
+) {
+
+  const pairPattern =
+    new RegExp(
+
+      `<${tagName}\\b[^>]*>[\\s\\S]*?<\\/${tagName}>`,
+
+      "gi"
+
+    );
+
+
+  const selfClosingPattern =
+    new RegExp(
+
+      `<${tagName}\\b[^>]*/>`,
+
+      "gi"
+
+    );
+
+
+  return xml
+
+    .replace(
+      pairPattern,
+      ""
+    )
+
+    .replace(
+      selfClosingPattern,
+      ""
+    );
+}
+
+
+/*
+ * Inserta contenido antes de la primera aparición de cualquiera
+ * de los tags indicados.
+ *
+ * Esto evita colocar pageSetup en una posición inválida dentro
+ * del orden OOXML de worksheet.xml.
+ */
+
+function insertXmlBeforeFirstTag(
+  xml,
+  tagNames,
+  content
+) {
+
+  let position =
+    -1;
+
+
+  tagNames.forEach(
+    tagName => {
+
+      const tagPosition =
+        xml.search(
+          new RegExp(
+            `<${tagName}\\b`,
+            "i"
+          )
+        );
+
+
+      if (
+        tagPosition ===
+        -1
+      ) {
+
+        return;
+      }
+
+
+      if (
+
+        position ===
+          -1 ||
+
+        tagPosition <
+          position
+
+      ) {
+
+        position =
+          tagPosition;
+
+      }
+
+    }
+  );
+
+
+  if (
+    position ===
+    -1
+  ) {
+
+    return null;
+  }
+
+
+  return (
+
+    xml.slice(
+      0,
+      position
+    ) +
+
+    content +
+
+    xml.slice(
+      position
+    )
+
+  );
+}
+
+
+/*
+ * Si no existe ningún elemento posterior conocido, se inserta
+ * justo antes de </worksheet>.
+ */
+
+function insertXmlBeforeWorksheetEnd(
+  xml,
+  content
+) {
+
+  const closingTag =
+    "</worksheet>";
+
+
+  const position =
+    xml.lastIndexOf(
+      closingTag
+    );
+
+
+  if (
+    position ===
+    -1
+  ) {
+
+    return null;
+  }
+
+
+  return (
+
+    xml.slice(
+      0,
+      position
+    ) +
+
+    content +
+
+    xml.slice(
+      position
+    )
+
+  );
+}
+
+
+/*
+ * ============================================================
+ * EXCEL - CONFIGURACIÓN DE IMPRESIÓN
+ * ============================================================
+ *
+ * Se configura directamente dentro del XLSX:
+ *
+ * Área de impresión:
+ * A1:MúltimaFila
+ *
+ * Orientación:
+ * Horizontal / landscape
+ *
+ * Escala:
+ * 60%
+ *
+ * La función elimina primero cualquier configuración anterior
+ * que pudiera existir, para evitar duplicados.
  */
 
 async function enforceExcelPrintSettings(
@@ -4367,73 +4568,152 @@ async function enforceExcelPrintSettings(
   }
 
 
+  /*
+   * ========================================================
+   * SHEET XML
+   * ========================================================
+   */
+
   let sheetXml =
     await sheetFile.async(
       "string"
     );
 
 
+  /*
+   * Eliminar configuraciones previas.
+   */
+
   sheetXml =
-    sheetXml.replace(
-      /<printOptions\b[^>]*\/>/g,
-      ""
+    removeXmlElement(
+      sheetXml,
+      "printOptions"
     );
 
 
   sheetXml =
-    sheetXml.replace(
-      /<pageMargins\b[^>]*\/>/g,
-      ""
+    removeXmlElement(
+      sheetXml,
+      "pageMargins"
     );
 
 
   sheetXml =
-    sheetXml.replace(
-      /<pageSetup\b[^>]*\/>/g,
-      ""
+    removeXmlElement(
+      sheetXml,
+      "pageSetup"
     );
 
 
-  const printOptions =
-    `<printOptions horizontalCentered="1" verticalCentered="0"/>`;
+  /*
+   * pageSetup se coloca después de las secciones que deben
+   * precederlo y antes de los elementos posteriores de
+   * worksheet.xml.
+   *
+   * Como SheetJS genera una hoja sencilla, normalmente la
+   * posición efectiva será después de mergeCells y antes del
+   * cierre de worksheet.
+   *
+   * También se contemplan elementos posteriores para mantener
+   * un orden OOXML válido si aparecen.
+   */
+
+  const pageSetupXml =
+
+    `<pageSetup orientation="landscape" scale="60"/>`;
 
 
-  const pageMargins =
-    `<pageMargins left="0.15" right="0.15" top="0.25" bottom="0.25" header="0.10" footer="0.10"/>`;
+  const elementsThatMustFollowPageSetup = [
+
+    "headerFooter",
+
+    "rowBreaks",
+
+    "colBreaks",
+
+    "customProperties",
+
+    "cellWatches",
+
+    "ignoredErrors",
+
+    "smartTags",
+
+    "drawing",
+
+    "legacyDrawing",
+
+    "legacyDrawingHF",
+
+    "picture",
+
+    "oleObjects",
+
+    "controls",
+
+    "webPublishItems",
+
+    "tableParts",
+
+    "extLst"
+
+  ];
 
 
-  const pageSetup =
-    `<pageSetup orientation="landscape" paperSize="1" scale="60" horizontalDpi="300" verticalDpi="300"/>`;
+  let newSheetXml =
+    insertXmlBeforeFirstTag(
+
+      sheetXml,
+
+      elementsThatMustFollowPageSetup,
+
+      pageSetupXml
+
+    );
 
 
-  const insertion =
-    printOptions +
-    pageMargins +
-    pageSetup;
-
+  /*
+   * Si la hoja no contiene ninguno de los elementos posteriores,
+   * colocar pageSetup justo antes de </worksheet>.
+   */
 
   if (
-    sheetXml.includes(
-      "</sheetData>"
-    )
+    newSheetXml ===
+    null
   ) {
 
-    sheetXml =
-      sheetXml.replace(
+    newSheetXml =
+      insertXmlBeforeWorksheetEnd(
 
-        "</sheetData>",
+        sheetXml,
 
-        `</sheetData>${insertion}`
+        pageSetupXml
 
       );
 
-  } else {
+  }
+
+
+  if (
+    newSheetXml ===
+    null
+  ) {
 
     throw new Error(
-      "No se encontró una posición válida para la configuración de impresión."
+      "No se encontró una posición válida para pageSetup."
     );
   }
 
+
+  sheetXml =
+    newSheetXml;
+
+
+  /*
+   * ========================================================
+   * WORKBOOK XML
+   * ========================================================
+   */
 
   let workbookXml =
     await workbookFile.async(
@@ -4441,53 +4721,116 @@ async function enforceExcelPrintSettings(
     );
 
 
+  /*
+   * Eliminar cualquier Print_Area anterior contenido dentro
+   * de definedNames.
+   *
+   * Primero eliminamos definedNames completo porque en este
+   * controlador únicamente necesitamos establecer el área de
+   * impresión de la hoja Movimientos.
+   */
+
   workbookXml =
-    workbookXml.replace(
-      /<definedNames>[\s\S]*?<\/definedNames>/g,
-      ""
+    removeXmlElement(
+      workbookXml,
+      "definedNames"
+    );
+
+
+  const safeLastDataRow =
+    Math.max(
+      1,
+      Number(
+        lastDataRow
+      ) || 1
     );
 
 
   const definedNamesXml =
-    `<definedNames><definedName name="_xlnm.Print_Area" localSheetId="0">'Movimientos'!$A$1:$M$${Number(
-      lastDataRow
-    )}</definedName></definedNames>`;
+
+    `<definedNames>` +
+
+      `<definedName name="_xlnm.Print_Area" localSheetId="0">` +
+
+        `'Movimientos'!$A$1:$M$${safeLastDataRow}` +
+
+      `</definedName>` +
+
+    `</definedNames>`;
+
+
+  /*
+   * definedNames debe ir después de sheets.
+   */
+
+  const sheetsClosingTag =
+    "</sheets>";
+
+
+  const sheetsPosition =
+    workbookXml.indexOf(
+      sheetsClosingTag
+    );
 
 
   if (
-    workbookXml.includes(
-      "</workbook>"
-    )
+    sheetsPosition ===
+    -1
   ) {
 
-    workbookXml =
-      workbookXml.replace(
-
-        "</workbook>",
-
-        `${definedNamesXml}</workbook>`
-
-      );
-
-  } else {
-
     throw new Error(
-      "No se encontró una posición válida para el área de impresión."
+      "No se encontró la sección <sheets> dentro de workbook.xml."
     );
+
   }
 
 
+  const workbookInsertionPosition =
+    sheetsPosition +
+    sheetsClosingTag.length;
+
+
+  workbookXml =
+
+    workbookXml.slice(
+      0,
+      workbookInsertionPosition
+    ) +
+
+    definedNamesXml +
+
+    workbookXml.slice(
+      workbookInsertionPosition
+    );
+
+
+  /*
+   * ========================================================
+   * GUARDAR XML
+   * ========================================================
+   */
+
   zip.file(
+
     sheetPath,
+
     sheetXml
+
   );
 
 
   zip.file(
+
     workbookPath,
+
     workbookXml
+
   );
 
+
+  /*
+   * Volver a generar el XLSX.
+   */
 
   return zip.generateAsync({
 
@@ -4498,8 +4841,15 @@ async function enforceExcelPrintSettings(
       "DEFLATE"
 
   });
+
 }
 
+
+/*
+ * ============================================================
+ * EXCEL - DESCARGA
+ * ============================================================
+ */
 
 function downloadBlob(
   blob,
@@ -4550,6 +4900,12 @@ function downloadBlob(
 }
 
 
+/*
+ * ============================================================
+ * EXCEL - MOVIMIENTOS DE INVENTARIO
+ * ============================================================
+ */
+
 async function exportMovementsExcel() {
 
   try {
@@ -4559,8 +4915,11 @@ async function exportMovementsExcel() {
     ) {
 
       throw new Error(
+
         "Tu rol no tiene permiso para exportar información."
+
       );
+
     }
 
 
@@ -4582,6 +4941,7 @@ async function exportMovementsExcel() {
       );
 
       return;
+
     }
 
 
@@ -4591,10 +4951,19 @@ async function exportMovementsExcel() {
     ) {
 
       throw new Error(
+
         "La librería SheetJS no está cargada."
+
       );
+
     }
 
+
+    /*
+     * ========================================================
+     * CABECERAS
+     * ========================================================
+     */
 
     const headers = [
 
@@ -4627,22 +4996,37 @@ async function exportMovementsExcel() {
     ];
 
 
+    /*
+     * ========================================================
+     * DATOS
+     * ========================================================
+     */
+
     const rows =
+
       visibleMovements
+
         .slice()
+
         .sort(
+
           (
             a,
             b
           ) =>
+
             numberOrZero(
               a.createdAtMs
             ) -
+
             numberOrZero(
               b.createdAtMs
             )
+
         )
+
         .map(
+
           (
             row,
             index
@@ -4688,31 +5072,86 @@ async function exportMovementsExcel() {
             )
 
           ]
+
         );
 
 
+    /*
+     * ========================================================
+     * HOJA
+     * ========================================================
+     *
+     * Todas las filas tienen exactamente 13 columnas A:M.
+     * ========================================================
+     */
+
     const sheetData = [
 
+      /*
+       * Fila 1
+       */
       [
-        "CONTROL DE INVENTARIO"
+        "CONTROL DE INVENTARIO",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
       ],
 
+
+      /*
+       * Fila 2
+       */
       [
         "Nombre del local",
         "",
         "",
         currentLocalInfo.nombre ||
-          "—"
+          "—",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
       ],
 
+
+      /*
+       * Fila 3
+       */
       [
         "Nombre del contribuyente",
         "",
         "",
         currentLocalInfo.contribuyente ||
-          "—"
+          "—",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
       ],
 
+
+      /*
+       * Fila 4
+       */
       [
         "Tipo de documento",
         "",
@@ -4727,9 +5166,14 @@ async function exportMovementsExcel() {
         "NRC",
         "",
         currentLocalInfo.nrc ||
-          "—"
+          "—",
+        ""
       ],
 
+
+      /*
+       * Fila 5
+       */
       [
         "Número de documento",
         "",
@@ -4741,24 +5185,73 @@ async function exportMovementsExcel() {
         "Ubicación",
         "",
         currentLocalInfo.ubicacion ||
-          "—"
+          "—",
+        "",
+        "",
+        "",
+        ""
       ],
 
+
+      /*
+       * Fila 6
+       */
       [
         "Período",
         "",
         "",
-        formatPeriodForExcel()
+        formatPeriodForExcel(),
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
       ],
 
-      [],
 
+      /*
+       * Fila 7
+       */
+      [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+
+
+      /*
+       * Fila 8
+       */
       headers,
 
+
+      /*
+       * Fila 9 en adelante
+       */
       ...rows
 
     ];
 
+
+    /*
+     * ========================================================
+     * CREAR WORKSHEET
+     * ========================================================
+     */
 
     const worksheet =
       window.XLSX.utils.aoa_to_sheet(
@@ -4766,9 +5259,286 @@ async function exportMovementsExcel() {
       );
 
 
-    worksheet[
-      "!cols"
-    ] = [
+    /*
+     * ========================================================
+     * COMBINACIONES DE CELDAS
+     * ========================================================
+     *
+     * Las fusiones se generan mediante la API nativa de
+     * SheetJS.
+     *
+     * No se modifican manualmente después.
+     * ========================================================
+     */
+
+    worksheet["!merges"] = [
+
+      /*
+       * TÍTULO
+       * A1:M1
+       */
+      {
+        s: {
+          r: 0,
+          c: 0
+        },
+
+        e: {
+          r: 0,
+          c: 12
+        }
+      },
+
+
+      /*
+       * LOCAL
+       * A2:C2
+       * D2:M2
+       */
+      {
+        s: {
+          r: 1,
+          c: 0
+        },
+
+        e: {
+          r: 1,
+          c: 2
+        }
+      },
+
+      {
+        s: {
+          r: 1,
+          c: 3
+        },
+
+        e: {
+          r: 1,
+          c: 12
+        }
+      },
+
+
+      /*
+       * CONTRIBUYENTE
+       * A3:C3
+       * D3:M3
+       */
+      {
+        s: {
+          r: 2,
+          c: 0
+        },
+
+        e: {
+          r: 2,
+          c: 2
+        }
+      },
+
+      {
+        s: {
+          r: 2,
+          c: 3
+        },
+
+        e: {
+          r: 2,
+          c: 12
+        }
+      },
+
+
+      /*
+       * TIPO DE DOCUMENTO
+       * A4:B4
+       * C4:D4
+       */
+      {
+        s: {
+          r: 3,
+          c: 0
+        },
+
+        e: {
+          r: 3,
+          c: 1
+        }
+      },
+
+      {
+        s: {
+          r: 3,
+          c: 2
+        },
+
+        e: {
+          r: 3,
+          c: 3
+        }
+      },
+
+
+      /*
+       * NIT
+       * E4:F4
+       * G4:H4
+       */
+      {
+        s: {
+          r: 3,
+          c: 4
+        },
+
+        e: {
+          r: 3,
+          c: 5
+        }
+      },
+
+      {
+        s: {
+          r: 3,
+          c: 6
+        },
+
+        e: {
+          r: 3,
+          c: 7
+        }
+      },
+
+
+      /*
+       * NRC
+       * I4:J4
+       * K4:M4
+       */
+      {
+        s: {
+          r: 3,
+          c: 8
+        },
+
+        e: {
+          r: 3,
+          c: 9
+        }
+      },
+
+      {
+        s: {
+          r: 3,
+          c: 10
+        },
+
+        e: {
+          r: 3,
+          c: 12
+        }
+      },
+
+
+      /*
+       * NÚMERO DE DOCUMENTO
+       * A5:C5
+       * D5:F5
+       */
+      {
+        s: {
+          r: 4,
+          c: 0
+        },
+
+        e: {
+          r: 4,
+          c: 2
+        }
+      },
+
+      {
+        s: {
+          r: 4,
+          c: 3
+        },
+
+        e: {
+          r: 4,
+          c: 5
+        }
+      },
+
+
+      /*
+       * UBICACIÓN
+       * G5:H5
+       * I5:M5
+       */
+      {
+        s: {
+          r: 4,
+          c: 6
+        },
+
+        e: {
+          r: 4,
+          c: 7
+        }
+      },
+
+      {
+        s: {
+          r: 4,
+          c: 8
+        },
+
+        e: {
+          r: 4,
+          c: 12
+        }
+      },
+
+
+      /*
+       * PERÍODO
+       * A6:C6
+       * D6:M6
+       */
+      {
+        s: {
+          r: 5,
+          c: 0
+        },
+
+        e: {
+          r: 5,
+          c: 2
+        }
+      },
+
+      {
+        s: {
+          r: 5,
+          c: 3
+        },
+
+        e: {
+          r: 5,
+          c: 12
+        }
+      }
+
+    ];
+
+
+    /*
+     * ========================================================
+     * ANCHOS DE COLUMNA
+     * ========================================================
+     */
+
+    worksheet["!cols"] = [
 
       {
         wch:
@@ -4838,6 +5608,63 @@ async function exportMovementsExcel() {
     ];
 
 
+    /*
+     * ========================================================
+     * ALTURAS DE FILA
+     * ========================================================
+     */
+
+    worksheet["!rows"] = [
+
+      {
+        hpt:
+          28
+      },
+
+      {
+        hpt:
+          21
+      },
+
+      {
+        hpt:
+          21
+      },
+
+      {
+        hpt:
+          21
+      },
+
+      {
+        hpt:
+          21
+      },
+
+      {
+        hpt:
+          21
+      },
+
+      {
+        hpt:
+          8
+      },
+
+      {
+        hpt:
+          24
+      }
+
+    ];
+
+
+    /*
+     * ========================================================
+     * WORKBOOK
+     * ========================================================
+     */
+
     const workbook =
       window.XLSX.utils.book_new();
 
@@ -4852,6 +5679,12 @@ async function exportMovementsExcel() {
 
     );
 
+
+    /*
+     * ========================================================
+     * NOMBRE DE ARCHIVO
+     * ========================================================
+     */
 
     const {
       from,
@@ -4873,8 +5706,15 @@ async function exportMovementsExcel() {
 
 
     const fileName =
+
       `${localTag}_movimientos_inventario_${from}_a_${to}.xlsx`;
 
+
+    /*
+     * ========================================================
+     * GENERAR XLSX CON SHEETJS
+     * ========================================================
+     */
 
     const xlsxArray =
       window.XLSX.write(
@@ -4900,6 +5740,24 @@ async function exportMovementsExcel() {
       );
 
 
+    /*
+     * ========================================================
+     * CONFIGURACIÓN DE IMPRESIÓN
+     * ========================================================
+     *
+     * Se aplica después de que SheetJS genera el XLSX.
+     *
+     * Esto permite conservar:
+     *
+     * - Las fusiones A1:M1, etc.
+     * - Área de impresión
+     * - Orientación Horizontal
+     * - Escala 60%
+     *
+     * La modificación se hace sobre elementos OOXML válidos.
+     * ========================================================
+     */
+
     const finalBlob =
       await enforceExcelPrintSettings(
 
@@ -4910,9 +5768,18 @@ async function exportMovementsExcel() {
       );
 
 
+    /*
+     * ========================================================
+     * DESCARGA
+     * ========================================================
+     */
+
     downloadBlob(
+
       finalBlob,
+
       fileName
+
     );
 
 
@@ -4943,8 +5810,11 @@ async function exportMovementsExcel() {
   ) {
 
     debugError(
+
       "Error exportando movimientos:",
+
       error
+
     );
 
 
@@ -4959,7 +5829,9 @@ async function exportMovementsExcel() {
       "error"
 
     );
+
   }
+
 }
 
 
@@ -4986,6 +5858,7 @@ function formatPeriodForExcel() {
 
 
   return `${from} al ${to}`;
+
 }
 
 
@@ -5915,20 +6788,6 @@ async function init(
 /*
  * ============================================================
  * CONTROLADOR EXPORTADO
- * ============================================================
- *
- * IMPORTANTE:
- *
- * No se registra aquí.
- *
- * router.js hace:
- *
- * import controller from "./controllers/dashboard.controller.js"
- *
- * y posteriormente:
- *
- * AppRouter.registerSecurePageController(controller)
- *
  * ============================================================
  */
 
