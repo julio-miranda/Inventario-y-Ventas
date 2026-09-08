@@ -1,3 +1,5 @@
+// assets/js/router.js
+
 "use strict";
 
 /*
@@ -9,12 +11,16 @@
  *
  * - Detectar la página actual.
  * - Cargar dinámicamente su controlador MVC.
- * - Resolver diferentes formas de exportación del controller.
+ * - Resolver export default.
+ * - Resolver export { controller }.
+ * - Resolver exportaciones conocidas.
+ * - Resolver controllers globales.
+ * - Crear adapters de compatibilidad cuando sea necesario.
  * - Validar que el controller corresponda a la página.
  * - Registrar el controller mediante AppRouter.
  *
  * La autorización real continúa en app.js.
- * Este archivo NO sustituye el control de acceso.
+ *
  * ============================================================
  */
 
@@ -25,7 +31,9 @@
  * ============================================================
  */
 
-let navigationToken = 0;
+let navigationToken =
+    0;
+
 
 const registeredControllers =
     new Set();
@@ -34,10 +42,6 @@ const registeredControllers =
 /*
  * ============================================================
  * RUTAS MVC
- * ============================================================
- *
- * Cada ruta define exclusivamente cómo localizar su módulo.
- *
  * ============================================================
  */
 
@@ -91,24 +95,6 @@ const routes = Object.freeze({
     },
 
 
-    /*
-     * ========================================================
-     * LOCALES
-     * ========================================================
-     *
-     * IMPORTANTE:
-     *
-     * El archivo correcto es:
-     *
-     * assets/js/controllers/locals.controller.js
-     *
-     * No:
-     *
-     * assets/controllers/js/locals.controller.js
-     *
-     * ========================================================
-     */
-
     "locales.html": {
 
         modulePath:
@@ -143,8 +129,11 @@ function getCurrentPageFile() {
 
 
     return (
+
         file ||
+
         "index.html"
+
     );
 
 }
@@ -190,7 +179,11 @@ async function waitForAppRouter(
 
 
     while (
-        Date.now() - started < timeout
+
+        Date.now() -
+        started <
+        timeout
+
     ) {
 
         if (
@@ -234,7 +227,8 @@ function getGlobalControllerCandidates(
     page
 ) {
 
-    const candidates = [];
+    const candidates =
+        [];
 
 
     const mvc =
@@ -242,176 +236,196 @@ function getGlobalControllerCandidates(
 
 
     if (
-        mvc &&
-        mvc.controllers
+
+        !mvc ||
+
+        !mvc.controllers
+
     ) {
 
-        const controllers =
-            mvc.controllers;
+        return candidates;
 
+    }
 
-        /*
-         * inventory
-         */
 
-        if (
-            page ===
-            "inventory.html"
-        ) {
+    const controllers =
+        mvc.controllers;
 
-            candidates.push(
 
-                controllers.inventory,
+    /*
+     * --------------------------------------------------------
+     * INVENTORY
+     * --------------------------------------------------------
+     */
 
-                controllers.inventoryController,
+    if (
+        page ===
+        "inventory.html"
+    ) {
 
-                controllers.InventoryController
+        candidates.push(
 
-            );
+            controllers.inventory,
 
-        }
+            controllers.inventoryController,
 
+            controllers.InventoryController
 
-        /*
-         * dashboard
-         */
+        );
 
-        if (
-            page ===
-            "dashboard.html"
-        ) {
+    }
 
-            candidates.push(
 
-                controllers.dashboard,
+    /*
+     * --------------------------------------------------------
+     * DASHBOARD
+     * --------------------------------------------------------
+     */
 
-                controllers.dashboardController,
+    if (
+        page ===
+        "dashboard.html"
+    ) {
 
-                controllers.DashboardController
+        candidates.push(
 
-            );
+            controllers.dashboard,
 
-        }
+            controllers.dashboardController,
 
+            controllers.DashboardController
 
-        /*
-         * proveedores
-         */
+        );
 
-        if (
-            page ===
-            "proveedores.html"
-        ) {
+    }
 
-            candidates.push(
 
-                controllers.proveedores,
+    /*
+     * --------------------------------------------------------
+     * PROVEEDORES
+     * --------------------------------------------------------
+     */
 
-                controllers.proveedoresController,
+    if (
+        page ===
+        "proveedores.html"
+    ) {
 
-                controllers.ProveedoresController,
+        candidates.push(
 
-                controllers.suppliers,
+            controllers.proveedores,
 
-                controllers.SuppliersController
+            controllers.proveedoresController,
 
-            );
+            controllers.ProveedoresController,
 
-        }
+            controllers.suppliers,
 
+            controllers.SuppliersController
 
-        /*
-         * sales
-         */
+        );
 
-        if (
-            page ===
-            "sales.html"
-        ) {
+    }
 
-            candidates.push(
 
-                controllers.sales,
+    /*
+     * --------------------------------------------------------
+     * SALES
+     * --------------------------------------------------------
+     */
 
-                controllers.salesController,
+    if (
+        page ===
+        "sales.html"
+    ) {
 
-                controllers.SalesController
+        candidates.push(
 
-            );
+            controllers.sales,
 
-        }
+            controllers.salesController,
 
+            controllers.SalesController
 
-        /*
-         * gastos
-         */
+        );
 
-        if (
-            page ===
-            "gastos.html"
-        ) {
+    }
 
-            candidates.push(
 
-                controllers.gastos,
+    /*
+     * --------------------------------------------------------
+     * GASTOS
+     * --------------------------------------------------------
+     */
 
-                controllers.gastosController,
+    if (
+        page ===
+        "gastos.html"
+    ) {
 
-                controllers.GastosController
+        candidates.push(
 
-            );
+            controllers.gastos,
 
-        }
+            controllers.gastosController,
 
+            controllers.GastosController
 
-        /*
-         * employees
-         */
+        );
 
-        if (
-            page ===
-            "employees.html"
-        ) {
+    }
 
-            candidates.push(
 
-                controllers.employees,
+    /*
+     * --------------------------------------------------------
+     * EMPLOYEES
+     * --------------------------------------------------------
+     */
 
-                controllers.employeesController,
+    if (
+        page ===
+        "employees.html"
+    ) {
 
-                controllers.EmployeesController
+        candidates.push(
 
-            );
+            controllers.employees,
 
-        }
+            controllers.employeesController,
 
+            controllers.EmployeesController
 
-        /*
-         * locales
-         */
+        );
 
-        if (
-            page ===
-            "locales.html"
-        ) {
+    }
 
-            candidates.push(
 
-                controllers.locales,
+    /*
+     * --------------------------------------------------------
+     * LOCALES
+     * --------------------------------------------------------
+     */
 
-                controllers.localesController,
+    if (
+        page ===
+        "locales.html"
+    ) {
 
-                controllers.LocalesController,
+        candidates.push(
 
-                controllers.locals,
+            controllers.locales,
 
-                controllers.localsController,
+            controllers.localesController,
 
-                controllers.LocalsController
+            controllers.LocalesController,
 
-            );
+            controllers.locals,
 
-        }
+            controllers.localsController,
+
+            controllers.LocalsController
+
+        );
 
     }
 
@@ -419,6 +433,298 @@ function getGlobalControllerCandidates(
     return candidates.filter(
         Boolean
     );
+
+}
+
+
+/*
+ * ============================================================
+ * ADAPTERS DE COMPATIBILIDAD
+ * ============================================================
+ *
+ * Permiten continuar trabajando si un módulo antiguo todavía
+ * no exporta un controller ES correctamente.
+ * ============================================================
+ */
+
+function createCompatibilityController(
+    page
+) {
+
+    /*
+     * --------------------------------------------------------
+     * PROVEEDORES
+     * --------------------------------------------------------
+     *
+     * Si proveedores.js ya expuso proveedoresAPI, podemos crear
+     * un controller MVC válido sin depender de una exportación
+     * ES del archivo controller.
+     * --------------------------------------------------------
+     */
+
+    if (
+        page ===
+        "proveedores.html"
+    ) {
+
+        const api =
+            window.proveedoresAPI;
+
+
+        if (
+
+            api &&
+
+            typeof api.initialize ===
+            "function"
+
+        ) {
+
+            return {
+
+                name:
+                    "proveedores",
+
+                page:
+                    "proveedores.html",
+
+                roles: [
+
+                    "Administrador",
+
+                    "Bodega"
+
+                ],
+
+                init:
+                    api.initialize
+
+            };
+
+        }
+
+    }
+
+
+    /*
+     * --------------------------------------------------------
+     * INVENTARIO
+     * --------------------------------------------------------
+     */
+
+    if (
+        page ===
+        "inventory.html"
+    ) {
+
+        const controller =
+            window.InventoryMVC
+                ?.controllers
+                ?.inventory;
+
+
+        if (
+
+            controller &&
+
+            typeof controller.init ===
+            "function"
+
+        ) {
+
+            return controller;
+
+        }
+
+    }
+
+
+    /*
+     * --------------------------------------------------------
+     * DASHBOARD
+     * --------------------------------------------------------
+     */
+
+    if (
+        page ===
+        "dashboard.html"
+    ) {
+
+        const controller =
+            window.InventoryMVC
+                ?.controllers
+                ?.dashboard;
+
+
+        if (
+
+            controller &&
+
+            typeof controller.init ===
+            "function"
+
+        ) {
+
+            return controller;
+
+        }
+
+    }
+
+
+    /*
+     * --------------------------------------------------------
+     * SALES
+     * --------------------------------------------------------
+     */
+
+    if (
+        page ===
+        "sales.html"
+    ) {
+
+        const controller =
+            window.InventoryMVC
+                ?.controllers
+                ?.sales;
+
+
+        if (
+
+            controller &&
+
+            typeof controller.init ===
+            "function"
+
+        ) {
+
+            return controller;
+
+        }
+
+    }
+
+
+    /*
+     * --------------------------------------------------------
+     * GASTOS
+     * --------------------------------------------------------
+     */
+
+    if (
+        page ===
+        "gastos.html"
+    ) {
+
+        const controller =
+            window.InventoryMVC
+                ?.controllers
+                ?.gastos;
+
+
+        if (
+
+            controller &&
+
+            typeof controller.init ===
+            "function"
+
+        ) {
+
+            return controller;
+
+        }
+
+    }
+
+
+    /*
+     * --------------------------------------------------------
+     * EMPLOYEES
+     * --------------------------------------------------------
+     */
+
+    if (
+        page ===
+        "employees.html"
+    ) {
+
+        const controller =
+            window.InventoryMVC
+                ?.controllers
+                ?.employees;
+
+
+        if (
+
+            controller &&
+
+            typeof controller.init ===
+            "function"
+
+        ) {
+
+            return controller;
+
+        }
+
+    }
+
+
+    /*
+     * --------------------------------------------------------
+     * LOCALES
+     * --------------------------------------------------------
+     */
+
+    if (
+        page ===
+        "locales.html"
+    ) {
+
+        const controller =
+            window.InventoryMVC
+                ?.controllers
+                ?.locales;
+
+
+        if (
+
+            controller &&
+
+            typeof controller.init ===
+            "function"
+
+        ) {
+
+            return controller;
+
+        }
+
+
+        const localsController =
+            window.InventoryMVC
+                ?.controllers
+                ?.locals;
+
+
+        if (
+
+            localsController &&
+
+            typeof localsController.init ===
+            "function"
+
+        ) {
+
+            return localsController;
+
+        }
+
+    }
+
+
+    return null;
 
 }
 
@@ -433,6 +739,12 @@ function resolveControllerFromModule(
     module,
     page
 ) {
+
+    /*
+     * --------------------------------------------------------
+     * Validación inicial
+     * --------------------------------------------------------
+     */
 
     if (
         !module
@@ -450,9 +762,12 @@ function resolveControllerFromModule(
      */
 
     if (
+
         module.default &&
+
         typeof module.default.init ===
         "function"
+
     ) {
 
         return module.default;
@@ -467,9 +782,12 @@ function resolveControllerFromModule(
      */
 
     if (
+
         module.controller &&
+
         typeof module.controller.init ===
         "function"
+
     ) {
 
         return module.controller;
@@ -479,7 +797,7 @@ function resolveControllerFromModule(
 
     /*
      * --------------------------------------------------------
-     * 3. exportaciones habituales
+     * 3. Exportaciones conocidas
      * --------------------------------------------------------
      */
 
@@ -513,7 +831,8 @@ function resolveControllerFromModule(
 
 
     for (
-        const name of knownNames
+        const name of
+        knownNames
     ) {
 
         const candidate =
@@ -538,13 +857,15 @@ function resolveControllerFromModule(
 
     /*
      * --------------------------------------------------------
-     * 4. Buscar cualquier exportación que sea controller
+     * 4. Buscar cualquier exportación válida
      * --------------------------------------------------------
      */
 
     for (
         const value of
-        Object.values(module)
+        Object.values(
+            module
+        )
     ) {
 
         if (
@@ -568,7 +889,7 @@ function resolveControllerFromModule(
 
     /*
      * --------------------------------------------------------
-     * 5. Buscar en InventoryMVC.controllers
+     * 5. Buscar controller global
      * --------------------------------------------------------
      */
 
@@ -595,6 +916,34 @@ function resolveControllerFromModule(
             return candidate;
 
         }
+
+    }
+
+
+    /*
+     * --------------------------------------------------------
+     * 6. Adapter de compatibilidad
+     * --------------------------------------------------------
+     */
+
+    const compatibilityController =
+        createCompatibilityController(
+            page
+        );
+
+
+    if (
+        compatibilityController
+    ) {
+
+        console.warn(
+
+            `[Router] Utilizando controller de compatibilidad para "${page}".`
+
+        );
+
+
+        return compatibilityController;
 
     }
 
@@ -663,9 +1012,38 @@ async function loadControllerForPage(
         );
 
 
+        /*
+         * Intentamos utilizar un controller global ya cargado
+         * por compatibilidad antes de considerar que la ruta
+         * no puede iniciar.
+         */
+
+        const compatibilityController =
+            createCompatibilityController(
+                page
+            );
+
+
+        if (
+            compatibilityController
+        ) {
+
+            console.warn(
+
+                `[Router] Se utilizará el controller de compatibilidad para "${page}" después de fallar la importación.`
+
+            );
+
+
+            return compatibilityController;
+
+        }
+
+
         throw new Error(
 
             `No se pudo importar el controlador de "${page}". ` +
+
             `${error.message || error}`
 
         );
@@ -675,8 +1053,11 @@ async function loadControllerForPage(
 
     const controller =
         resolveControllerFromModule(
+
             module,
+
             page
+
         );
 
 
@@ -685,6 +1066,26 @@ async function loadControllerForPage(
     ) {
 
         return controller;
+
+    }
+
+
+    /*
+     * Incluso si el módulo no exportó nada, hacemos una última
+     * revisión del namespace global.
+     */
+
+    const globalFallback =
+        createCompatibilityController(
+            page
+        );
+
+
+    if (
+        globalFallback
+    ) {
+
+        return globalFallback;
 
     }
 
@@ -782,8 +1183,11 @@ function normalizeController(
 
 
     if (
+
         declaredPage &&
+
         declaredPage !== page
+
     ) {
 
         throw new Error(
@@ -799,6 +1203,18 @@ function normalizeController(
     }
 
 
+    const normalizedRoles =
+
+        Array.isArray(
+            controller.roles
+        )
+
+            ? controller.roles
+                .filter(Boolean)
+
+            : [];
+
+
     const normalized = {
 
         ...controller,
@@ -808,6 +1224,9 @@ function normalizeController(
 
         pageFile:
             normalizedPage,
+
+        roles:
+            normalizedRoles,
 
         name:
 
@@ -914,6 +1333,36 @@ function validateControllerForPage(
 
 /*
  * ============================================================
+ * OBTENER KEY DEL CONTROLLER
+ * ============================================================
+ */
+
+function getControllerKey(
+    controller,
+    page
+) {
+
+    const controllerName =
+        String(
+
+            controller?.name ||
+
+            page ||
+
+            "controller"
+
+        )
+            .trim()
+            .toLowerCase();
+
+
+    return `${page}::${controllerName}`;
+
+}
+
+
+/*
+ * ============================================================
  * REGISTRAR CONTROLLER
  * ============================================================
  */
@@ -944,8 +1393,11 @@ function registerController(
 
     const normalizedController =
         normalizeController(
+
             controller,
+
             page
+
         );
 
 
@@ -958,19 +1410,14 @@ function registerController(
     );
 
 
-    const controllerName =
-        String(
+    const controllerKey =
+        getControllerKey(
 
-            normalizedController.name ||
+            normalizedController,
 
             page
 
-        )
-            .trim();
-
-
-    const controllerKey =
-        `${page}::${controllerName}`;
+        );
 
 
     if (
@@ -997,9 +1444,12 @@ function registerController(
 
 
     const registered =
+
         window.AppRouter
             .registerSecurePageController(
+
                 normalizedController
+
             );
 
 
@@ -1011,8 +1461,137 @@ function registerController(
 
 
     return (
+
         registered ||
+
         normalizedController
+
+    );
+
+}
+
+
+/*
+ * ============================================================
+ * EVITAR DUPLICADOS DEL APROUTER
+ * ============================================================
+ *
+ * Esta función también limpia registrations antiguos si un
+ * archivo controller fue cargado previamente por un mecanismo
+ * legacy.
+ * ============================================================
+ */
+
+function removeDuplicateGlobalController(
+    page,
+    controller
+) {
+
+    const mvc =
+        window.InventoryMVC;
+
+
+    if (
+
+        !mvc ||
+
+        !mvc.controllers
+
+    ) {
+
+        return;
+
+    }
+
+
+    const key =
+        getControllerKey(
+            controller,
+            page
+        );
+
+
+    Object.entries(
+        mvc.controllers
+    ).forEach(
+        ([
+            name,
+            candidate
+        ]) => {
+
+            if (
+                !candidate
+            ) {
+
+                return;
+
+            }
+
+
+            if (
+
+                candidate ===
+                controller
+
+            ) {
+
+                return;
+
+            }
+
+
+            const candidatePage =
+                normalizePage(
+
+                    candidate.page ||
+
+                    candidate.pageFile ||
+
+                    ""
+
+                );
+
+
+            if (
+                !candidatePage
+            ) {
+
+                return;
+
+            }
+
+
+            const candidateKey =
+                getControllerKey(
+
+                    candidate,
+
+                    candidatePage
+
+                );
+
+
+            if (
+                candidateKey ===
+                key
+            ) {
+
+                /*
+                 * No eliminamos el objeto global porque otros
+                 * módulos podrían estar utilizándolo.
+                 *
+                 * Solamente informamos para diagnóstico.
+                 */
+
+                console.warn(
+
+                    `[Router] Existe otro controller global con la misma clave: ${candidateKey}.`
+
+                );
+
+            }
+
+        }
     );
 
 }
@@ -1063,6 +1642,12 @@ export async function router() {
         }
 
 
+        /*
+         * --------------------------------------------------------
+         * Esperar a AppRouter.
+         * --------------------------------------------------------
+         */
+
         const ready =
             await waitForAppRouter();
 
@@ -1080,6 +1665,12 @@ export async function router() {
         }
 
 
+        /*
+         * --------------------------------------------------------
+         * Cancelar navegación obsoleta.
+         * --------------------------------------------------------
+         */
+
         if (
             token !== navigationToken
         ) {
@@ -1095,6 +1686,12 @@ export async function router() {
 
         }
 
+
+        /*
+         * --------------------------------------------------------
+         * Cargar controller.
+         * --------------------------------------------------------
+         */
 
         const controller =
             await loadControllerForPage(
@@ -1118,6 +1715,12 @@ export async function router() {
         }
 
 
+        /*
+         * --------------------------------------------------------
+         * Validar.
+         * --------------------------------------------------------
+         */
+
         validateControllerForPage(
 
             controller,
@@ -1126,6 +1729,12 @@ export async function router() {
 
         );
 
+
+        /*
+         * --------------------------------------------------------
+         * Normalizar.
+         * --------------------------------------------------------
+         */
 
         const normalizedController =
             normalizeController(
@@ -1136,6 +1745,27 @@ export async function router() {
 
             );
 
+
+        /*
+         * --------------------------------------------------------
+         * Diagnóstico de duplicados.
+         * --------------------------------------------------------
+         */
+
+        removeDuplicateGlobalController(
+
+            page,
+
+            normalizedController
+
+        );
+
+
+        /*
+         * --------------------------------------------------------
+         * Registrar.
+         * --------------------------------------------------------
+         */
 
         registerController(
 
@@ -1189,6 +1819,10 @@ export {
 
     validateControllerForPage,
 
-    normalizeController
+    normalizeController,
+
+    resolveControllerFromModule,
+
+    createCompatibilityController
 
 };
