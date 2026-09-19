@@ -55,6 +55,23 @@
 //   por app.js.
 // - Las entradas pagadas generan gasto automático.
 //
+// - CONVERSIONES:
+//      producto origen -> producto transformado
+//
+//   Ejemplo:
+//      Cerdo -> Chicharrón
+//      Chicharrón -> Tortillas con chicharrón
+//
+//   La conversión:
+//      - consume stock del producto origen;
+//      - incrementa stock del producto resultante;
+//      - calcula costo del producto producido;
+//      - puede crear el producto resultante si no existe;
+//      - registra la operación en "conversiones";
+//      - registra salida del origen;
+//      - registra entrada del producto resultante;
+//      - NO genera gasto de compra.
+//
 // ================================================================
 
 (function () {
@@ -110,6 +127,10 @@
   const EXPENSES_COLLECTION =
     window.EXPENSES_COLLECTION_NAME ||
     "gastos";
+
+  const CONVERSIONS_COLLECTION =
+    window.CONVERSIONS_COLLECTION_NAME ||
+    "conversiones";
 
   const LOW_STOCK_THRESHOLD =
     5;
@@ -1178,19 +1199,6 @@
     );
   }
 
-  /*
-   * Búsqueda de proveedor:
-   *
-   * 1. Nombre exacto.
-   * 2. Razón social exacta.
-   * 3. Denominación exacta.
-   * 4. Nombre + razón social exacto.
-   * 5. Contiene en nombre.
-   * 6. Contiene en razón social.
-   * 7. Contiene en denominación.
-   * 8. Contiene en el texto combinado.
-   */
-
   function findProviderByText(
     value
   ) {
@@ -1303,19 +1311,6 @@
       ) || null
     );
   }
-
-  /*
-   * Resuelve un proveedor introducido en un input.
-   *
-   * Si está vacío, devuelve null.
-   *
-   * Si corresponde a un proveedor existente, devuelve el objeto.
-   *
-   * Permite:
-   *   "Distribuidora XYZ"
-   *   "Distribuidora XYZ S.A. de C.V."
-   *   "Distribuidora XYZ — Distribuidora XYZ S.A. de C.V."
-   */
 
   function resolveProviderSelection(
     value
@@ -2556,12 +2551,6 @@
       boxesMap
     };
   }
-
-  /*
-   * ============================================================
-   * VENTAS HISTÓRICAS
-   * ============================================================
-   */
 
   function aggregateAllTimeSalesMap(
     documents
@@ -4597,6 +4586,174 @@
 
   /*
    * ============================================================
+   * RECARGAR INVENTARIO DESPUÉS DE UNA CONVERSIÓN
+   * ============================================================
+   *
+   * El módulo conversion.js usa esta función para forzar
+   * que el inventario vuelva a leer los documentos actualizados
+   * desde la caché de sesión.
+   * ============================================================
+   */
+
+  async function reloadInventoryAfterConversion() {
+    inventoryLoadPromise =
+      null;
+
+    currentProductsList =
+      [];
+
+    currentMonthlySalesMap =
+      {};
+
+    currentMonthlyBoxesMap =
+      {};
+
+    invalidateAllMovementsCache();
+
+    await loadInventoryData();
+
+    applySearch();
+
+    ensureGlobalMovementsButton();
+    ensureConversionButton();
+  }
+
+  /*
+   * ============================================================
+   * CARGA DEL MÓDULO DE CONVERSIONES
+   * ============================================================
+   */
+
+  async function ensureConversionModuleLoaded() {
+    if (
+      window.InventoryConversions
+    ) {
+      return window.InventoryConversions;
+    }
+
+    await import(
+      "./conversion.js"
+    );
+
+    if (
+      !window.InventoryConversions
+    ) {
+      throw new Error(
+        "No se pudo cargar el módulo de conversiones."
+      );
+    }
+
+    return window.InventoryConversions;
+  }
+
+  /*
+   * ============================================================
+   * BOTÓN DE CONVERSIONES
+   * ============================================================
+   */
+
+  function ensureConversionButton() {
+    const existing =
+      document.getElementById(
+        "btnConversions"
+      );
+
+    if (
+      existing
+    ) {
+      existing.style.display =
+        canEditInventory &&
+          currentLocalId
+          ? ""
+          : "none";
+
+      return existing;
+    }
+
+    const btnAdd =
+      getInventoryAddButton();
+
+    if (
+      !btnAdd ||
+      !canEditInventory ||
+      !currentLocalId
+    ) {
+      return null;
+    }
+
+    const button =
+      document.createElement(
+        "button"
+      );
+
+    button.id =
+      "btnConversions";
+
+    button.type =
+      "button";
+
+    button.className =
+      "btn-outline";
+
+    button.innerHTML = `
+      <i class="fas fa-arrows-alt-h"></i>
+      Convertir productos
+    `;
+
+    button.style.marginLeft =
+      "8px";
+
+    button.addEventListener(
+      "click",
+      async () => {
+        try {
+          const module =
+            await ensureConversionModuleLoaded();
+
+          if (
+            typeof module.openConversionModal !==
+            "function"
+          ) {
+            throw new Error(
+              "El módulo de conversiones no expone openConversionModal()."
+            );
+          }
+
+          await module.openConversionModal();
+
+        } catch (
+          error
+        ) {
+          console.error(
+            "Error abriendo conversiones:",
+            error
+          );
+
+          if (
+            typeof Swal !==
+            "undefined"
+          ) {
+            await Swal.fire(
+              "Error",
+              error.message ||
+                "No se pudo abrir el módulo de conversiones.",
+              "error"
+            );
+          }
+        }
+      }
+    );
+
+    btnAdd.parentNode?.insertBefore(
+      button,
+      btnAdd.nextSibling
+    );
+
+    return button;
+  }
+
+  /*
+   * ============================================================
    * MOVIMIENTOS
    * ============================================================
    */
@@ -4874,12 +5031,6 @@
           costoUnitario
         );
 
-    /*
-     * El proveedor del movimiento tiene prioridad.
-     *
-     * Si el movimiento antiguo no tiene proveedor, se usa
-     * el proveedor del producto únicamente como fallback visual.
-     */
     const movementProviderId =
       String(
         source.proveedorId ||
@@ -5407,7 +5558,10 @@
     detalle,
     user,
     operationDate,
-    expenseId = ""
+    expenseId = "",
+
+    conversionId = "",
+    conversionType = ""
   }) {
     const context =
       currentUserInventoryContext ||
@@ -5660,9 +5814,6 @@
       costoTotal:
         normalizedCostTotal,
 
-      /*
-       * PROVEEDOR ESPECÍFICO DEL MOVIMIENTO
-       */
       proveedorId:
         String(
           proveedorId ||
@@ -5681,9 +5832,6 @@
           ""
         ).trim(),
 
-      /*
-       * Alias para compatibilidad.
-       */
       providerId:
         String(
           proveedorId ||
@@ -5705,6 +5853,18 @@
       expenseId:
         String(
           expenseId ||
+          ""
+        ).trim(),
+
+      conversionId:
+        String(
+          conversionId ||
+          ""
+        ).trim(),
+
+      conversionType:
+        String(
+          conversionType ||
           ""
         ).trim(),
 
@@ -6416,13 +6576,6 @@
                 data.price
               );
 
-          /*
-           * Proveedor del producto:
-           *
-           * Cuando se registra una nueva entrada, la selección
-           * del formulario puede actualizar también el proveedor
-           * general del producto.
-           */
           if (
             line.proveedorId
           ) {
@@ -7594,8 +7747,8 @@
           )}
               · Stock actual:
               ${getCurrentStockUnits(
-            product
-          )}
+                product
+              )}
               ·
               ${enteredUnitsPerBox}
               unid./caja
@@ -8902,9 +9055,6 @@
         product?.price
       );
 
-    /*
-     * EL PROVEEDOR DEL MOVIMIENTO TIENE PRIORIDAD.
-     */
     const movementProvider =
       getProviderById(
         movement.proveedorId
@@ -9635,12 +9785,6 @@
         operationDate
       );
 
-    /*
-     * Resolver proveedor ANTES de abrir la transacción.
-     *
-     * El proveedor se guarda en el movimiento y NO se modifica
-     * automáticamente el proveedor global del producto.
-     */
     const providerText =
       String(
         values.proveedorTexto ||
@@ -9798,12 +9942,6 @@
             productData
           );
 
-        /*
-         * ========================================================
-         * UNIDADES POR CAJA ANTERIORES
-         * ========================================================
-         */
-
         const oldUnitsPerBox =
           Math.max(
             1,
@@ -9817,12 +9955,6 @@
             ) ||
             1
           );
-
-        /*
-         * ========================================================
-         * NUEVO DESGLOSE
-         * ========================================================
-         */
 
         const newBoxes =
           integerOrZero(
@@ -9867,12 +9999,6 @@
           newPaidUnits +
           newBonusUnitsTotal;
 
-        /*
-         * ========================================================
-         * COSTO
-         * ========================================================
-         */
-
         let newCostPerBox =
           Math.max(
             0,
@@ -9906,12 +10032,6 @@
             unitsPerBox;
         }
 
-        /*
-         * ========================================================
-         * PRECIO
-         * ========================================================
-         */
-
         const newSalePrice =
           Math.max(
             0,
@@ -9919,12 +10039,6 @@
               values.precioVenta
             )
           );
-
-        /*
-         * ========================================================
-         * STOCK
-         * ========================================================
-         */
 
         const oldEntry =
           (
@@ -9959,12 +10073,6 @@
             `No se puede reducir la entrada a ${newEntry} unidades porque el stock actual (${currentStock}) quedaría en ${nextStock}.`
           );
         }
-
-        /*
-         * ========================================================
-         * COSTO DE ENTRADA ANTERIOR
-         * ========================================================
-         */
 
         const oldPaidUnits =
           oldBreakdown.cajas *
@@ -10010,24 +10118,12 @@
               oldCostPerUnit
             );
 
-        /*
-         * ========================================================
-         * NUEVO COSTO
-         * ========================================================
-         */
-
         const newCostTotal =
           Math.max(
             0,
             newPaidUnits *
             newCostPerUnit
           );
-
-        /*
-         * ========================================================
-         * GASTO
-         * ========================================================
-         */
 
         let expenseData =
           null;
@@ -10115,12 +10211,6 @@
             );
           }
         }
-
-        /*
-         * ========================================================
-         * MOVIMIENTO ACTUALIZADO
-         * ========================================================
-         */
 
         const nextMovementData = {
           ...oldMovementRaw,
@@ -10214,20 +10304,6 @@
           numeroDocumento:
             values.numeroDocumento,
 
-          /*
-           * =====================================================
-           * PROVEEDOR ESPECÍFICO DEL MOVIMIENTO
-           * =====================================================
-           *
-           * Esto es independiente del proveedor del producto.
-           *
-           * Si el input queda vacío:
-           *     proveedor = null / vacío.
-           *
-           * Si se selecciona uno:
-           *     se guardan ID, nombre y razón social.
-           */
-
           proveedorId:
             selectedProviderId ||
             null,
@@ -10314,15 +10390,6 @@
           nextMovementData
         );
 
-        /*
-         * ========================================================
-         * PRODUCTO ACTUALIZADO
-         * ========================================================
-         *
-         * El proveedor global del producto NO se cambia aquí.
-         * Solo se modifica el movimiento.
-         */
-
         const nextProductData = {
           quantity:
             nextStock,
@@ -10346,21 +10413,6 @@
 
           price:
             newSalePrice,
-
-          /*
-           * IMPORTANTE:
-           *
-           * NO se agregan:
-           *
-           * proveedorId
-           * proveedorNombre
-           * proveedorRazonSocial
-           *
-           * a este objeto.
-           *
-           * Así el proveedor editado queda exclusivamente
-           * asociado a esta entrada.
-           */
 
           referenciaLibro:
             values.referenciaLibro ||
@@ -10775,14 +10827,6 @@
               return;
             }
 
-            /*
-             * Validación de proveedor:
-             *
-             * Vacío = quitar proveedor del movimiento.
-             *
-             * Texto = debe coincidir con un proveedor existente
-             * por nombre, razón social o combinación.
-             */
             if (
               proveedorTexto
             ) {
@@ -11631,13 +11675,6 @@
               movement.codigoProducto
             );
 
-          /*
-           * IMPORTANTE:
-           *
-           * La búsqueda del historial usa el proveedor DEL
-           * MOVIMIENTO, no únicamente el proveedor actual
-           * del producto.
-           */
           const movementProviderName =
             normalizeText(
               movement.proveedorNombre
@@ -11648,10 +11685,6 @@
               movement.proveedorRazonSocial
             );
 
-          /*
-           * Como fallback también se revisa el proveedor actual
-           * del producto.
-           */
           const productProviderName =
             normalizeText(
               movement.productCurrentProvider
@@ -12222,7 +12255,7 @@
 
   /*
    * ============================================================
-   * BOTÓN GENERAL
+   * BOTÓN GENERAL DE MOVIMIENTOS
    * ============================================================
    */
 
@@ -12235,6 +12268,12 @@
     if (
       existing
     ) {
+      existing.style.display =
+        canEditInventory &&
+          currentLocalId
+          ? ""
+          : "none";
+
       return existing;
     }
 
@@ -12243,7 +12282,8 @@
 
     if (
       !btnAdd ||
-      !canEditInventory
+      !canEditInventory ||
+      !currentLocalId
     ) {
       return null;
     }
@@ -12949,6 +12989,8 @@
     ) {
       bindInventoryPageEvents();
 
+      ensureConversionButton();
+
       return;
     }
 
@@ -12984,6 +13026,14 @@
 
       ensureInventoryDataTable();
 
+      /*
+       * Cargamos el módulo de conversiones antes de crear
+       * el botón, pero no ejecutamos ninguna conversión.
+       */
+      await ensureConversionModuleLoaded();
+
+      ensureConversionButton();
+
       ensureGlobalMovementsButton();
 
       bindInventoryPageEvents();
@@ -12991,6 +13041,15 @@
       await loadInventoryProviders();
 
       await loadInventoryData();
+
+      /*
+       * Después de cargar los productos, aseguramos de nuevo
+       * los botones porque ahora currentProductsList y el
+       * contexto local están completamente disponibles.
+       */
+      ensureConversionButton();
+
+      ensureGlobalMovementsButton();
 
       applySearch();
     } catch (
@@ -13076,7 +13135,10 @@
       [],
 
     init:
-      initializeInventory
+      initializeInventory,
+
+    reload:
+      reloadInventoryAfterConversion
   };
 
   window.InventoryMVC.controllers.inventory =
