@@ -72,6 +72,14 @@
 //      - registra entrada del producto resultante;
 //      - NO genera gasto de compra.
 //
+// - ELIMINACIÓN DE ENTRADAS:
+//      - Solo Administrador puede eliminar.
+//      - Las entradas generadas por conversión no se eliminan
+//        desde este historial para preservar la trazabilidad.
+//      - Al eliminar una entrada se revierte su cantidad del stock.
+//      - Si existe gasto vinculado, se descuenta el costo total
+//        pagado de esa entrada.
+//
 // ================================================================
 
 (function () {
@@ -365,6 +373,19 @@
         /[\u0300-\u036f]/g,
         ""
       );
+  }
+
+  function isAdministratorRole() {
+    return (
+      currentRole ===
+        "administrador" ||
+      currentRole ===
+        "admin"
+    );
+  }
+
+  function canDeleteInventoryMovement() {
+    return isAdministratorRole();
   }
 
   /*
@@ -3583,10 +3604,7 @@
     }
 
     const isAdmin =
-      currentRole ===
-      "administrador" ||
-      currentRole ===
-      "admin";
+      isAdministratorRole();
 
     return `
       <button
@@ -4587,11 +4605,6 @@
   /*
    * ============================================================
    * RECARGAR INVENTARIO DESPUÉS DE UNA CONVERSIÓN
-   * ============================================================
-   *
-   * El módulo conversion.js usa esta función para forzar
-   * que el inventario vuelva a leer los documentos actualizados
-   * desde la caché de sesión.
    * ============================================================
    */
 
@@ -11143,6 +11156,882 @@
 
   /*
    * ============================================================
+   * ELIMINAR MOVIMIENTO DE ENTRADA
+   * ============================================================
+   */
+
+  async function deleteEntryMovement(
+    movementId
+  ) {
+    const target =
+      String(
+        movementId ||
+        ""
+      ).trim();
+
+    if (
+      !target
+    ) {
+      throw new Error(
+        "No se indicó el movimiento que se desea eliminar."
+      );
+    }
+
+    if (
+      !canDeleteInventoryMovement()
+    ) {
+      throw new Error(
+        "Solo el administrador puede eliminar movimientos de entrada."
+      );
+    }
+
+    const movementRef =
+      db
+        .collection(
+          MOVEMENTS_COLLECTION
+        )
+        .doc(
+          target
+        );
+
+    let deletedProductId =
+      "";
+
+    let removedEntry =
+      0;
+
+    let previousStock =
+      0;
+
+    let nextStock =
+      0;
+
+    let removedCostTotal =
+      0;
+
+    let updatedExpense =
+      null;
+
+    await db.runTransaction(
+      async transaction => {
+        const movementSnap =
+          await transaction.get(
+            movementRef
+          );
+
+        if (
+          !movementSnap.exists
+        ) {
+          throw new Error(
+            "El movimiento ya no existe."
+          );
+        }
+
+        const oldMovementRaw =
+          movementSnap.data() ||
+          {};
+
+        if (
+          String(
+            oldMovementRaw.tipoMovimiento ||
+            ""
+          )
+            .trim()
+            .toLowerCase() !==
+          "entrada"
+        ) {
+          throw new Error(
+            "Solo se pueden eliminar movimientos de tipo entrada."
+          );
+        }
+
+        if (
+          !matchesCurrentLocal(
+            oldMovementRaw
+          )
+        ) {
+          throw new Error(
+            "El movimiento no pertenece al local actual."
+          );
+        }
+
+        const conversionId =
+          String(
+            oldMovementRaw.conversionId ||
+            ""
+          ).trim();
+
+        const conversionType =
+          String(
+            oldMovementRaw.conversionType ||
+            ""
+          ).trim();
+
+        if (
+          conversionId ||
+          conversionType
+        ) {
+          throw new Error(
+            "Esta entrada fue generada por una conversión y no se puede eliminar desde el historial de compras. Corrige o elimina la conversión desde su módulo correspondiente."
+          );
+        }
+
+        deletedProductId =
+          String(
+            oldMovementRaw.productId ||
+            oldMovementRaw.productID ||
+            oldMovementRaw.product_id ||
+            ""
+          ).trim();
+
+        if (
+          !deletedProductId
+        ) {
+          throw new Error(
+            "El movimiento no tiene un producto asociado."
+          );
+        }
+
+        const productRef =
+          db
+            .collection(
+              PRODUCTS_COLLECTION
+            )
+            .doc(
+              deletedProductId
+            );
+
+        const productSnap =
+          await transaction.get(
+            productRef
+          );
+
+        if (
+          !productSnap.exists
+        ) {
+          throw new Error(
+            "El producto asociado al movimiento ya no existe."
+          );
+        }
+
+        const productData =
+          productSnap.data() ||
+          {};
+
+        if (
+          !matchesCurrentLocal(
+            productData
+          )
+        ) {
+          throw new Error(
+            "El producto asociado no pertenece al local actual."
+          );
+        }
+
+        const normalizedMovement =
+          normalizeMovementDocument(
+            target,
+            oldMovementRaw
+          );
+
+        const breakdown =
+          getMovementBreakdown(
+            normalizedMovement,
+            productData
+          );
+
+        removedEntry =
+          breakdown.totalUnits > 0
+            ? breakdown.totalUnits
+            : Math.max(
+              0,
+              numberOrZero(
+                oldMovementRaw.entrada
+              )
+            );
+
+        if (
+          removedEntry <=
+          0
+        ) {
+          throw new Error(
+            "El movimiento no contiene una cantidad válida para revertir."
+          );
+        }
+
+        previousStock =
+          getCurrentStockUnits(
+            productData
+          );
+
+        nextStock =
+          previousStock -
+          removedEntry;
+
+        if (
+          nextStock <
+          0
+        ) {
+          throw new Error(
+            `No se puede eliminar esta entrada porque el stock actual (${previousStock}) es menor que la cantidad del movimiento (${removedEntry}). El stock resultante sería ${nextStock}.`
+          );
+        }
+
+        const oldPaidUnits =
+          breakdown.paidUnits;
+
+        let oldCostPerUnit =
+          numberOrZero(
+            normalizedMovement.costoUnitario
+          );
+
+        if (
+          oldCostPerUnit <=
+          0
+        ) {
+          const oldCostPerBox =
+            numberOrZero(
+              normalizedMovement.costoPorCaja
+            );
+
+          oldCostPerUnit =
+            breakdown.unitsPerBox >
+            0
+              ? oldCostPerBox /
+              breakdown.unitsPerBox
+              : 0;
+        }
+
+        removedCostTotal =
+          normalizedMovement.costoTotal !==
+            undefined &&
+            normalizedMovement.costoTotal !==
+            null
+            ? Math.max(
+              0,
+              numberOrZero(
+                normalizedMovement.costoTotal
+              )
+            )
+            : Math.max(
+              0,
+              oldPaidUnits *
+              oldCostPerUnit
+            );
+
+        const currentUnitsPerBox =
+          getUnitsPerBox(
+            productData
+          );
+
+        transaction.update(
+          productRef,
+          {
+            quantity:
+              nextStock,
+
+            stockCurrentUnits:
+              nextStock,
+
+            boxes:
+              Math.floor(
+                nextStock /
+                currentUnitsPerBox
+              ),
+
+            updatedAt:
+              firebase.firestore
+                .FieldValue
+                .serverTimestamp()
+          }
+        );
+
+        transaction.delete(
+          movementRef
+        );
+
+        const expenseId =
+          String(
+            oldMovementRaw.expenseId ||
+            ""
+          ).trim();
+
+        if (
+          expenseId
+        ) {
+          const expenseRef =
+            db
+              .collection(
+                EXPENSES_COLLECTION
+              )
+              .doc(
+                expenseId
+              );
+
+          const expenseSnap =
+            await transaction.get(
+              expenseRef
+            );
+
+          if (
+            expenseSnap.exists
+          ) {
+            const expenseData =
+              expenseSnap.data() ||
+              {};
+
+            const oldExpenseAmount =
+              Math.max(
+                0,
+                numberOrZero(
+                  expenseData.amount
+                )
+              );
+
+            const nextExpenseAmount =
+              Math.max(
+                0,
+                oldExpenseAmount -
+                removedCostTotal
+              );
+
+            transaction.update(
+              expenseRef,
+              {
+                amount:
+                  nextExpenseAmount,
+
+                updatedAt:
+                  firebase.firestore
+                    .FieldValue
+                    .serverTimestamp(),
+
+                inventoryLastMovementDeletion:
+                  true
+              }
+            );
+
+            updatedExpense = {
+              id:
+                expenseId,
+
+              data:
+                expenseData,
+
+              amount:
+                nextExpenseAmount
+            };
+          }
+        }
+      }
+    );
+
+    removeSessionDocument(
+      MOVEMENTS_COLLECTION,
+      target
+    );
+
+    const localProduct =
+      findProductById(
+        deletedProductId
+      );
+
+    if (
+      localProduct
+    ) {
+      const currentUnitsPerBox =
+        getUnitsPerBox(
+          localProduct
+        );
+
+      const updatedLocalProduct = {
+        ...localProduct,
+
+        quantity:
+          nextStock,
+
+        stockCurrentUnits:
+          nextStock,
+
+        boxes:
+          Math.floor(
+            nextStock /
+            currentUnitsPerBox
+          ),
+
+        updatedAt:
+          Date.now()
+      };
+
+      Object.assign(
+        localProduct,
+        updatedLocalProduct
+      );
+
+      upsertSessionDocument(
+        PRODUCTS_COLLECTION,
+        deletedProductId,
+        updatedLocalProduct
+      );
+    } else {
+      const cachedProduct =
+        getSessionCollection(
+          PRODUCTS_COLLECTION
+        ).find(
+          item =>
+            String(
+              item.id
+            ).trim() ===
+            deletedProductId
+        );
+
+      if (
+        cachedProduct
+      ) {
+        const productData =
+          cachedProduct.data ||
+          {};
+
+        const currentUnitsPerBox =
+          getUnitsPerBox(
+            productData
+          );
+
+        upsertSessionDocument(
+          PRODUCTS_COLLECTION,
+          deletedProductId,
+          {
+            ...productData,
+
+            quantity:
+              nextStock,
+
+            stockCurrentUnits:
+              nextStock,
+
+            boxes:
+              Math.floor(
+                nextStock /
+                currentUnitsPerBox
+              ),
+
+            updatedAt:
+              Date.now()
+          }
+        );
+      }
+    }
+
+    if (
+      updatedExpense
+    ) {
+      upsertSessionDocument(
+        EXPENSES_COLLECTION,
+        updatedExpense.id,
+        {
+          ...updatedExpense.data,
+
+          amount:
+            updatedExpense.amount,
+
+          updatedAt:
+            Date.now(),
+
+          inventoryLastMovementDeletion:
+            true
+        }
+      );
+    }
+
+    invalidateProductStockMovementsCache(
+      deletedProductId
+    );
+
+    return {
+      movementId:
+        target,
+
+      productId:
+        deletedProductId,
+
+      removedEntry,
+
+      previousStock,
+
+      nextStock,
+
+      removedCostTotal,
+
+      expense:
+        updatedExpense
+          ? {
+            id:
+              updatedExpense.id,
+
+            amount:
+              updatedExpense.amount
+          }
+          : null
+    };
+  }
+
+  async function confirmDeleteEntryMovement(
+    movementId
+  ) {
+    if (
+      !canDeleteInventoryMovement()
+    ) {
+      await Swal.fire(
+        "Sin permisos",
+        "Solo el administrador puede eliminar movimientos de entrada.",
+        "error"
+      );
+
+      return false;
+    }
+
+    const manager =
+      document.getElementById(
+        "movement-manager"
+      );
+
+    const managerProductId =
+      manager
+        ? String(
+          manager.dataset.productId ||
+          ""
+        ).trim()
+        : "";
+
+    const movement =
+      await findMovementById(
+        movementId
+      );
+
+    if (
+      !movement
+    ) {
+      await Swal.fire(
+        "Movimiento no encontrado",
+        "El movimiento ya no está disponible en la caché de sesión.",
+        "warning"
+      );
+
+      return false;
+    }
+
+    if (
+      movement.tipoMovimiento !==
+      "entrada"
+    ) {
+      await Swal.fire(
+        "Movimiento no válido",
+        "Solo se pueden eliminar movimientos de tipo entrada.",
+        "warning"
+      );
+
+      return false;
+    }
+
+    if (
+      movement.conversionId ||
+      movement.conversionType
+    ) {
+      await Swal.fire(
+        "Entrada de conversión",
+        "Esta entrada fue generada por una conversión. Debe modificarse desde el módulo de conversiones para conservar la trazabilidad de la operación.",
+        "warning"
+      );
+
+      return false;
+    }
+
+    const product =
+      findProductById(
+        movement.productId
+      );
+
+    const breakdown =
+      getMovementBreakdown(
+        movement,
+        product
+      );
+
+    const removalUnits =
+      breakdown.totalUnits > 0
+        ? breakdown.totalUnits
+        : Math.max(
+          0,
+          numberOrZero(
+            movement.entrada
+          )
+        );
+
+    const confirmation =
+      await Swal.fire({
+        title:
+          "¿Eliminar esta entrada?",
+
+        html:
+          `
+            <div
+              style="
+                text-align:left;
+              "
+            >
+              <p>
+                Producto:
+                <strong>
+                  ${escapeHtml(
+            product?.name ||
+            movement.productName ||
+            "Producto"
+          )}
+                </strong>
+              </p>
+
+              <p>
+                Fecha:
+                <strong>
+                  ${escapeHtml(
+            getMovementOperationDateValue(
+              movement
+            ) ||
+            "Sin fecha"
+          )}
+                </strong>
+              </p>
+
+              <p>
+                Entrada:
+                <strong>
+                  ${integerOrZero(
+            removalUnits
+          )}
+                  unidades
+                </strong>
+              </p>
+
+              <p>
+                Proveedor:
+                <strong>
+                  ${escapeHtml(
+            movement.proveedorNombre ||
+            "Sin proveedor"
+          )}
+                </strong>
+              </p>
+
+              <p>
+                Costo total:
+                <strong>
+                  ${currency(
+            movement.costoTotal
+          )}
+                </strong>
+              </p>
+
+              <p>
+                Stock actual:
+                <strong>
+                  ${getCurrentStockUnits(
+            product
+          )}
+                  unidades
+                </strong>
+              </p>
+
+              <hr>
+
+              <p
+                style="
+                  color:#b91c1c;
+                  font-weight:700;
+                "
+              >
+                Esta acción reducirá el stock en
+                ${integerOrZero(
+            removalUnits
+          )}
+                unidades y eliminará el movimiento.
+              </p>
+
+              ${
+                movement.expenseId
+                  ? `
+                    <p>
+                      El gasto vinculado también
+                      se ajustará restando el costo
+                      de esta entrada.
+                    </p>
+                  `
+                  : ""
+              }
+            </div>
+          `,
+
+        icon:
+          "warning",
+
+        showCancelButton:
+          true,
+
+        confirmButtonText:
+          "Sí, eliminar",
+
+        cancelButtonText:
+          "Cancelar",
+
+        confirmButtonColor:
+          "#b91c1c"
+      });
+
+    if (
+      !confirmation.isConfirmed
+    ) {
+      return false;
+    }
+
+    try {
+      Swal.fire({
+        title:
+          "Eliminando entrada",
+
+        text:
+          "Revirtiendo stock y actualizando el gasto vinculado.",
+
+        allowOutsideClick:
+          false,
+
+        allowEscapeKey:
+          false,
+
+        didOpen:
+          () => {
+            Swal.showLoading();
+          }
+      });
+
+      const result =
+        await deleteEntryMovement(
+          movementId
+        );
+
+      Swal.close();
+
+      refreshInventoryView();
+
+      const expenseHtml =
+        result.expense
+          ? `
+              <p>
+                Gasto actualizado:
+                <strong>
+                  ${currency(
+            result.expense.amount
+          )}
+                </strong>
+              </p>
+            `
+          : "";
+
+      await Swal.fire({
+        icon:
+          "success",
+
+        title:
+          "Entrada eliminada",
+
+        html:
+          `
+            <div
+              style="
+                text-align:left;
+              "
+            >
+              <p>
+                Producto:
+                <strong>
+                  ${escapeHtml(
+            product?.name ||
+            movement.productName ||
+            "Producto"
+          )}
+                </strong>
+              </p>
+
+              <p>
+                Unidades retiradas del stock:
+                <strong>
+                  ${integerOrZero(
+            result.removedEntry
+          )}
+                </strong>
+              </p>
+
+              <p>
+                Stock anterior:
+                <strong>
+                  ${integerOrZero(
+            result.previousStock
+          )}
+                </strong>
+              </p>
+
+              <p>
+                Nuevo stock:
+                <strong>
+                  ${integerOrZero(
+            result.nextStock
+          )}
+                </strong>
+              </p>
+
+              <p>
+                Costo retirado:
+                <strong>
+                  ${currency(
+            result.removedCostTotal
+          )}
+                </strong>
+              </p>
+
+              ${expenseHtml}
+            </div>
+          `,
+
+        confirmButtonText:
+          "Aceptar"
+      });
+
+      await openMovementManagerModal(
+        managerProductId
+      );
+
+      return true;
+    } catch (
+      error
+    ) {
+      Swal.close();
+
+      console.error(
+        "Error eliminando entrada:",
+        error
+      );
+
+      await Swal.fire(
+        "Error",
+        error.message ||
+        "No se pudo eliminar la entrada.",
+        "error"
+      );
+
+      return false;
+    }
+  }
+
+  /*
+   * ============================================================
    * TABLA DE MOVIMIENTOS
    * ============================================================
    */
@@ -11413,45 +12302,71 @@
           <tbody>
             ${movements
         .map(
-          movement => `
+          movement => {
+            const hasConversionReference =
+              Boolean(
+                String(
+                  movement.conversionId ||
+                  ""
+                ).trim()
+              ) ||
+              Boolean(
+                String(
+                  movement.conversionType ||
+                  ""
+                ).trim()
+              );
+
+            const deleteDisabled =
+              !canDeleteInventoryMovement() ||
+              hasConversionReference;
+
+            const deleteTitle =
+              hasConversionReference
+                ? "Entrada generada por conversión; debe gestionarse desde conversiones"
+                : !canDeleteInventoryMovement()
+                  ? "Solo administrador puede eliminar movimientos"
+                  : "Eliminar esta entrada";
+
+            return `
                   <tr>
                     <td>
                       ${escapeHtml(
-            getMovementOperationDateValue(
-              movement
-            ) ||
-            "—"
-          )}
+              getMovementOperationDateValue(
+                movement
+              ) ||
+              "—"
+            )}
                     </td>
 
                     <td>
                       <strong>
                         ${escapeHtml(
-            movement.productCurrentName ||
-            movement.productName ||
-            "Producto"
-          )}
+              movement.productCurrentName ||
+              movement.productName ||
+              "Producto"
+            )}
                       </strong>
 
                       ${movement.codigoProducto
-              ? `
+                ? `
                             <small>
                               Código:
                               ${escapeHtml(
-                movement.codigoProducto
-              )}
+                  movement.codigoProducto
+                )}
                             </small>
                           `
-              : ""
-            }
+                : ""
+              }
                     </td>
 
                     <td>
                       <strong>
                         ${escapeHtml(
-              movement.proveedorNombre ||
-              "Sin proveedor"
-            )}
+                  movement.proveedorNombre ||
+                  "Sin proveedor"
+                )}
                       </strong>
 
                       ${
@@ -11470,60 +12385,60 @@
                     <td>
                       <strong>
                         ${integerOrZero(
-              movement.cajas
-            )}
+                  movement.cajas
+                )}
                       </strong>
                       ${integerOrZero(
-              movement.cajas
-            ) === 1
-              ? "caja"
-              : "cajas"
-            }
+                  movement.cajas
+                ) === 1
+                  ? "caja"
+                  : "cajas"
+                }
 
                       ×
 
                       <strong>
                         ${integerOrZero(
-              movement.unidadesPorCaja
-            )}
+                  movement.unidadesPorCaja
+                )}
                       </strong>
 
                       <small>
                         ${integerOrZero(
-              movement.unidades
-            )}
+                  movement.unidades
+                )}
                         unidades sueltas
                       </small>
 
                       ${integerOrZero(
-              movement.cajasBono
-            ) > 0
-              ? `
+                  movement.cajasBono
+                ) > 0
+                  ? `
                             <small>
                               +
                               ${integerOrZero(
-                movement.cajasBono
-              )}
+                    movement.cajasBono
+                  )}
                               cajas bono
                             </small>
                           `
-              : ""
-            }
+                  : ""
+                }
 
                       ${integerOrZero(
-              movement.unidadesBono
-            ) > 0
-              ? `
+                  movement.unidadesBono
+                ) > 0
+                  ? `
                             <small>
                               +
                               ${integerOrZero(
-                movement.unidadesBono
-              )}
+                    movement.unidadesBono
+                  )}
                               unidades bono
                             </small>
                           `
-              : ""
-            }
+                  : ""
+                }
 
                       <br>
 
@@ -11531,8 +12446,8 @@
                         Total:
                         <strong>
                           ${integerOrZero(
-              movement.entrada
-            )}
+                  movement.entrada
+                )}
                         </strong>
                         unidades
                       </small>
@@ -11540,64 +12455,88 @@
 
                     <td>
                       ${currency(
-              movement.costoUnitario
-            )}
+                  movement.costoUnitario
+                )}
                     </td>
 
                     <td>
                       ${currency(
-              movement.costoPorCaja
-            )}
+                  movement.costoPorCaja
+                )}
                     </td>
 
                     <td>
                       <strong>
                         ${currency(
-              movement.costoTotal
-            )}
+                  movement.costoTotal
+                )}
                       </strong>
                     </td>
 
                     <td>
                       ${currency(
-              movement.precioVenta
-            )}
+                  movement.precioVenta
+                )}
                     </td>
 
                     <td>
                       ${escapeHtml(
-              movement.referenciaLibro ||
-              "—"
-            )}
+                  movement.referenciaLibro ||
+                  "—"
+                )}
                     </td>
 
                     <td>
                       ${escapeHtml(
-              movement.numeroDocumento ||
-              "—"
-            )}
+                  movement.numeroDocumento ||
+                  "—"
+                )}
                     </td>
 
                     <td>
                       ${integerOrZero(
-              movement.saldoActual
-            )}
+                  movement.saldoActual
+                )}
                     </td>
 
                     <td>
-                      <button
-                        type="button"
-                        class="btn-outline movement-edit-button"
-                        data-movement-id="${escapeHtml(
-              movement.id
-            )}"
+                      <div
+                        class="movement-action-group"
                       >
-                        <i class="fas fa-edit"></i>
-                        Editar
-                      </button>
+                        <button
+                          type="button"
+                          class="btn-outline movement-edit-button"
+                          data-movement-id="${escapeHtml(
+                  movement.id
+                )}"
+                        >
+                          <i class="fas fa-edit"></i>
+                          Editar
+                        </button>
+
+                        <button
+                          type="button"
+                          class="btn-outline movement-delete-button"
+                          data-movement-id="${escapeHtml(
+                  movement.id
+                )}"
+                          ${deleteDisabled
+                  ? `disabled title="${escapeHtml(
+                    deleteTitle
+                  )}"`
+                  : `title="${escapeHtml(
+                    deleteTitle
+                  )}"`
+                }
+                        >
+                          <i class="fas fa-trash"></i>
+                          Eliminar
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                `
+                `;
+          }
         )
         .join("")}
           </tbody>
@@ -11879,7 +12818,7 @@
                   );
               }
 
-              bindMovementEditButtons();
+              bindMovementActionButtons();
             };
 
           if (
@@ -11989,7 +12928,7 @@
               }
             );
 
-          bindMovementEditButtons();
+          bindMovementActionButtons();
         }
     });
   }
@@ -12051,6 +12990,59 @@
           );
         }
       );
+  }
+
+  function bindMovementDeleteButtons() {
+    document
+      .querySelectorAll(
+        ".movement-delete-button"
+      )
+      .forEach(
+        button => {
+          if (
+            button.dataset.bound ===
+            "1"
+          ) {
+            return;
+          }
+
+          button.dataset.bound =
+            "1";
+
+          button.addEventListener(
+            "click",
+            async () => {
+              if (
+                button.disabled
+              ) {
+                return;
+              }
+
+              const movementId =
+                String(
+                  button.dataset
+                    .movementId ||
+                  ""
+                ).trim();
+
+              if (
+                !movementId
+              ) {
+                return;
+              }
+
+              await confirmDeleteEntryMovement(
+                movementId
+              );
+            }
+          );
+        }
+      );
+  }
+
+  function bindMovementActionButtons() {
+    bindMovementEditButtons();
+    bindMovementDeleteButtons();
   }
 
   async function findMovementById(
@@ -12771,6 +13763,17 @@
         color:#6b7280;
       }
 
+      .movement-action-group {
+        display:flex;
+        align-items:center;
+        flex-wrap:wrap;
+        gap:8px;
+      }
+
+      .movement-action-group .btn-outline {
+        margin-left:0 !important;
+      }
+
       .movement-empty {
         min-height:200px;
         display:flex;
@@ -13026,10 +14029,6 @@
 
       ensureInventoryDataTable();
 
-      /*
-       * Cargamos el módulo de conversiones antes de crear
-       * el botón, pero no ejecutamos ninguna conversión.
-       */
       await ensureConversionModuleLoaded();
 
       ensureConversionButton();
@@ -13042,11 +14041,6 @@
 
       await loadInventoryData();
 
-      /*
-       * Después de cargar los productos, aseguramos de nuevo
-       * los botones porque ahora currentProductsList y el
-       * contexto local están completamente disponibles.
-       */
       ensureConversionButton();
 
       ensureGlobalMovementsButton();
