@@ -5,13 +5,15 @@
 // Permite convertir UNO O VARIOS productos de origen
 // en UN producto resultante.
 //
+// Las cantidades de conversión aceptan decimales.
+//
 // Ejemplos:
 //
 //   5 Cerdos -> 20 Chicharrón
 //
-//   5 Cerdos + 10 kg de Carne -> 30 Chicharrón
+//   5.5 Cerdos + 10.25 kg de Carne -> 30.75 Chicharrón
 //
-//   2 Cerdos + 5 Chicharrón -> 100 Tortillas con chicharrón
+//   2 Cerdos + 5.5 Chicharrón -> 100.25 Tortillas con chicharrón
 //
 // Funcionamiento:
 //
@@ -114,13 +116,46 @@
       : 0;
   }
 
-  function integerOrZero(value) {
+  function decimalOrZero(value) {
+    const n =
+      Number(value);
+
+    if (
+      !Number.isFinite(n)
+    ) {
+      return 0;
+    }
+
     return Math.max(
       0,
-      Math.floor(
-        numberOrZero(value)
-      )
+      Math.round(
+        n *
+        1000000
+      ) /
+      1000000
     );
+  }
+
+  /*
+   * Compatibilidad con datos y llamadas anteriores.
+   */
+  function integerOrZero(value) {
+    return decimalOrZero(
+      value
+    );
+  }
+
+  function formatQuantity(value) {
+    return decimalOrZero(
+      value
+    )
+      .toFixed(
+        6
+      )
+      .replace(
+        /\.?0+$/,
+        ""
+      );
   }
 
   function normalizeText(value) {
@@ -538,8 +573,8 @@
     product
   ) {
     return Math.max(
-      1,
-      numberOrZero(
+      0.000001,
+      decimalOrZero(
         product?.unitsPerBox
       ) || 1
     );
@@ -724,7 +759,9 @@
         ? `Código: ${code}`
         : "",
 
-      `Stock: ${stock}`
+      `Stock: ${formatQuantity(
+        stock
+      )}`
     ]
       .filter(
         Boolean
@@ -817,8 +854,9 @@
           <input
             class="conversion-source-quantity-input"
             type="number"
-            min="1"
-            step="1"
+            min="0.000001"
+            step="any"
+            inputmode="decimal"
             value="1"
           >
         </div>
@@ -980,9 +1018,14 @@
           <p>
             Ejemplo:
             <strong>
-              2 Cerdos + 5 Chicharrones
-              → 20 Tortillas con chicharrón
+              2.5 Cerdos + 5.25 Chicharrones
+              → 20.75 Tortillas con chicharrón
             </strong>
+          </p>
+
+          <p>
+            Las cantidades consumidas y producidas
+            aceptan decimales.
           </p>
 
           <p>
@@ -1009,10 +1052,6 @@
           class="conversion-grid"
         >
 
-          <!-- =================================================
-               FECHA
-               ================================================= -->
-
           <div
             class="inv-field conversion-full"
           >
@@ -1028,10 +1067,6 @@
               value="${getLocalDateInputValue()}"
             >
           </div>
-
-          <!-- =================================================
-               PRODUCTOS ORIGEN
-               ================================================= -->
 
           <div
             class="conversion-source-section conversion-full"
@@ -1074,10 +1109,6 @@
             ${buildProductOptions()}
           </datalist>
 
-          <!-- =================================================
-               MODO SALIDA
-               ================================================= -->
-
           <div
             class="inv-field conversion-full"
           >
@@ -1109,10 +1140,6 @@
             </small>
           </div>
 
-          <!-- =================================================
-               SALIDA EXISTENTE
-               ================================================= -->
-
           <div
             class="inv-field conversion-output-existing-field conversion-full"
             id="conversion-output-existing-field"
@@ -1142,10 +1169,6 @@
             ></small>
           </div>
 
-          <!-- =================================================
-               PRODUCTO NUEVO
-               ================================================= -->
-
           <div
             class="inv-field conversion-new-only"
             id="conversion-new-name-field"
@@ -1169,10 +1192,6 @@
             </small>
           </div>
 
-          <!-- =================================================
-               CANTIDAD PRODUCIDA
-               ================================================= -->
-
           <div
             class="inv-field"
           >
@@ -1185,15 +1204,12 @@
             <input
               id="conversion-output-quantity"
               type="number"
-              min="1"
-              step="1"
+              min="0.000001"
+              step="any"
+              inputmode="decimal"
               value="1"
             >
           </div>
-
-          <!-- =================================================
-               CAMPOS PRODUCTO NUEVO
-               ================================================= -->
 
           <div
             class="inv-field conversion-new-only"
@@ -1231,6 +1247,7 @@
               type="number"
               min="0"
               step="0.01"
+              inputmode="decimal"
               value="0"
             >
 
@@ -1252,8 +1269,9 @@
             <input
               id="conversion-output-units-box"
               type="number"
-              min="1"
-              step="1"
+              min="0.000001"
+              step="any"
+              inputmode="decimal"
               value="1"
             >
 
@@ -1278,10 +1296,6 @@
               value="Producción / Conversión"
             >
           </div>
-
-          <!-- =================================================
-               PREVISUALIZACIÓN
-               ================================================= -->
 
           <div
             class="conversion-preview conversion-full"
@@ -1365,7 +1379,7 @@
           ).trim();
 
         const quantity =
-          integerOrZero(
+          decimalOrZero(
             row.querySelector(
               ".conversion-source-quantity-input"
             )?.value
@@ -1390,14 +1404,6 @@
    * ============================================================
    * NORMALIZACIÓN DE VALORES
    * ============================================================
-   *
-   * Mantiene compatibilidad con la antigua estructura:
-   *
-   *   sourceProduct
-   *   sourceQuantity
-   *
-   * cuando executeConversion() sea llamado
-   * desde otro módulo.
    */
 
   function normalizeConversionValues(
@@ -1418,7 +1424,7 @@
                   ).trim(),
 
                 quantity:
-                  integerOrZero(
+                  decimalOrZero(
                     item?.quantity ??
                     item?.sourceQuantity
                   ),
@@ -1457,7 +1463,7 @@
             ).trim(),
 
           quantity:
-            integerOrZero(
+            decimalOrZero(
               values.sourceQuantity
             ),
 
@@ -1474,7 +1480,7 @@
           item
         ) =>
           total +
-          integerOrZero(
+          decimalOrZero(
             item.quantity
           ),
         0
@@ -1494,7 +1500,7 @@
           return (
             total +
             (
-              integerOrZero(
+              decimalOrZero(
                 item.quantity
               ) *
               cost
@@ -1505,7 +1511,7 @@
       );
 
     const outputQuantity =
-      integerOrZero(
+      decimalOrZero(
         values.outputQuantity
       );
 
@@ -1568,7 +1574,7 @@
         : null;
 
     const outputQuantity =
-      integerOrZero(
+      decimalOrZero(
         document.getElementById(
           "conversion-output-quantity"
         )?.value
@@ -1594,8 +1600,8 @@
 
     const outputUnitsPerBox =
       Math.max(
-        1,
-        integerOrZero(
+        0.000001,
+        decimalOrZero(
           document.getElementById(
             "conversion-output-units-box"
           )?.value
@@ -1667,7 +1673,9 @@
     return sourceItems
       .map(
         item =>
-          `${item.product?.name || item.productText || "Producto"} (${item.quantity} unidades)`
+          `${item.product?.name || item.productText || "Producto"} (${formatQuantity(
+            item.quantity
+          )} unidades)`
       )
       .join(
         " + "
@@ -1749,8 +1757,10 @@
               );
 
             status.textContent =
-              `Stock actual: ${getProductStock(
-                item.product
+              `Stock actual: ${formatQuantity(
+                getProductStock(
+                  item.product
+                )
               )} | Costo unitario: ${currency(
                 cost
               )}`;
@@ -1783,13 +1793,17 @@
             item.product
           ) {
             const remaining =
-              getProductStock(
-                item.product
-              ) -
-              item.quantity;
+              decimalOrZero(
+                getProductStock(
+                  item.product
+                ) -
+                item.quantity
+              );
 
             stock.textContent =
-              `Stock después de convertir: ${remaining} unidades`;
+              `Stock después de convertir: ${formatQuantity(
+                remaining
+              )} unidades`;
 
             stock.style.color =
               remaining < 0
@@ -1838,12 +1852,6 @@
       sourceItems
     );
 
-    /*
-     * ----------------------------------------------------------
-     * COSTOS
-     * ----------------------------------------------------------
-     */
-
     const totalConversionCost =
       sourceItems.reduce(
         (
@@ -1852,7 +1860,7 @@
         ) =>
           total +
           (
-            integerOrZero(
+            decimalOrZero(
               item.quantity
             ) *
             getProductCostPerUnit(
@@ -1869,12 +1877,6 @@
           values.outputQuantity
         : 0;
 
-    /*
-     * ----------------------------------------------------------
-     * SALIDA
-     * ----------------------------------------------------------
-     */
-
     if (
       outputStatus
     ) {
@@ -1886,8 +1888,10 @@
           output
         ) {
           outputStatus.textContent =
-            `Stock actual: ${getProductStock(
-              output
+            `Stock actual: ${formatQuantity(
+              getProductStock(
+                output
+              )
             )} | Costo unitario actual: ${currency(
               getProductCostPerUnit(
                 output
@@ -1932,8 +1936,10 @@
     const outputResultStock =
       values.outputMode ===
         "existing"
-        ? outputCurrentStock +
+        ? decimalOrZero(
+          outputCurrentStock +
           values.outputQuantity
+        )
         : values.outputQuantity;
 
     preview.innerHTML = `
@@ -1968,7 +1974,9 @@
         </span>
 
         <strong>
-          ${values.totalSourceQuantity}
+          ${formatQuantity(
+            values.totalSourceQuantity
+          )}
         </strong>
       </div>
 
@@ -2003,7 +2011,9 @@
         </span>
 
         <strong>
-          ${values.outputQuantity}
+          ${formatQuantity(
+            values.outputQuantity
+          )}
         </strong>
       </div>
 
@@ -2013,7 +2023,9 @@
         </span>
 
         <strong>
-          ${outputResultStock}
+          ${formatQuantity(
+            outputResultStock
+          )}
         </strong>
       </div>
 
@@ -2151,12 +2163,6 @@
         values
       );
 
-    /*
-     * ----------------------------------------------------------
-     * FECHA
-     * ----------------------------------------------------------
-     */
-
     if (
       !values.operationDate
     ) {
@@ -2164,12 +2170,6 @@
         "Selecciona una fecha de operación válida."
       );
     }
-
-    /*
-     * ----------------------------------------------------------
-     * ORÍGENES
-     * ----------------------------------------------------------
-     */
 
     if (
       !Array.isArray(
@@ -2249,17 +2249,13 @@
           stock
         ) {
           throw new Error(
-            `No hay suficiente stock de ${item.product.name}. Stock actual: ${stock}.`
+            `No hay suficiente stock de ${item.product.name}. Stock actual: ${formatQuantity(
+              stock
+            )}.`
           );
         }
       }
     );
-
-    /*
-     * ----------------------------------------------------------
-     * SALIDA
-     * ----------------------------------------------------------
-     */
 
     if (
       values.outputQuantity <=
@@ -2269,12 +2265,6 @@
         "La cantidad producida debe ser mayor que cero."
       );
     }
-
-    /*
-     * ----------------------------------------------------------
-     * SALIDA EXISTENTE
-     * ----------------------------------------------------------
-     */
 
     if (
       values.outputMode ===
@@ -2314,12 +2304,6 @@
 
       return;
     }
-
-    /*
-     * ----------------------------------------------------------
-     * SALIDA NUEVA
-     * ----------------------------------------------------------
-     */
 
     if (
       values.outputMode ===
@@ -2462,7 +2446,7 @@
           );
 
         const totalCost =
-          integerOrZero(
+          decimalOrZero(
             item.quantity
           ) *
           unitCost;
@@ -2483,7 +2467,7 @@
             ),
 
           quantity:
-            integerOrZero(
+            decimalOrZero(
               item.quantity
             ),
 
@@ -2493,11 +2477,13 @@
             ),
 
           stockAfter:
-            getProductStock(
-              item.product
-            ) -
-            integerOrZero(
-              item.quantity
+            decimalOrZero(
+              getProductStock(
+                item.product
+              ) -
+              decimalOrZero(
+                item.quantity
+              )
             ),
 
           unitCost,
@@ -2552,12 +2538,6 @@
       );
     }
 
-    /*
-     * ----------------------------------------------------------
-     * REFERENCIAS DE PRODUCTOS ORIGEN
-     * ----------------------------------------------------------
-     */
-
     const sourceRefs =
       values.sourceItems.map(
         item =>
@@ -2569,12 +2549,6 @@
               item.product.id
             )
       );
-
-    /*
-     * ----------------------------------------------------------
-     * REFERENCIA SALIDA
-     * ----------------------------------------------------------
-     */
 
     const outputRef =
       values.outputMode ===
@@ -2591,12 +2565,6 @@
             PRODUCTS_COLLECTION
           )
           .doc();
-
-    /*
-     * ----------------------------------------------------------
-     * REFERENCIAS DE AUDITORÍA
-     * ----------------------------------------------------------
-     */
 
     const conversionRef =
       db
@@ -2633,20 +2601,8 @@
     let result =
       null;
 
-    /*
-     * ==========================================================
-     * TRANSACTION
-     * ==========================================================
-     */
-
     await db.runTransaction(
       async transaction => {
-        /*
-         * ------------------------------------------------------
-         * LECTURAS
-         * ------------------------------------------------------
-         */
-
         const sourceSnapshots =
           [];
 
@@ -2668,12 +2624,6 @@
               outputRef
             )
             : null;
-
-        /*
-         * ------------------------------------------------------
-         * DATOS ORIGEN
-         * ------------------------------------------------------
-         */
 
         const sourceRecords =
           sourceSnapshots.map(
@@ -2714,7 +2664,7 @@
                 );
 
               const sourceQuantity =
-                integerOrZero(
+                decimalOrZero(
                   formItem.quantity
                 );
 
@@ -2723,14 +2673,18 @@
                 sourceStock
               ) {
                 throw new Error(
-                  `Stock insuficiente. ${sourceData.name || "Producto"} tiene ${sourceStock} y se requieren ${sourceQuantity}.`
+                  `Stock insuficiente. ${sourceData.name || "Producto"} tiene ${formatQuantity(
+                    sourceStock
+                  )} y se requieren ${formatQuantity(
+                    sourceQuantity
+                  )}.`
                 );
               }
 
               const sourceUnitsPerBox =
                 Math.max(
-                  1,
-                  numberOrZero(
+                  0.000001,
+                  decimalOrZero(
                     sourceData.unitsPerBox
                   ) || 1
                 );
@@ -2745,8 +2699,10 @@
                 sourceCostPerUnit;
 
               const nextSourceStock =
-                sourceStock -
-                sourceQuantity;
+                decimalOrZero(
+                  sourceStock -
+                  sourceQuantity
+                );
 
               return {
                 ref:
@@ -2778,12 +2734,6 @@
             }
           );
 
-        /*
-         * ------------------------------------------------------
-         * COSTO TOTAL DE LA CONVERSIÓN
-         * ------------------------------------------------------
-         */
-
         const totalConversionCost =
           sourceRecords.reduce(
             (
@@ -2813,12 +2763,6 @@
             values.outputQuantity
             : 0;
 
-        /*
-         * ------------------------------------------------------
-         * PATCHES ORIGEN
-         * ------------------------------------------------------
-         */
-
         const sourceProductPatches =
           sourceRecords.map(
             record => ({
@@ -2829,10 +2773,12 @@
                 record.nextSourceStock,
 
               boxes:
-                Math.floor(
-                  record.nextSourceStock /
-                  record.sourceUnitsPerBox
-                ),
+                record.sourceUnitsPerBox > 0
+                  ? decimalOrZero(
+                    record.nextSourceStock /
+                    record.sourceUnitsPerBox
+                  )
+                  : 0,
 
               updatedAt:
                 firebase.firestore
@@ -2849,12 +2795,6 @@
                 values.dateValue
             })
           );
-
-        /*
-         * ------------------------------------------------------
-         * VARIABLES SALIDA
-         * ------------------------------------------------------
-         */
 
         let outputData =
           null;
@@ -2900,12 +2840,6 @@
                 ""
               ).trim()
           );
-
-        /*
-         * ======================================================
-         * SALIDA EXISTENTE
-         * ======================================================
-         */
 
         if (
           values.outputMode ===
@@ -2956,8 +2890,8 @@
 
           outputUnitsPerBox =
             Math.max(
-              1,
-              numberOrZero(
+              0.000001,
+              decimalOrZero(
                 outputData.unitsPerBox
               ) || 1
             );
@@ -2973,14 +2907,10 @@
             );
 
           outputStockAfter =
-            outputStockBefore +
-            values.outputQuantity;
-
-          /*
-           * ----------------------------------------------------
-           * PROMEDIO PONDERADO
-           * ----------------------------------------------------
-           */
+            decimalOrZero(
+              outputStockBefore +
+              values.outputQuantity
+            );
 
           const oldInventoryValue =
             outputStockBefore *
@@ -3008,10 +2938,12 @@
               outputStockAfter,
 
             boxes:
-              Math.floor(
-                outputStockAfter /
-                outputUnitsPerBox
-              ),
+              outputUnitsPerBox > 0
+                ? decimalOrZero(
+                  outputStockAfter /
+                  outputUnitsPerBox
+                )
+                : 0,
 
             unitsPerBox:
               outputUnitsPerBox,
@@ -3043,12 +2975,6 @@
             tipoProducto:
               "transformado",
 
-            /*
-             * Compatibilidad con el modelo anterior:
-             * se conserva el primer producto origen
-             * y además se guardan todos.
-             */
-
             productoOrigenId:
               sourceProductIds[0] ||
               null,
@@ -3070,12 +2996,6 @@
           };
         }
 
-        /*
-         * ======================================================
-         * SALIDA NUEVA
-         * ======================================================
-         */
-
         else if (
           values.outputMode ===
           "new"
@@ -3096,8 +3016,8 @@
 
           outputUnitsPerBox =
             Math.max(
-              1,
-              integerOrZero(
+              0.000001,
+              decimalOrZero(
                 values.outputUnitsPerBox
               ) || 1
             );
@@ -3143,10 +3063,12 @@
               outputStockAfter,
 
             boxes:
-              Math.floor(
-                outputStockAfter /
-                outputUnitsPerBox
-              ),
+              outputUnitsPerBox > 0
+                ? decimalOrZero(
+                  outputStockAfter /
+                  outputUnitsPerBox
+                )
+                : 0,
 
             unitsPerBox:
               outputUnitsPerBox,
@@ -3220,12 +3142,6 @@
             "El modo de salida no es válido."
           );
         }
-
-        /*
-         * ------------------------------------------------------
-         * MOVIMIENTOS DE SALIDA
-         * ------------------------------------------------------
-         */
 
         const sourceMovementDataList =
           sourceRecords.map(
@@ -3355,7 +3271,9 @@
                     values.sourceItems
                   )} -> ${outputName}`,
 
-                  `Consumo: ${record.sourceQuantity} unidades`,
+                  `Consumo: ${formatQuantity(
+                    record.sourceQuantity
+                  )} unidades`,
 
                   `Producto origen: ${
                     record.sourceData.name ||
@@ -3403,10 +3321,16 @@
           );
 
         /*
-         * ------------------------------------------------------
-         * MOVIMIENTO DE ENTRADA
-         * ------------------------------------------------------
+         * La salida se representa como cajas equivalentes
+         * decimales. Se evita truncar la cantidad producida.
          */
+        const outputBoxes =
+          outputUnitsPerBox > 0
+            ? decimalOrZero(
+              values.outputQuantity /
+              outputUnitsPerBox
+            )
+            : 0;
 
         const outputMovementData = {
           productId:
@@ -3432,10 +3356,6 @@
 
           conversionId:
             conversionRef.id,
-
-          /*
-           * Campos antiguos conservados para compatibilidad.
-           */
 
           conversionSourceProductId:
             sourceProductIds[0] ||
@@ -3469,16 +3389,10 @@
             0,
 
           cajas:
-            Math.floor(
-              values.outputQuantity /
-              outputUnitsPerBox
-            ),
+            outputBoxes,
 
           boxes:
-            Math.floor(
-              values.outputQuantity /
-              outputUnitsPerBox
-            ),
+            outputBoxes,
 
           cajasBono:
             0,
@@ -3487,12 +3401,10 @@
             0,
 
           unidades:
-            values.outputQuantity %
-            outputUnitsPerBox,
+            0,
 
           units:
-            values.outputQuantity %
-            outputUnitsPerBox,
+            0,
 
           unidadesBono:
             0,
@@ -3548,7 +3460,9 @@
                 values.sourceItems
               )} -> ${outputName}`,
 
-              `Producción: ${values.outputQuantity} unidades`,
+              `Producción: ${formatQuantity(
+                values.outputQuantity
+              )} unidades`,
 
               `Costo total consumido: ${currency(
                 totalConversionCost
@@ -3595,12 +3509,6 @@
             operationTimestamp
         };
 
-        /*
-         * ------------------------------------------------------
-         * DATOS DE ORIGEN PARA TRAZABILIDAD
-         * ------------------------------------------------------
-         */
-
         const sourceDetails =
           sourceRecords.map(
             record => ({
@@ -3636,23 +3544,12 @@
             })
           );
 
-        /*
-         * ------------------------------------------------------
-         * DOCUMENTO CONVERSIÓN
-         * ------------------------------------------------------
-         */
-
         const conversionData = {
           tipo:
             "conversion",
 
           estado:
             "completada",
-
-          /*
-           * Campos antiguos:
-           * se conservan tomando el primer origen.
-           */
 
           sourceProductId:
             sourceProductIds[0] ||
@@ -3688,10 +3585,6 @@
             sourceRecords[0]
               ? sourceRecords[0].sourceCostPerUnit
               : 0,
-
-          /*
-           * Nuevos campos múltiples.
-           */
 
           sourceProducts:
             sourceDetails,
@@ -3787,12 +3680,6 @@
               .serverTimestamp()
         };
 
-        /*
-         * ------------------------------------------------------
-         * ACTUALIZAR TODOS LOS PRODUCTOS ORIGEN
-         * ------------------------------------------------------
-         */
-
         sourceRecords.forEach(
           (
             record,
@@ -3810,12 +3697,6 @@
             );
           }
         );
-
-        /*
-         * ------------------------------------------------------
-         * ACTUALIZAR / CREAR PRODUCTO SALIDA
-         * ------------------------------------------------------
-         */
 
         if (
           values.outputMode ===
@@ -3843,12 +3724,6 @@
           );
         }
 
-        /*
-         * ------------------------------------------------------
-         * MOVIMIENTOS DE SALIDA
-         * ------------------------------------------------------
-         */
-
         sourceMovementDataList.forEach(
           (
             movementData,
@@ -3863,33 +3738,15 @@
           }
         );
 
-        /*
-         * ------------------------------------------------------
-         * MOVIMIENTO DE ENTRADA
-         * ------------------------------------------------------
-         */
-
         transaction.set(
           outputMovementRef,
           outputMovementData
         );
 
-        /*
-         * ------------------------------------------------------
-         * TRAZABILIDAD
-         * ------------------------------------------------------
-         */
-
         transaction.set(
           conversionRef,
           conversionData
         );
-
-        /*
-         * ------------------------------------------------------
-         * PRODUCTOS RESULTANTES LOCALES
-         * ------------------------------------------------------
-         */
 
         const sourceProductDataList =
           sourceRecords.map(
@@ -3915,10 +3772,12 @@
                 record.nextSourceStock,
 
               boxes:
-                Math.floor(
-                  record.nextSourceStock /
-                  record.sourceUnitsPerBox
-                )
+                record.sourceUnitsPerBox > 0
+                  ? decimalOrZero(
+                    record.nextSourceStock /
+                    record.sourceUnitsPerBox
+                  )
+                  : 0
             })
           );
 
@@ -3948,10 +3807,12 @@
             outputStockAfter,
 
           boxes:
-            Math.floor(
-              outputStockAfter /
-              outputUnitsPerBox
-            ),
+            outputUnitsPerBox > 0
+              ? decimalOrZero(
+                outputStockAfter /
+                outputUnitsPerBox
+              )
+              : 0,
 
           unitsPerBox:
             outputUnitsPerBox,
@@ -3967,12 +3828,6 @@
             outputPrice
         };
 
-        /*
-         * ------------------------------------------------------
-         * RESULTADO LOCAL
-         * ------------------------------------------------------
-         */
-
         result = {
           conversionId:
             conversionRef.id,
@@ -3985,11 +3840,6 @@
 
           outputMovementId:
             outputMovementRef.id,
-
-          /*
-           * Compatibilidad con llamadas
-           * que esperaban un solo ID.
-           */
 
           sourceMovementId:
             sourceMovementRefs[0]
@@ -4085,11 +3935,6 @@
 
           sourceProductDataList,
 
-          /*
-           * Compatibilidad con el resultado
-           * anterior: sourceProductData.
-           */
-
           sourceProductData:
             sourceProductDataList[0] ||
             null,
@@ -4097,11 +3942,6 @@
           outputProductData,
 
           sourceMovementDataList,
-
-          /*
-           * Compatibilidad con el resultado
-           * anterior.
-           */
 
           sourceMovementData:
             sourceMovementDataList[0] ||
@@ -4114,23 +3954,11 @@
       }
     );
 
-    /*
-     * ==========================================================
-     * VALIDACIÓN DEL RESULTADO
-     * ==========================================================
-     */
-
     if (!result) {
       throw new Error(
         "No se pudo completar la conversión."
       );
     }
-
-    /*
-     * ==========================================================
-     * ACTUALIZAR CACHÉ DE PRODUCTOS
-     * ==========================================================
-     */
 
     result.sourceProductDataList.forEach(
       sourceProductData => {
@@ -4147,12 +3975,6 @@
       result.outputProductId,
       result.outputProductData
     );
-
-    /*
-     * ==========================================================
-     * ACTUALIZAR CACHÉ DE MOVIMIENTOS
-     * ==========================================================
-     */
 
     result.sourceMovementDataList.forEach(
       (
@@ -4185,12 +4007,6 @@
       }
     );
 
-    /*
-     * ==========================================================
-     * ACTUALIZAR CACHÉ DE CONVERSIONES
-     * ==========================================================
-     */
-
     upsertSessionDocument(
       CONVERSIONS_COLLECTION,
       result.conversionId,
@@ -4204,12 +4020,6 @@
           Date.now()
       }
     );
-
-    /*
-     * ==========================================================
-     * ACTUALIZAR COLECCIÓN LOCAL EN MEMORIA
-     * ==========================================================
-     */
 
     const sourceIdsToRemove =
       new Set(
@@ -4396,12 +4206,6 @@
       return null;
     }
 
-    /*
-     * ==========================================================
-     * EJECUCIÓN
-     * ==========================================================
-     */
-
     try {
       Swal.fire({
         title:
@@ -4429,12 +4233,6 @@
 
       Swal.close();
 
-      /*
-       * --------------------------------------------------------
-       * RECARGAR INVENTARIO
-       * --------------------------------------------------------
-       */
-
       if (
         window.InventoryMVC
           ?.controllers
@@ -4444,19 +4242,13 @@
           .controllers
           .inventory
           .reload ===
-          "function"
+        "function"
       ) {
         await window.InventoryMVC
           .controllers
           .inventory
           .reload();
       }
-
-      /*
-       * --------------------------------------------------------
-       * CONSTRUIR DETALLE DE RESULTADO
-       * --------------------------------------------------------
-       */
 
       const sourceRowsHtml =
         conversionResult
@@ -4471,7 +4263,9 @@
                 </td>
 
                 <td>
-                  ${source.quantity}
+                  ${formatQuantity(
+                    source.quantity
+                  )}
                 </td>
 
                 <td>
@@ -4489,12 +4283,6 @@
             `
           )
           .join("");
-
-      /*
-       * --------------------------------------------------------
-       * RESULTADO
-       * --------------------------------------------------------
-       */
 
       await Swal.fire({
         icon:
@@ -4583,7 +4371,9 @@
               <p>
                 Total unidades consumidas:
                 <strong>
-                  ${conversionResult.sourceTotalQuantity}
+                  ${formatQuantity(
+                    conversionResult.sourceTotalQuantity
+                  )}
                 </strong>
               </p>
 
@@ -4610,7 +4400,9 @@
               <p>
                 Cantidad producida:
                 <strong>
-                  ${conversionResult.outputQuantity}
+                  ${formatQuantity(
+                    conversionResult.outputQuantity
+                  )}
                 </strong>
                 unidades
               </p>
@@ -4647,7 +4439,9 @@
               <p>
                 Stock final del producto resultante:
                 <strong>
-                  ${conversionResult.outputStockAfter}
+                  ${formatQuantity(
+                    conversionResult.outputStockAfter
+                  )}
                 </strong>
                 unidades
               </p>
@@ -4885,6 +4679,13 @@
       .conversion-remove-source:disabled {
         opacity:.45;
         cursor:not-allowed;
+      }
+
+      .conversion-source-quantity-field input,
+      .conversion-new-only input[type="number"],
+      .conversion-grid input[type="number"] {
+        text-align:right;
+        font-variant-numeric:tabular-nums;
       }
 
       .conversion-preview {

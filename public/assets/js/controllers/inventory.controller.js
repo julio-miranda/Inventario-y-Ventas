@@ -12,6 +12,13 @@
 // - Producto existente o nuevo.
 // - Carga múltiple de productos.
 //
+// - Las cantidades de inventario aceptan decimales:
+//      cajas
+//      cajas bono
+//      unidades
+//      unidades bono
+//      unidades por caja
+//
 // - Cada entrada registra:
 //      cajas
 //      cajas bono
@@ -39,8 +46,8 @@
 //
 //      stockNuevo = stockActual + diferencia
 //
-// - Las cajas son editables.
-// - Las unidades por caja son editables.
+// - Las cajas son editables y admiten decimales.
+// - Las unidades por caja son editables y admiten decimales.
 // - El proveedor específico del movimiento es editable.
 // - El historial de entradas muestra todas las entradas por
 //   defecto.
@@ -309,17 +316,66 @@
       : 0;
   }
 
+  /*
+   * Todas las cantidades operativas ahora
+   * aceptan decimales.
+   *
+   * Se conservan hasta 6 posiciones decimales
+   * para evitar errores visuales de punto flotante.
+   */
+  function decimalOrZero(
+    value
+  ) {
+    const number =
+      Number(value);
+
+    if (
+      !Number.isFinite(
+        number
+      )
+    ) {
+      return 0;
+    }
+
+    return Math.max(
+      0,
+      Math.round(
+        number *
+        1000000
+      ) /
+      1000000
+    );
+  }
+
+  /*
+   * Compatibilidad con las llamadas existentes.
+   * Antes esta función hacía Math.floor().
+   * Ahora conserva los decimales.
+   */
   function integerOrZero(
     value
   ) {
-    return Math.max(
-      0,
-      Math.floor(
-        numberOrZero(
-          value
-        )
-      )
+    return decimalOrZero(
+      value
     );
+  }
+
+  function formatQuantity(
+    value
+  ) {
+    const number =
+      decimalOrZero(
+        value
+      );
+
+    return number
+      .toFixed(
+        6
+      )
+      .replace(
+        /\.?0+$/,
+        ""
+      );
   }
 
   function currency(
@@ -1472,7 +1528,7 @@
     product
   ) {
     const value =
-      numberOrZero(
+      decimalOrZero(
         product?.unitsPerBox
       );
 
@@ -1559,7 +1615,14 @@
         product
       );
 
-    return Math.floor(
+    if (
+      unitsPerBox <=
+      0
+    ) {
+      return 0;
+    }
+
+    return decimalOrZero(
       getCurrentStockUnits(
         product
       ) /
@@ -1728,16 +1791,18 @@
     line,
     product = null
   ) {
-    return Math.max(
-      1,
-      integerOrZero(
+    const value =
+      decimalOrZero(
         product
           ? getUnitsPerBox(
             product
           )
           : line?.unitsPerBox
-      ) || 1
-    );
+      );
+
+    return value > 0
+      ? value
+      : 1;
   }
 
   function getEffectiveCostPerBoxForLine(
@@ -1855,12 +1920,12 @@
     }
 
     const paidBoxes =
-      integerOrZero(
+      decimalOrZero(
         line.boxes
       );
 
     const paidUnits =
-      integerOrZero(
+      decimalOrZero(
         line.units
       );
 
@@ -1913,22 +1978,22 @@
             );
 
           const paidBoxes =
-            integerOrZero(
+            decimalOrZero(
               line.boxes
             );
 
           const paidUnits =
-            integerOrZero(
+            decimalOrZero(
               line.units
             );
 
           const bonusBoxes =
-            integerOrZero(
+            decimalOrZero(
               line.bonusBoxes
             );
 
           const bonusUnits =
-            integerOrZero(
+            decimalOrZero(
               line.bonusUnits
             );
 
@@ -1954,15 +2019,25 @@
             "Producto"
             }`,
 
-            `Cajas pagadas: ${paidBoxes}`,
+            `Cajas pagadas: ${formatQuantity(
+              paidBoxes
+            )}`,
 
-            `Unidades pagadas: ${paidUnits}`,
+            `Unidades pagadas: ${formatQuantity(
+              paidUnits
+            )}`,
 
-            `Cajas bono: ${bonusBoxes}`,
+            `Cajas bono: ${formatQuantity(
+              bonusBoxes
+            )}`,
 
-            `Unidades bono: ${bonusUnits}`,
+            `Unidades bono: ${formatQuantity(
+              bonusUnits
+            )}`,
 
-            `Unidades por caja: ${unitsPerBox}`,
+            `Unidades por caja: ${formatQuantity(
+              unitsPerBox
+            )}`,
 
             `Costo por unidad: ${currency(
               costPerUnit
@@ -2083,18 +2158,18 @@
 
             const totalLineUnits =
               (
-                integerOrZero(
+                decimalOrZero(
                   line.boxes
                 ) +
-                integerOrZero(
+                decimalOrZero(
                   line.bonusBoxes
                 )
               ) *
               unitsPerBox +
-              integerOrZero(
+              decimalOrZero(
                 line.units
               ) +
-              integerOrZero(
+              decimalOrZero(
                 line.bonusUnits
               );
 
@@ -2142,7 +2217,9 @@
 
         `Productos ingresados: ${productCount}`,
 
-        `Unidades totales ingresadas: ${totalUnits}`,
+        `Unidades totales ingresadas: ${formatQuantity(
+          totalUnits
+        )}`,
 
         "",
 
@@ -2460,7 +2537,7 @@
 
             const unitsPerBox =
               Math.max(
-                1,
+                0.000001,
                 numberOrZero(
                   product.unitsPerBox
                 )
@@ -2475,13 +2552,13 @@
               );
 
             const quantity =
-              numberOrZero(
+              decimalOrZero(
                 product.quantity
               );
 
             const totalUnits =
-              numberOrZero(
-                product.unitsTotal ||
+              decimalOrZero(
+                product.unitsTotal ??
                 product.totalUnits
               );
 
@@ -2497,14 +2574,10 @@
             ) {
               soldBoxes =
                 quantity > 0
-                  ? Math.floor(
-                    quantity
-                  )
+                  ? quantity
                   : totalUnits > 0
-                    ? Math.floor(
-                      totalUnits /
-                      unitsPerBox
-                    )
+                    ? totalUnits /
+                    unitsPerBox
                     : 0;
 
               soldUnits =
@@ -2526,12 +2599,12 @@
               soldUnits =
                 totalUnits;
             } else if (
-              numberOrZero(
+              decimalOrZero(
                 product.boxes
               ) > 0
             ) {
               soldBoxes =
-                integerOrZero(
+                decimalOrZero(
                   product.boxes
                 );
 
@@ -2615,7 +2688,7 @@
 
             const unitsPerBox =
               Math.max(
-                1,
+                0.000001,
                 numberOrZero(
                   product.unitsPerBox
                 )
@@ -2630,13 +2703,13 @@
               );
 
             const quantity =
-              numberOrZero(
+              decimalOrZero(
                 product.quantity
               );
 
             const totalUnits =
-              numberOrZero(
-                product.unitsTotal ||
+              decimalOrZero(
+                product.unitsTotal ??
                 product.totalUnits
               );
 
@@ -2650,9 +2723,7 @@
               soldUnits =
                 totalUnits > 0
                   ? totalUnits
-                  : Math.floor(
-                    quantity
-                  ) *
+                  : quantity *
                   unitsPerBox;
             } else if (
               mode ===
@@ -2668,12 +2739,12 @@
               soldUnits =
                 totalUnits;
             } else if (
-              numberOrZero(
+              decimalOrZero(
                 product.boxes
               ) > 0
             ) {
               soldUnits =
-                integerOrZero(
+                decimalOrZero(
                   product.boxes
                 ) *
                 unitsPerBox;
@@ -2745,12 +2816,12 @@
           );
 
         const entry =
-          numberOrZero(
+          decimalOrZero(
             movement.entrada
           );
 
         const exit =
-          numberOrZero(
+          decimalOrZero(
             movement.salida
           );
 
@@ -2820,16 +2891,16 @@
         }
 
         const movementNet =
-          numberOrZero(
+          decimalOrZero(
             movementStockMap[
-            productId
+              productId
             ]
           );
 
         const historicalSales =
-          numberOrZero(
+          decimalOrZero(
             salesStockMap[
-            productId
+              productId
             ]
           );
 
@@ -2930,10 +3001,12 @@
                 stock,
 
               boxes:
-                Math.floor(
-                  stock /
-                  unitsPerBox
-                ),
+                unitsPerBox > 0
+                  ? decimalOrZero(
+                    stock /
+                    unitsPerBox
+                  )
+                  : 0,
 
               updatedAt:
                 firebase.firestore
@@ -2963,10 +3036,12 @@
             stock;
 
           product.boxes =
-            Math.floor(
-              stock /
-              unitsPerBox
-            );
+            unitsPerBox > 0
+              ? decimalOrZero(
+                stock /
+                unitsPerBox
+              )
+              : 0;
 
           upsertSessionDocument(
             PRODUCTS_COLLECTION,
@@ -2981,10 +3056,12 @@
                 stock,
 
               boxes:
-                Math.floor(
-                  stock /
-                  unitsPerBox
-                ),
+                unitsPerBox > 0
+                  ? decimalOrZero(
+                    stock /
+                    unitsPerBox
+                  )
+                  : 0,
 
               updatedAt:
                 Date.now()
@@ -3083,8 +3160,8 @@
 
     const initialUnitsPerBox =
       Math.max(
-        1,
-        integerOrZero(
+        0.000001,
+        decimalOrZero(
           values.unitsPerBox
         ) || 1
       );
@@ -3139,22 +3216,22 @@
         "",
 
       boxes:
-        integerOrZero(
+        decimalOrZero(
           values.boxes
         ),
 
       bonusBoxes:
-        integerOrZero(
+        decimalOrZero(
           values.bonusBoxes
         ),
 
       units:
-        integerOrZero(
+        decimalOrZero(
           values.units
         ),
 
       bonusUnits:
-        integerOrZero(
+        decimalOrZero(
           values.bonusUnits
         ),
 
@@ -3321,19 +3398,17 @@
       );
 
     const soldUnits =
-      numberOrZero(
+      decimalOrZero(
         currentMonthlySalesMap[
         product.id
         ]
       );
 
     const soldBoxes =
-      Math.floor(
-        numberOrZero(
-          currentMonthlyBoxesMap[
+      decimalOrZero(
+        currentMonthlyBoxesMap[
           product.id
-          ]
-        )
+        ]
       );
 
     const costPerUnit =
@@ -3353,12 +3428,12 @@
       );
 
     const suggestedBoxes =
-      unitsPerBox > 1
-        ? Math.ceil(
+      unitsPerBox > 0
+        ? decimalOrZero(
           suggestedUnits /
           unitsPerBox
         )
-        : suggestedUnits;
+        : 0;
 
     let status =
       "OK";
@@ -3538,56 +3613,58 @@
   function renderStockDisplay(
     row
   ) {
-    if (
-      row.unitsPerBox >
-      1
-    ) {
-      const boxes =
-        Math.floor(
-          numberOrZero(
-            row.stockUnits
-          ) /
-          row.unitsPerBox
-        );
+    const stock =
+      decimalOrZero(
+        row.stockUnits
+      );
 
-      const remainder =
-        numberOrZero(
-          row.stockUnits
-        ) %
-        row.unitsPerBox;
+    const unitsPerBox =
+      decimalOrZero(
+        row.unitsPerBox
+      );
+
+    if (
+      unitsPerBox > 0
+    ) {
+      const boxesEquivalent =
+        decimalOrZero(
+          stock /
+          unitsPerBox
+        );
 
       return `
         <strong>
-          ${row.stockUnits}
+          ${formatQuantity(
+            stock
+          )}
         </strong>
 
         <br>
 
         <small>
-          ${boxes}
-          ${boxes === 1
-          ? "caja"
-          : "cajas"
-        }
+          ${formatQuantity(
+            boxesEquivalent
+          )}
+          ${
+            boxesEquivalent === 1
+              ? "caja"
+              : "cajas"
+          }
+          equivalentes
 
           ×
 
-          ${row.unitsPerBox}
-          unidades
-
-          ${remainder > 0
-          ? `
-                +
-                ${remainder}
-                sueltas
-              `
-          : ""
-        }
+          ${formatQuantity(
+            unitsPerBox
+          )}
+          unidades/caja
         </small>
       `;
     }
 
-    return `${row.stockUnits}`;
+    return formatQuantity(
+      stock
+    );
   }
 
   function renderActions(
@@ -3779,7 +3856,7 @@
                 ) =>
                   type ===
                     "display"
-                    ? numberOrZero(
+                    ? formatQuantity(
                       data
                     )
                     : data
@@ -3799,7 +3876,7 @@
                 ) =>
                   type ===
                     "display"
-                    ? integerOrZero(
+                    ? formatQuantity(
                       data
                     )
                     : data
@@ -3839,7 +3916,7 @@
                 ) =>
                   type ===
                     "display"
-                    ? numberOrZero(
+                    ? formatQuantity(
                       data
                     )
                     : data
@@ -3859,7 +3936,7 @@
                 ) =>
                   type ===
                     "display"
-                    ? integerOrZero(
+                    ? formatQuantity(
                       data
                     )
                     : data
@@ -4231,11 +4308,15 @@
           </td>
 
           <td>
-            ${row.soldMonthUnits}
+            ${formatQuantity(
+          row.soldMonthUnits
+        )}
           </td>
 
           <td>
-            ${row.soldMonthBoxes}
+            ${formatQuantity(
+          row.soldMonthBoxes
+        )}
           </td>
 
           <td>
@@ -4245,11 +4326,15 @@
           </td>
 
           <td>
-            ${row.suggestedPurchaseUnits}
+            ${formatQuantity(
+          row.suggestedPurchaseUnits
+        )}
           </td>
 
           <td>
-            ${row.suggestedPurchaseBoxes}
+            ${formatQuantity(
+          row.suggestedPurchaseBoxes
+        )}
           </td>
 
           <td>
@@ -4336,21 +4421,27 @@
           <div>
             Stock:
             <strong>
-              ${product.stockUnits}
+              ${formatQuantity(
+                product.stockUnits
+              )}
             </strong>
 
             |
 
             Vendido:
             <strong>
-              ${product.soldMonthUnits}
+              ${formatQuantity(
+                product.soldMonthUnits
+              )}
             </strong>
 
             |
 
             Sugerido:
             <strong>
-              ${product.suggestedPurchaseUnits}
+              ${formatQuantity(
+                product.suggestedPurchaseUnits
+              )}
             </strong>
           </div>
         `;
@@ -4526,8 +4617,8 @@
 
               unitsPerBox:
                 Math.max(
-                  1,
-                  numberOrZero(
+                  0.000001,
+                  decimalOrZero(
                     data.unitsPerBox
                   ) || 1
                 )
@@ -4798,7 +4889,7 @@
     product = null
   ) {
     const movementValue =
-      integerOrZero(
+      decimalOrZero(
         movement?.unidadesPorCaja ??
         movement?.unitsPerBox
       );
@@ -4811,15 +4902,14 @@
 
     const productValue =
       product
-        ? integerOrZero(
+        ? decimalOrZero(
           product.unitsPerBox
         )
         : 0;
 
-    return Math.max(
-      1,
-      productValue || 1
-    );
+    return productValue > 0
+      ? productValue
+      : 1;
   }
 
   function getMovementBreakdown(
@@ -4851,25 +4941,25 @@
       undefined;
 
     let cajas =
-      integerOrZero(
+      decimalOrZero(
         movement?.cajas ??
         movement?.boxes
       );
 
     let cajasBono =
-      integerOrZero(
+      decimalOrZero(
         movement?.cajasBono ??
         movement?.bonusBoxes
       );
 
     let unidades =
-      integerOrZero(
+      decimalOrZero(
         movement?.unidades ??
         movement?.units
       );
 
     let unidadesBono =
-      integerOrZero(
+      decimalOrZero(
         movement?.unidadesBono ??
         movement?.bonusUnits
       );
@@ -4878,12 +4968,12 @@
       !hasExplicitBreakdown
     ) {
       let paidUnits =
-        integerOrZero(
+        decimalOrZero(
           movement?.entradaPagada
         );
 
       let bonusUnits =
-        integerOrZero(
+        decimalOrZero(
           movement?.entradaBono
         );
 
@@ -4896,46 +4986,59 @@
         paidUnits =
           Math.max(
             0,
-            integerOrZero(
+            decimalOrZero(
               movement?.entrada
             )
           );
       }
 
+      /*
+       * Para registros antiguos que solo guardaban
+       * entrada total, se representa todo como
+       * cajas equivalentes decimales.
+       */
       cajas =
-        Math.floor(
-          paidUnits /
-          unitsPerBox
-        );
+        unitsPerBox > 0
+          ? decimalOrZero(
+            paidUnits /
+            unitsPerBox
+          )
+          : 0;
 
       unidades =
-        paidUnits %
-        unitsPerBox;
+        0;
 
       cajasBono =
-        Math.floor(
-          bonusUnits /
-          unitsPerBox
-        );
+        unitsPerBox > 0
+          ? decimalOrZero(
+            bonusUnits /
+            unitsPerBox
+          )
+          : 0;
 
       unidadesBono =
-        bonusUnits %
-        unitsPerBox;
+        0;
     }
 
     const paidUnits =
-      cajas *
-      unitsPerBox +
-      unidades;
+      decimalOrZero(
+        cajas *
+        unitsPerBox +
+        unidades
+      );
 
     const bonusUnits =
-      cajasBono *
-      unitsPerBox +
-      unidadesBono;
+      decimalOrZero(
+        cajasBono *
+        unitsPerBox +
+        unidadesBono
+      );
 
     const totalUnits =
-      paidUnits +
-      bonusUnits;
+      decimalOrZero(
+        paidUnits +
+        bonusUnits
+      );
 
     return {
       cajas,
@@ -4991,12 +5094,12 @@
     const entrada =
       breakdown.totalUnits > 0
         ? breakdown.totalUnits
-        : numberOrZero(
+        : decimalOrZero(
           source.entrada
         );
 
     const salida =
-      numberOrZero(
+      decimalOrZero(
         source.salida
       );
 
@@ -5589,48 +5692,52 @@
 
     const normalizedUnitsPerBox =
       Math.max(
-        1,
-        integerOrZero(
+        0.000001,
+        decimalOrZero(
           unidadesPorCaja
         ) || 1
       );
 
     const normalizedBoxes =
-      integerOrZero(
+      decimalOrZero(
         cajas
       );
 
     const normalizedBonusBoxes =
-      integerOrZero(
+      decimalOrZero(
         cajasBono
       );
 
     const normalizedUnits =
-      integerOrZero(
+      decimalOrZero(
         unidades
       );
 
     const normalizedBonusUnits =
-      integerOrZero(
+      decimalOrZero(
         unidadesBono
       );
 
     const calculatedPaidUnits =
-      normalizedBoxes *
-      normalizedUnitsPerBox +
-      normalizedUnits;
+      decimalOrZero(
+        normalizedBoxes *
+        normalizedUnitsPerBox +
+        normalizedUnits
+      );
 
     const calculatedBonusUnits =
-      normalizedBonusBoxes *
-      normalizedUnitsPerBox +
-      normalizedBonusUnits;
+      decimalOrZero(
+        normalizedBonusBoxes *
+        normalizedUnitsPerBox +
+        normalizedBonusUnits
+      );
 
     const normalizedPaidUnits =
       entradaPagada !==
         undefined &&
         entradaPagada !==
         null
-        ? integerOrZero(
+        ? decimalOrZero(
           entradaPagada
         )
         : calculatedPaidUnits;
@@ -5640,7 +5747,7 @@
         undefined &&
         entradaBono !==
         null
-        ? integerOrZero(
+        ? decimalOrZero(
           entradaBono
         )
         : calculatedBonusUnits;
@@ -5650,11 +5757,13 @@
         undefined &&
         entrada !==
         null
-        ? numberOrZero(
+        ? decimalOrZero(
           entrada
         )
-        : normalizedPaidUnits +
-        normalizedBonusUnitsTotal;
+        : decimalOrZero(
+          normalizedPaidUnits +
+          normalizedBonusUnitsTotal
+        );
 
     let normalizedCostUnit =
       Math.max(
@@ -5753,17 +5862,17 @@
         normalizedEntry,
 
       salida:
-        numberOrZero(
+        decimalOrZero(
           salida
         ),
 
       saldoAnterior:
-        numberOrZero(
+        decimalOrZero(
           saldoAnterior
         ),
 
       saldoActual:
-        numberOrZero(
+        decimalOrZero(
           saldoActual
         ),
 
@@ -5948,46 +6057,52 @@
     operationDate
   ) {
     const paidBoxes =
-      integerOrZero(
+      decimalOrZero(
         line.boxes
       );
 
     const bonusBoxes =
-      integerOrZero(
+      decimalOrZero(
         line.bonusBoxes
       );
 
     const paidUnits =
-      integerOrZero(
+      decimalOrZero(
         line.units
       );
 
     const bonusUnits =
-      integerOrZero(
+      decimalOrZero(
         line.bonusUnits
       );
 
     const unitsPerBox =
       Math.max(
-        1,
-        integerOrZero(
+        0.000001,
+        decimalOrZero(
           line.unitsPerBox
         ) || 1
       );
 
     const totalPaidUnits =
-      paidBoxes *
-      unitsPerBox +
-      paidUnits;
+      decimalOrZero(
+        paidBoxes *
+        unitsPerBox +
+        paidUnits
+      );
 
     const totalBonusUnits =
-      bonusBoxes *
-      unitsPerBox +
-      bonusUnits;
+      decimalOrZero(
+        bonusBoxes *
+        unitsPerBox +
+        bonusUnits
+      );
 
     const totalUnits =
-      totalPaidUnits +
-      totalBonusUnits;
+      decimalOrZero(
+        totalPaidUnits +
+        totalBonusUnits
+      );
 
     if (
       totalUnits <=
@@ -6084,7 +6199,7 @@
         totalUnits,
 
       boxes:
-        Math.floor(
+        decimalOrZero(
           totalUnits /
           unitsPerBox
         ),
@@ -6232,31 +6347,58 @@
 
         detalle:
           [
-            `Cajas: ${paidBoxes}`,
-            `Cajas bono: ${bonusBoxes}`,
-            `Unidades: ${paidUnits}`,
-            `Unidades bono: ${bonusUnits}`,
-            `Entrada pagada: ${totalPaidUnits}`,
-            `Entrada bono: ${totalBonusUnits}`,
-            `Unidades por caja: ${unitsPerBox}`,
+            `Cajas: ${formatQuantity(
+              paidBoxes
+            )}`,
+
+            `Cajas bono: ${formatQuantity(
+              bonusBoxes
+            )}`,
+
+            `Unidades: ${formatQuantity(
+              paidUnits
+            )}`,
+
+            `Unidades bono: ${formatQuantity(
+              bonusUnits
+            )}`,
+
+            `Entrada pagada: ${formatQuantity(
+              totalPaidUnits
+            )}`,
+
+            `Entrada bono: ${formatQuantity(
+              totalBonusUnits
+            )}`,
+
+            `Unidades por caja: ${formatQuantity(
+              unitsPerBox
+            )}`,
+
             `Costo por unidad: ${currency(
               costPerUnit
             )}`,
+
             `Costo por caja: ${currency(
               lastCostPerBox
             )}`,
+
             `Precio de venta: ${currency(
               price
             )}`,
+
             `Costo total: ${currency(
               totalPurchaseCost
             )}`,
+
             line.proveedorNombre
               ? `Proveedor: ${line.proveedorNombre}`
               : "",
+
             line.proveedorRazonSocial
               ? `Razón Social: ${line.proveedorRazonSocial}`
               : "",
+
             `Fecha de operación: ${formatOperationDate(
               validOperationDate
             )}`
@@ -6375,8 +6517,8 @@
   ) {
     const unitsPerBox =
       Math.max(
-        1,
-        integerOrZero(
+        0.000001,
+        decimalOrZero(
           line.unitsPerBox
         ) ||
         getUnitsPerBox(
@@ -6385,38 +6527,44 @@
       );
 
     const paidBoxes =
-      integerOrZero(
+      decimalOrZero(
         line.boxes
       );
 
     const bonusBoxes =
-      integerOrZero(
+      decimalOrZero(
         line.bonusBoxes
       );
 
     const paidUnits =
-      integerOrZero(
+      decimalOrZero(
         line.units
       );
 
     const bonusUnits =
-      integerOrZero(
+      decimalOrZero(
         line.bonusUnits
       );
 
     const totalPaidUnits =
-      paidBoxes *
-      unitsPerBox +
-      paidUnits;
+      decimalOrZero(
+        paidBoxes *
+        unitsPerBox +
+        paidUnits
+      );
 
     const totalBonusUnits =
-      bonusBoxes *
-      unitsPerBox +
-      bonusUnits;
+      decimalOrZero(
+        bonusBoxes *
+        unitsPerBox +
+        bonusUnits
+      );
 
     const totalUnits =
-      totalPaidUnits +
-      totalBonusUnits;
+      decimalOrZero(
+        totalPaidUnits +
+        totalBonusUnits
+      );
 
     if (
       totalUnits <=
@@ -6519,8 +6667,10 @@
             );
 
           nextStock =
-            previousStock +
-            totalUnits;
+            decimalOrZero(
+              previousStock +
+              totalUnits
+            );
 
           const inputCostPerBox =
             numberOrZero(
@@ -6716,31 +6866,58 @@
 
               detalle:
                 [
-                  `Cajas: ${paidBoxes}`,
-                  `Cajas bono: ${bonusBoxes}`,
-                  `Unidades: ${paidUnits}`,
-                  `Unidades bono: ${bonusUnits}`,
-                  `Entrada pagada: ${totalPaidUnits}`,
-                  `Entrada bono: ${totalBonusUnits}`,
-                  `Unidades por caja: ${unitsPerBox}`,
+                  `Cajas: ${formatQuantity(
+                    paidBoxes
+                  )}`,
+
+                  `Cajas bono: ${formatQuantity(
+                    bonusBoxes
+                  )}`,
+
+                  `Unidades: ${formatQuantity(
+                    paidUnits
+                  )}`,
+
+                  `Unidades bono: ${formatQuantity(
+                    bonusUnits
+                  )}`,
+
+                  `Entrada pagada: ${formatQuantity(
+                    totalPaidUnits
+                  )}`,
+
+                  `Entrada bono: ${formatQuantity(
+                    totalBonusUnits
+                  )}`,
+
+                  `Unidades por caja: ${formatQuantity(
+                    unitsPerBox
+                  )}`,
+
                   `Costo por unidad: ${currency(
                     nextCostPerUnit
                   )}`,
+
                   `Costo por caja: ${currency(
                     nextCostPerBox
                   )}`,
+
                   `Precio de venta: ${currency(
                     nextPrice
                   )}`,
+
                   `Costo total: ${currency(
                     totalPurchaseCost
                   )}`,
+
                   nextProviderName
                     ? `Proveedor: ${nextProviderName}`
                     : "",
+
                   nextProviderRazonSocial
                     ? `Razón Social: ${nextProviderRazonSocial}`
                     : "",
+
                   `Fecha de operación: ${formatOperationDate(
                     validOperationDate
                   )}`
@@ -6797,7 +6974,7 @@
                 previousStock,
 
               boxes:
-                Math.floor(
+                decimalOrZero(
                   nextStock /
                   unitsPerBox
                 ),
@@ -6909,7 +7086,7 @@
         previousStock,
 
       boxes:
-        Math.floor(
+        decimalOrZero(
           nextStock /
           unitsPerBox
         ),
@@ -7189,8 +7366,11 @@
             type="number"
             class="batch-boxes"
             min="0"
-            step="1"
-            value="${line.boxes}"
+            step="any"
+            inputmode="decimal"
+            value="${formatQuantity(
+        line.boxes
+      )}"
           >
         </div>
 
@@ -7203,8 +7383,11 @@
             type="number"
             class="batch-bonus-boxes"
             min="0"
-            step="1"
-            value="${line.bonusBoxes}"
+            step="any"
+            inputmode="decimal"
+            value="${formatQuantity(
+        line.bonusBoxes
+      )}"
           >
         </div>
 
@@ -7217,8 +7400,11 @@
             type="number"
             class="batch-units"
             min="0"
-            step="1"
-            value="${line.units}"
+            step="any"
+            inputmode="decimal"
+            value="${formatQuantity(
+        line.units
+      )}"
           >
         </div>
 
@@ -7231,8 +7417,11 @@
             type="number"
             class="batch-bonus-units"
             min="0"
-            step="1"
-            value="${line.bonusUnits}"
+            step="any"
+            inputmode="decimal"
+            value="${formatQuantity(
+        line.bonusUnits
+      )}"
           >
         </div>
 
@@ -7244,9 +7433,12 @@
           <input
             type="number"
             class="batch-units-per-box"
-            min="1"
-            step="1"
-            value="${line.unitsPerBox}"
+            min="0.000001"
+            step="any"
+            inputmode="decimal"
+            value="${formatQuantity(
+        line.unitsPerBox
+      )}"
           >
 
           <small>
@@ -7264,6 +7456,7 @@
             class="batch-cost-box"
             min="0"
             step="0.01"
+            inputmode="decimal"
             value="${line.lastCostPerBox}"
           >
         </div>
@@ -7293,6 +7486,7 @@
             class="batch-price"
             min="0"
             step="0.01"
+            inputmode="decimal"
             value="${line.price}"
           >
         </div>
@@ -7418,28 +7612,28 @@
       );
 
     const boxes =
-      integerOrZero(
+      decimalOrZero(
         row.querySelector(
           ".batch-boxes"
         )?.value
       );
 
     const bonusBoxes =
-      integerOrZero(
+      decimalOrZero(
         row.querySelector(
           ".batch-bonus-boxes"
         )?.value
       );
 
     const units =
-      integerOrZero(
+      decimalOrZero(
         row.querySelector(
           ".batch-units"
         )?.value
       );
 
     const bonusUnits =
-      integerOrZero(
+      decimalOrZero(
         row.querySelector(
           ".batch-bonus-units"
         )?.value
@@ -7447,8 +7641,8 @@
 
     const unitsPerBox =
       Math.max(
-        1,
-        integerOrZero(
+        0.000001,
+        decimalOrZero(
           row.querySelector(
             ".batch-units-per-box"
           )?.value
@@ -7643,22 +7837,30 @@
       );
 
     const totalNormal =
-      data.boxes *
-      data.unitsPerBox +
-      data.units;
+      decimalOrZero(
+        data.boxes *
+        data.unitsPerBox +
+        data.units
+      );
 
     const totalBonus =
-      data.bonusBoxes *
-      data.unitsPerBox +
-      data.bonusUnits;
+      decimalOrZero(
+        data.bonusBoxes *
+        data.unitsPerBox +
+        data.bonusUnits
+      );
 
     const totalUnits =
-      totalNormal +
-      totalBonus;
+      decimalOrZero(
+        totalNormal +
+        totalBonus
+      );
 
     const totalBoxes =
-      data.boxes +
-      data.bonusBoxes;
+      decimalOrZero(
+        data.boxes +
+        data.bonusBoxes
+      );
 
     const calculatedCostPerUnit =
       data.unitsPerBox > 0
@@ -7679,7 +7881,7 @@
       totalElement
     ) {
       totalElement.textContent =
-        String(
+        formatQuantity(
           totalUnits
         );
     }
@@ -7688,7 +7890,7 @@
       totalBoxesElement
     ) {
       totalBoxesElement.textContent =
-        String(
+        formatQuantity(
           totalBoxes
         );
     }
@@ -7697,7 +7899,7 @@
       normalUnitsElement
     ) {
       normalUnitsElement.textContent =
-        String(
+        formatQuantity(
           totalNormal
         );
     }
@@ -7706,7 +7908,7 @@
       bonusUnitsElement
     ) {
       bonusUnitsElement.textContent =
-        String(
+        formatQuantity(
           totalBonus
         );
     }
@@ -7725,8 +7927,8 @@
 
         const enteredUnitsPerBox =
           Math.max(
-            1,
-            integerOrZero(
+            0.000001,
+            decimalOrZero(
               unitsPerBoxInput?.value
             ) ||
             productUnitsPerBox
@@ -7740,7 +7942,7 @@
           ).trim()
         ) {
           unitsPerBoxInput.value =
-            String(
+            formatQuantity(
               productUnitsPerBox
             );
         }
@@ -7759,11 +7961,15 @@
             product.name
           )}
               · Stock actual:
-              ${getCurrentStockUnits(
-                product
+              ${formatQuantity(
+                getCurrentStockUnits(
+                  product
+                )
               )}
               ·
-              ${enteredUnitsPerBox}
+              ${formatQuantity(
+                enteredUnitsPerBox
+              )}
               unid./caja
 
               ${unitsPerBoxChanged
@@ -7776,9 +7982,13 @@
                       "
                     >
                       Se actualizará el empaque:
-                      ${productUnitsPerBox}
+                      ${formatQuantity(
+                        productUnitsPerBox
+                      )}
                       →
-                      ${enteredUnitsPerBox}
+                      ${formatQuantity(
+                        enteredUnitsPerBox
+                      )}
                       unidades/caja
                     </span>
                   `
@@ -8190,13 +8400,15 @@
         }
 
         const totalUnits =
-          (
-            line.boxes +
-            line.bonusBoxes
-          ) *
-          line.unitsPerBox +
-          line.units +
-          line.bonusUnits;
+          decimalOrZero(
+            (
+              line.boxes +
+              line.bonusBoxes
+            ) *
+            line.unitsPerBox +
+            line.units +
+            line.bonusUnits
+          );
 
         if (
           totalUnits <=
@@ -8414,6 +8626,11 @@
         <p>
           Las cajas bono y unidades bono aumentan
           el stock pero no generan costo.
+        </p>
+
+        <p>
+          Las cantidades de cajas, unidades y unidades
+          por caja admiten valores decimales.
         </p>
 
         <p>
@@ -8787,7 +9004,7 @@
             result
           ) =>
             sum +
-            numberOrZero(
+            decimalOrZero(
               result.totalUnits
             ),
           0
@@ -8936,7 +9153,9 @@
               <p>
                 Unidades agregadas:
                 <strong>
-                  ${totalUnits}
+                  ${formatQuantity(
+            totalUnits
+          )}
                 </strong>
               </p>
 
@@ -8998,8 +9217,8 @@
 
     const movementUnitsPerBox =
       Math.max(
-        1,
-        integerOrZero(
+        0.000001,
+        decimalOrZero(
           movement.unidadesPorCaja ??
           movement.unitsPerBox
         ) ||
@@ -9109,8 +9328,10 @@
             <span>
               Stock actual:
               <strong>
-                ${getCurrentStockUnits(
-      product
+                ${formatQuantity(
+      getCurrentStockUnits(
+        product
+      )
     )}
               </strong>
             </span>
@@ -9118,14 +9339,18 @@
             <span>
               Unidades por caja del producto:
               <strong>
-                ${productUnitsPerBox}
+                ${formatQuantity(
+      productUnitsPerBox
+    )}
               </strong>
             </span>
 
             <span>
               Unidades por caja de esta entrada:
               <strong>
-                ${movementUnitsPerBox}
+                ${formatQuantity(
+      movementUnitsPerBox
+    )}
               </strong>
             </span>
 
@@ -9184,9 +9409,12 @@
             <input
               id="movement-edit-units-per-box"
               type="number"
-              min="1"
-              step="1"
-              value="${movementUnitsPerBox}"
+              min="0.000001"
+              step="any"
+              inputmode="decimal"
+              value="${formatQuantity(
+      movementUnitsPerBox
+    )}"
             >
 
             <small>
@@ -9204,8 +9432,11 @@
               id="movement-edit-boxes"
               type="number"
               min="0"
-              step="1"
-              value="${breakdown.cajas}"
+              step="any"
+              inputmode="decimal"
+              value="${formatQuantity(
+      breakdown.cajas
+    )}"
             >
 
             <small>
@@ -9224,8 +9455,11 @@
               id="movement-edit-bonus-boxes"
               type="number"
               min="0"
-              step="1"
-              value="${breakdown.cajasBono}"
+              step="any"
+              inputmode="decimal"
+              value="${formatQuantity(
+      breakdown.cajasBono
+    )}"
             >
           </div>
 
@@ -9238,8 +9472,11 @@
               id="movement-edit-units"
               type="number"
               min="0"
-              step="1"
-              value="${breakdown.unidades}"
+              step="any"
+              inputmode="decimal"
+              value="${formatQuantity(
+      breakdown.unidades
+    )}"
             >
           </div>
 
@@ -9254,8 +9491,11 @@
               id="movement-edit-bonus-units"
               type="number"
               min="0"
-              step="1"
-              value="${breakdown.unidadesBono}"
+              step="any"
+              inputmode="decimal"
+              value="${formatQuantity(
+      breakdown.unidadesBono
+    )}"
             >
           </div>
 
@@ -9269,6 +9509,7 @@
               type="number"
               min="0"
               step="0.01"
+              inputmode="decimal"
               value="${currentCostPerBox.toFixed(
       2
     )}"
@@ -9300,6 +9541,7 @@
               type="number"
               min="0"
               step="0.01"
+              inputmode="decimal"
               value="${currentSalePrice.toFixed(
       2
     )}"
@@ -9314,7 +9556,9 @@
             <input
               id="movement-edit-entry"
               type="text"
-              value="${breakdown.totalUnits}"
+              value="${formatQuantity(
+        breakdown.totalUnits
+      )}"
               readonly
             >
           </div>
@@ -9368,7 +9612,7 @@
           </strong>
 
           Las cajas, unidades por caja y proveedor
-          son editables.
+          aceptan valores decimales.
 
           <br><br>
 
@@ -9493,8 +9737,8 @@
 
     const oldUnitsPerBox =
       Math.max(
-        1,
-        integerOrZero(
+        0.000001,
+        decimalOrZero(
           movement.unidadesPorCaja ??
           movement.unitsPerBox
         ) ||
@@ -9504,62 +9748,68 @@
 
     const newUnitsPerBox =
       Math.max(
-        1,
-        integerOrZero(
+        0.000001,
+        decimalOrZero(
           unitsPerBoxInput.value
         ) ||
         oldUnitsPerBox
       );
 
     const cajas =
-      integerOrZero(
+      decimalOrZero(
         boxesInput.value
       );
 
     const cajasBono =
-      integerOrZero(
+      decimalOrZero(
         bonusBoxesInput.value
       );
 
     const unidades =
-      integerOrZero(
+      decimalOrZero(
         unitsInput.value
       );
 
     const unidadesBono =
-      integerOrZero(
+      decimalOrZero(
         bonusUnitsInput.value
       );
 
     const paidUnits =
-      cajas *
-      newUnitsPerBox +
-      unidades;
+      decimalOrZero(
+        cajas *
+        newUnitsPerBox +
+        unidades
+      );
 
     const bonusUnits =
-      cajasBono *
-      newUnitsPerBox +
-      unidadesBono;
+      decimalOrZero(
+        cajasBono *
+        newUnitsPerBox +
+        unidadesBono
+      );
 
     const newEntry =
-      paidUnits +
-      bonusUnits;
+      decimalOrZero(
+        paidUnits +
+        bonusUnits
+      );
 
     const oldEntry =
-      (
+      decimalOrZero(
         oldBreakdown.cajas *
-        oldUnitsPerBox
-      ) +
-      oldBreakdown.unidades +
-      (
+        oldUnitsPerBox +
+        oldBreakdown.unidades +
         oldBreakdown.cajasBono *
-        oldUnitsPerBox
-      ) +
-      oldBreakdown.unidadesBono;
+        oldUnitsPerBox +
+        oldBreakdown.unidadesBono
+      );
 
     const difference =
-      newEntry -
-      oldEntry;
+      decimalOrZero(
+        newEntry -
+        oldEntry
+      );
 
     const currentStock =
       getCurrentStockUnits(
@@ -9567,8 +9817,10 @@
       );
 
     const resultingStock =
-      currentStock +
-      difference;
+      decimalOrZero(
+        currentStock +
+        difference
+      );
 
     const costPerBox =
       Math.max(
@@ -9601,7 +9853,7 @@
       entryInput
     ) {
       entryInput.value =
-        String(
+        formatQuantity(
           newEntry
         );
     }
@@ -9618,70 +9870,90 @@
       <div>
         Unidades/caja anterior
         <strong>
-          ${oldUnitsPerBox}
+          ${formatQuantity(
+        oldUnitsPerBox
+      )}
         </strong>
       </div>
 
       <div>
         Nuevas unidades/caja
         <strong>
-          ${newUnitsPerBox}
+          ${formatQuantity(
+        newUnitsPerBox
+      )}
         </strong>
       </div>
 
       <div>
         Cajas
         <strong>
-          ${cajas}
+          ${formatQuantity(
+        cajas
+      )}
         </strong>
       </div>
 
       <div>
         Cajas bono
         <strong>
-          ${cajasBono}
+          ${formatQuantity(
+        cajasBono
+      )}
         </strong>
       </div>
 
       <div>
         Unidades sueltas
         <strong>
-          ${unidades}
+          ${formatQuantity(
+        unidades
+      )}
         </strong>
       </div>
 
       <div>
         Unidades bono
         <strong>
-          ${unidadesBono}
+          ${formatQuantity(
+        unidadesBono
+      )}
         </strong>
       </div>
 
       <div>
         Entrada anterior
         <strong>
-          ${oldEntry}
+          ${formatQuantity(
+        oldEntry
+      )}
         </strong>
       </div>
 
       <div>
         Entrada pagada
         <strong>
-          ${paidUnits}
+          ${formatQuantity(
+        paidUnits
+      )}
         </strong>
       </div>
 
       <div>
         Entrada bono
         <strong>
-          ${bonusUnits}
+          ${formatQuantity(
+        bonusUnits
+      )}
         </strong>
       </div>
 
       <div>
         Nueva entrada
         <strong>
-          ${newEntry}
+          ${formatQuantity(
+        newEntry
+      )}
         </strong>
       </div>
 
@@ -9700,14 +9972,18 @@
           ${difference > 0
         ? "+"
         : ""
-      }${difference}
+      }${formatQuantity(
+        difference
+      )}
         </strong>
       </div>
 
       <div>
         Stock actual
         <strong>
-          ${currentStock}
+          ${formatQuantity(
+        currentStock
+      )}
         </strong>
       </div>
 
@@ -9721,7 +9997,9 @@
       };
           "
         >
-          ${resultingStock}
+          ${formatQuantity(
+        resultingStock
+      )}
         </strong>
       </div>
 
@@ -9957,60 +10235,66 @@
 
         const oldUnitsPerBox =
           Math.max(
-            1,
-            integerOrZero(
+            0.000001,
+            decimalOrZero(
               oldMovementRaw.unidadesPorCaja ??
               oldMovementRaw.unitsPerBox
             ) ||
             oldBreakdown.unitsPerBox ||
-            integerOrZero(
+            decimalOrZero(
               productData.unitsPerBox
             ) ||
             1
           );
 
         const newBoxes =
-          integerOrZero(
+          decimalOrZero(
             values.cajas
           );
 
         const newBonusBoxes =
-          integerOrZero(
+          decimalOrZero(
             values.cajasBono
           );
 
         const newUnits =
-          integerOrZero(
+          decimalOrZero(
             values.unidades
           );
 
         const newBonusUnits =
-          integerOrZero(
+          decimalOrZero(
             values.unidadesBono
           );
 
         const unitsPerBox =
           Math.max(
-            1,
-            integerOrZero(
+            0.000001,
+            decimalOrZero(
               values.unidadesPorCaja
             ) ||
             oldUnitsPerBox
           );
 
         const newPaidUnits =
-          newBoxes *
-          unitsPerBox +
-          newUnits;
+          decimalOrZero(
+            newBoxes *
+            unitsPerBox +
+            newUnits
+          );
 
         const newBonusUnitsTotal =
-          newBonusBoxes *
-          unitsPerBox +
-          newBonusUnits;
+          decimalOrZero(
+            newBonusBoxes *
+            unitsPerBox +
+            newBonusUnits
+          );
 
         const newEntry =
-          newPaidUnits +
-          newBonusUnitsTotal;
+          decimalOrZero(
+            newPaidUnits +
+            newBonusUnitsTotal
+          );
 
         let newCostPerBox =
           Math.max(
@@ -10054,16 +10338,14 @@
           );
 
         const oldEntry =
-          (
+          decimalOrZero(
             oldBreakdown.cajas *
-            oldUnitsPerBox
-          ) +
-          oldBreakdown.unidades +
-          (
+            oldUnitsPerBox +
+            oldBreakdown.unidades +
             oldBreakdown.cajasBono *
-            oldUnitsPerBox
-          ) +
-          oldBreakdown.unidadesBono;
+            oldUnitsPerBox +
+            oldBreakdown.unidadesBono
+          );
 
         const currentStock =
           getCurrentStockUnits(
@@ -10071,26 +10353,38 @@
           );
 
         const difference =
-          newEntry -
-          oldEntry;
+          decimalOrZero(
+            newEntry -
+            oldEntry
+          );
 
         const nextStock =
-          currentStock +
-          difference;
+          decimalOrZero(
+            currentStock +
+            difference
+          );
 
         if (
           nextStock <
           0
         ) {
           throw new Error(
-            `No se puede reducir la entrada a ${newEntry} unidades porque el stock actual (${currentStock}) quedaría en ${nextStock}.`
+            `No se puede reducir la entrada a ${formatQuantity(
+              newEntry
+            )} unidades porque el stock actual (${formatQuantity(
+              currentStock
+            )}) quedaría en ${formatQuantity(
+              nextStock
+            )}.`
           );
         }
 
         const oldPaidUnits =
-          oldBreakdown.cajas *
-          oldUnitsPerBox +
-          oldBreakdown.unidades;
+          decimalOrZero(
+            oldBreakdown.cajas *
+            oldUnitsPerBox +
+            oldBreakdown.unidades
+          );
 
         let oldCostPerUnit =
           numberOrZero(
@@ -10232,8 +10526,10 @@
             newEntry,
 
           saldoAnterior:
-            currentStock -
-            oldEntry,
+            decimalOrZero(
+              currentStock -
+              oldEntry
+            ),
 
           saldoActual:
             nextStock,
@@ -10339,26 +10635,54 @@
 
           detalle:
             [
-              `Cajas: ${newBoxes}`,
-              `Cajas bono: ${newBonusBoxes}`,
-              `Unidades: ${newUnits}`,
-              `Unidades bono: ${newBonusUnits}`,
-              `Entrada pagada: ${newPaidUnits}`,
-              `Entrada bono: ${newBonusUnitsTotal}`,
-              `Entrada total: ${newEntry}`,
-              `Unidades por caja: ${unitsPerBox}`,
+              `Cajas: ${formatQuantity(
+                newBoxes
+              )}`,
+
+              `Cajas bono: ${formatQuantity(
+                newBonusBoxes
+              )}`,
+
+              `Unidades: ${formatQuantity(
+                newUnits
+              )}`,
+
+              `Unidades bono: ${formatQuantity(
+                newBonusUnits
+              )}`,
+
+              `Entrada pagada: ${formatQuantity(
+                newPaidUnits
+              )}`,
+
+              `Entrada bono: ${formatQuantity(
+                newBonusUnitsTotal
+              )}`,
+
+              `Entrada total: ${formatQuantity(
+                newEntry
+              )}`,
+
+              `Unidades por caja: ${formatQuantity(
+                unitsPerBox
+              )}`,
+
               `Costo por unidad: ${currency(
                 newCostPerUnit
               )}`,
+
               `Costo por caja: ${currency(
                 newCostPerBox
               )}`,
+
               `Precio de venta: ${currency(
                 newSalePrice
               )}`,
+
               `Costo total: ${currency(
                 newCostTotal
               )}`,
+
               selectedProviderName
                 ? `Proveedor: ${selectedProviderName}`
                 : "Proveedor: Sin proveedor",
@@ -10411,7 +10735,7 @@
             nextStock,
 
           boxes:
-            Math.floor(
+            decimalOrZero(
               nextStock /
               unitsPerBox
             ),
@@ -10487,7 +10811,7 @@
             nextStock,
 
           boxes:
-            Math.floor(
+            decimalOrZero(
               nextStock /
               unitsPerBox
             ),
@@ -10744,28 +11068,28 @@
               ).trim();
 
             const cajas =
-              integerOrZero(
+              decimalOrZero(
                 document.getElementById(
                   "movement-edit-boxes"
                 )?.value
               );
 
             const cajasBono =
-              integerOrZero(
+              decimalOrZero(
                 document.getElementById(
                   "movement-edit-bonus-boxes"
                 )?.value
               );
 
             const unidades =
-              integerOrZero(
+              decimalOrZero(
                 document.getElementById(
                   "movement-edit-units"
                 )?.value
               );
 
             const unidadesBono =
-              integerOrZero(
+              decimalOrZero(
                 document.getElementById(
                   "movement-edit-bonus-units"
                 )?.value
@@ -10773,8 +11097,8 @@
 
             const unidadesPorCaja =
               Math.max(
-                1,
-                integerOrZero(
+                0.000001,
+                decimalOrZero(
                   document.getElementById(
                     "movement-edit-units-per-box"
                   )?.value
@@ -10873,18 +11197,24 @@
             }
 
             const paidUnits =
-              cajas *
-              unidadesPorCaja +
-              unidades;
+              decimalOrZero(
+                cajas *
+                unidadesPorCaja +
+                unidades
+              );
 
             const bonusUnits =
-              cajasBono *
-              unidadesPorCaja +
-              unidadesBono;
+              decimalOrZero(
+                cajasBono *
+                unidadesPorCaja +
+                unidadesBono
+              );
 
             const totalUnits =
-              paidUnits +
-              bonusUnits;
+              decimalOrZero(
+                paidUnits +
+                bonusUnits
+              );
 
             if (
               totalUnits <=
@@ -11012,7 +11342,7 @@
               <p>
                 Cajas:
                 <strong>
-                  ${integerOrZero(
+                  ${formatQuantity(
             resultData.movement.cajas
           )}
                 </strong>
@@ -11021,7 +11351,7 @@
               <p>
                 Unidades por caja:
                 <strong>
-                  ${integerOrZero(
+                  ${formatQuantity(
             resultData.movement.unidadesPorCaja
           )}
                 </strong>
@@ -11030,7 +11360,7 @@
               <p>
                 Entrada pagada:
                 <strong>
-                  ${integerOrZero(
+                  ${formatQuantity(
             resultData.movement.entradaPagada
           )}
                   unidades
@@ -11040,7 +11370,7 @@
               <p>
                 Cajas bono:
                 <strong>
-                  ${integerOrZero(
+                  ${formatQuantity(
             resultData.movement.cajasBono
           )}
                 </strong>
@@ -11049,7 +11379,7 @@
               <p>
                 Unidades bono:
                 <strong>
-                  ${integerOrZero(
+                  ${formatQuantity(
             resultData.movement.unidadesBono
           )}
                 </strong>
@@ -11058,7 +11388,7 @@
               <p>
                 Entrada total:
                 <strong>
-                  ${integerOrZero(
+                  ${formatQuantity(
             resultData.movement.entrada
           )}
                   unidades
@@ -11104,7 +11434,7 @@
               <p>
                 Nuevo stock:
                 <strong>
-                  ${numberOrZero(
+                  ${formatQuantity(
             resultData.product.stockCurrentUnits
           )}
                   unidades
@@ -11345,7 +11675,7 @@
             ? breakdown.totalUnits
             : Math.max(
               0,
-              numberOrZero(
+              decimalOrZero(
                 oldMovementRaw.entrada
               )
             );
@@ -11365,15 +11695,23 @@
           );
 
         nextStock =
-          previousStock -
-          removedEntry;
+          decimalOrZero(
+            previousStock -
+            removedEntry
+          );
 
         if (
           nextStock <
           0
         ) {
           throw new Error(
-            `No se puede eliminar esta entrada porque el stock actual (${previousStock}) es menor que la cantidad del movimiento (${removedEntry}). El stock resultante sería ${nextStock}.`
+            `No se puede eliminar esta entrada porque el stock actual (${formatQuantity(
+              previousStock
+            )}) es menor que la cantidad del movimiento (${formatQuantity(
+              removedEntry
+            )}). El stock resultante sería ${formatQuantity(
+              nextStock
+            )}.`
           );
         }
 
@@ -11434,10 +11772,12 @@
               nextStock,
 
             boxes:
-              Math.floor(
-                nextStock /
-                currentUnitsPerBox
-              ),
+              currentUnitsPerBox > 0
+                ? decimalOrZero(
+                  nextStock /
+                  currentUnitsPerBox
+                )
+                : 0,
 
             updatedAt:
               firebase.firestore
@@ -11554,10 +11894,12 @@
           nextStock,
 
         boxes:
-          Math.floor(
-            nextStock /
-            currentUnitsPerBox
-          ),
+          currentUnitsPerBox > 0
+            ? decimalOrZero(
+              nextStock /
+              currentUnitsPerBox
+            )
+            : 0,
 
         updatedAt:
           Date.now()
@@ -11610,10 +11952,12 @@
               nextStock,
 
             boxes:
-              Math.floor(
-                nextStock /
-                currentUnitsPerBox
-              ),
+              currentUnitsPerBox > 0
+                ? decimalOrZero(
+                  nextStock /
+                  currentUnitsPerBox
+                )
+                : 0,
 
             updatedAt:
               Date.now()
@@ -11762,7 +12106,7 @@
         ? breakdown.totalUnits
         : Math.max(
           0,
-          numberOrZero(
+          decimalOrZero(
             movement.entrada
           )
         );
@@ -11805,7 +12149,7 @@
               <p>
                 Entrada:
                 <strong>
-                  ${integerOrZero(
+                  ${formatQuantity(
             removalUnits
           )}
                   unidades
@@ -11834,8 +12178,10 @@
               <p>
                 Stock actual:
                 <strong>
-                  ${getCurrentStockUnits(
-            product
+                  ${formatQuantity(
+            getCurrentStockUnits(
+              product
+            )
           )}
                   unidades
                 </strong>
@@ -11850,7 +12196,7 @@
                 "
               >
                 Esta acción reducirá el stock en
-                ${integerOrZero(
+                ${formatQuantity(
             removalUnits
           )}
                 unidades y eliminará el movimiento.
@@ -11963,7 +12309,7 @@
               <p>
                 Unidades retiradas del stock:
                 <strong>
-                  ${integerOrZero(
+                  ${formatQuantity(
             result.removedEntry
           )}
                 </strong>
@@ -11972,7 +12318,7 @@
               <p>
                 Stock anterior:
                 <strong>
-                  ${integerOrZero(
+                  ${formatQuantity(
             result.previousStock
           )}
                 </strong>
@@ -11981,7 +12327,7 @@
               <p>
                 Nuevo stock:
                 <strong>
-                  ${integerOrZero(
+                  ${formatQuantity(
             result.nextStock
           )}
                 </strong>
@@ -12100,8 +12446,10 @@
                 <span>
                   Stock actual:
                   <strong>
-                    ${getCurrentStockUnits(
-          product
+                    ${formatQuantity(
+          getCurrentStockUnits(
+            product
+          )
         )}
                   </strong>
                   unidades
@@ -12110,8 +12458,10 @@
                 <span>
                   Unidades/caja:
                   <strong>
-                    ${getUnitsPerBox(
-          product
+                    ${formatQuantity(
+          getUnitsPerBox(
+            product
+          )
         )}
                   </strong>
                 </span>
@@ -12119,8 +12469,10 @@
                 <span>
                   Cajas actuales:
                   <strong>
-                    ${getStockBoxes(
-          product
+                    ${formatQuantity(
+          getStockBoxes(
+            product
+          )
         )}
                   </strong>
                 </span>
@@ -12384,39 +12736,40 @@
 
                     <td>
                       <strong>
-                        ${integerOrZero(
+                        ${formatQuantity(
                   movement.cajas
                 )}
                       </strong>
-                      ${integerOrZero(
-                  movement.cajas
-                ) === 1
-                  ? "caja"
-                  : "cajas"
-                }
+                      ${
+                        decimalOrZero(
+                          movement.cajas
+                        ) === 1
+                          ? "caja"
+                          : "cajas"
+                      }
 
                       ×
 
                       <strong>
-                        ${integerOrZero(
+                        ${formatQuantity(
                   movement.unidadesPorCaja
                 )}
                       </strong>
 
                       <small>
-                        ${integerOrZero(
+                        ${formatQuantity(
                   movement.unidades
                 )}
                         unidades sueltas
                       </small>
 
-                      ${integerOrZero(
+                      ${decimalOrZero(
                   movement.cajasBono
                 ) > 0
                   ? `
                             <small>
                               +
-                              ${integerOrZero(
+                              ${formatQuantity(
                     movement.cajasBono
                   )}
                               cajas bono
@@ -12425,13 +12778,13 @@
                   : ""
                 }
 
-                      ${integerOrZero(
+                      ${decimalOrZero(
                   movement.unidadesBono
                 ) > 0
                   ? `
                             <small>
                               +
-                              ${integerOrZero(
+                              ${formatQuantity(
                     movement.unidadesBono
                   )}
                               unidades bono
@@ -12445,7 +12798,7 @@
                       <small>
                         Total:
                         <strong>
-                          ${integerOrZero(
+                          ${formatQuantity(
                   movement.entrada
                 )}
                         </strong>
@@ -12494,7 +12847,7 @@
                     </td>
 
                     <td>
-                      ${integerOrZero(
+                      ${formatQuantity(
                   movement.saldoActual
                 )}
                     </td>
@@ -13566,6 +13919,11 @@
         width:100%;
         min-height:40px;
         box-sizing:border-box;
+      }
+
+      .inv-field input[type="number"] {
+        text-align:right;
+        font-variant-numeric:tabular-nums;
       }
 
       .inv-field small {
