@@ -434,9 +434,9 @@
   function isAdministratorRole() {
     return (
       currentRole ===
-        "administrador" ||
+      "administrador" ||
       currentRole ===
-        "admin"
+      "admin"
     );
   }
 
@@ -866,7 +866,7 @@
         }
       }
     } catch (
-      error
+    error
     ) {
       console.warn(
         "No se pudo obtener dayKey mediante getTodayBounds:",
@@ -1237,7 +1237,7 @@
 
       return currentProvidersList;
     } catch (
-      error
+    error
     ) {
       console.warn(
         "No se pudieron cargar proveedores desde la caché de sesión:",
@@ -1469,10 +1469,10 @@
                 label="${escapeHtml(
               name
             )}${businessName
-                ? ` — ${escapeHtml(
-                  businessName
-                )}`
-                : ""
+              ? ` — ${escapeHtml(
+                businessName
+              )}`
+              : ""
               }"
               ></option>
             `;
@@ -2893,14 +2893,14 @@
         const movementNet =
           decimalOrZero(
             movementStockMap[
-              productId
+            productId
             ]
           );
 
         const historicalSales =
           decimalOrZero(
             salesStockMap[
-              productId
+            productId
             ]
           );
 
@@ -3407,7 +3407,7 @@
     const soldBoxes =
       decimalOrZero(
         currentMonthlyBoxesMap[
-          product.id
+        product.id
         ]
       );
 
@@ -3635,28 +3635,27 @@
       return `
         <strong>
           ${formatQuantity(
-            stock
-          )}
+        stock
+      )}
         </strong>
 
         <br>
 
         <small>
           ${formatQuantity(
-            boxesEquivalent
-          )}
-          ${
-            boxesEquivalent === 1
-              ? "caja"
-              : "cajas"
-          }
+        boxesEquivalent
+      )}
+          ${boxesEquivalent === 1
+          ? "caja"
+          : "cajas"
+        }
           equivalentes
 
           ×
 
           ${formatQuantity(
-            unitsPerBox
-          )}
+          unitsPerBox
+        )}
           unidades/caja
         </small>
       `;
@@ -4422,8 +4421,8 @@
             Stock:
             <strong>
               ${formatQuantity(
-                product.stockUnits
-              )}
+          product.stockUnits
+        )}
             </strong>
 
             |
@@ -4431,8 +4430,8 @@
             Vendido:
             <strong>
               ${formatQuantity(
-                product.soldMonthUnits
-              )}
+          product.soldMonthUnits
+        )}
             </strong>
 
             |
@@ -4440,8 +4439,8 @@
             Sugerido:
             <strong>
               ${formatQuantity(
-                product.suggestedPurchaseUnits
-              )}
+          product.suggestedPurchaseUnits
+        )}
             </strong>
           </div>
         `;
@@ -4826,7 +4825,7 @@
           await module.openConversionModal();
 
         } catch (
-          error
+        error
         ) {
           console.error(
             "Error abriendo conversiones:",
@@ -4840,7 +4839,7 @@
             await Swal.fire(
               "Error",
               error.message ||
-                "No se pudo abrir el módulo de conversiones.",
+              "No se pudo abrir el módulo de conversiones.",
               "error"
             );
           }
@@ -5503,7 +5502,7 @@
 
           return movements;
         } catch (
-          error
+        error
         ) {
           console.error(
             "Error leyendo movimientos desde la caché:",
@@ -7962,14 +7961,14 @@
           )}
               · Stock actual:
               ${formatQuantity(
-                getCurrentStockUnits(
-                  product
-                )
-              )}
+            getCurrentStockUnits(
+              product
+            )
+          )}
               ·
               ${formatQuantity(
-                enteredUnitsPerBox
-              )}
+            enteredUnitsPerBox
+          )}
               unid./caja
 
               ${unitsPerBoxChanged
@@ -7983,12 +7982,12 @@
                     >
                       Se actualizará el empaque:
                       ${formatQuantity(
-                        productUnitsPerBox
-                      )}
+                productUnitsPerBox
+              )}
                       →
                       ${formatQuantity(
-                        enteredUnitsPerBox
-                      )}
+                enteredUnitsPerBox
+              )}
                       unidades/caja
                     </span>
                   `
@@ -9050,7 +9049,7 @@
           );
         }
       } catch (
-        error
+      error
       ) {
         expenseError =
           error;
@@ -9176,7 +9175,7 @@
           "Aceptar"
       });
     } catch (
-      error
+    error
     ) {
       Swal.close();
 
@@ -9557,8 +9556,8 @@
               id="movement-edit-entry"
               type="text"
               value="${formatQuantity(
-        breakdown.totalUnits
-      )}"
+      breakdown.totalUnits
+    )}"
               readonly
             >
           </div>
@@ -9635,8 +9634,7 @@
           sobre el stock vigente.
         </div>
 
-        ${
-      movement.expenseId
+        ${movement.expenseId
         ? `
               <div
                 class="movement-edit-linked"
@@ -9657,7 +9655,7 @@
                 Esta entrada no tiene un gasto vinculado.
               </div>
             `
-    }
+      }
 
       </div>
     `;
@@ -9871,8 +9869,8 @@
         Unidades/caja anterior
         <strong>
           ${formatQuantity(
-        oldUnitsPerBox
-      )}
+      oldUnitsPerBox
+    )}
         </strong>
       </div>
 
@@ -9880,8 +9878,8 @@
         Nuevas unidades/caja
         <strong>
           ${formatQuantity(
-        newUnitsPerBox
-      )}
+      newUnitsPerBox
+    )}
         </strong>
       </div>
 
@@ -9889,8 +9887,8 @@
         Cajas
         <strong>
           ${formatQuantity(
-        cajas
-      )}
+      cajas
+    )}
         </strong>
       </div>
 
@@ -9898,8 +9896,8 @@
         Cajas bono
         <strong>
           ${formatQuantity(
-        cajasBono
-      )}
+      cajasBono
+    )}
         </strong>
       </div>
 
@@ -9907,8 +9905,8 @@
         Unidades sueltas
         <strong>
           ${formatQuantity(
-        unidades
-      )}
+      unidades
+    )}
         </strong>
       </div>
 
@@ -9916,8 +9914,8 @@
         Unidades bono
         <strong>
           ${formatQuantity(
-        unidadesBono
-      )}
+      unidadesBono
+    )}
         </strong>
       </div>
 
@@ -9925,8 +9923,8 @@
         Entrada anterior
         <strong>
           ${formatQuantity(
-        oldEntry
-      )}
+      oldEntry
+    )}
         </strong>
       </div>
 
@@ -9934,8 +9932,8 @@
         Entrada pagada
         <strong>
           ${formatQuantity(
-        paidUnits
-      )}
+      paidUnits
+    )}
         </strong>
       </div>
 
@@ -9943,8 +9941,8 @@
         Entrada bono
         <strong>
           ${formatQuantity(
-        bonusUnits
-      )}
+      bonusUnits
+    )}
         </strong>
       </div>
 
@@ -9952,8 +9950,8 @@
         Nueva entrada
         <strong>
           ${formatQuantity(
-        newEntry
-      )}
+      newEntry
+    )}
         </strong>
       </div>
 
@@ -10402,7 +10400,7 @@
 
           oldCostPerUnit =
             oldUnitsPerBox >
-            0
+              0
               ? oldCostPerBox /
               oldUnitsPerBox
               : 0;
@@ -11324,20 +11322,19 @@
                 </strong>
               </p>
 
-              ${
-                resultData.movement.proveedorRazonSocial
-                  ? `
+              ${resultData.movement.proveedorRazonSocial
+            ? `
                     <p>
                       Razón Social / Denominación:
                       <strong>
                         ${escapeHtml(
-                          resultData.movement.proveedorRazonSocial
-                        )}
+              resultData.movement.proveedorRazonSocial
+            )}
                       </strong>
                     </p>
                   `
-                  : ""
-              }
+            : ""
+          }
 
               <p>
                 Cajas:
@@ -11441,20 +11438,19 @@
                 </strong>
               </p>
 
-              ${
-                resultData.expense
-                  ? `
+              ${resultData.expense
+            ? `
                     <p>
                       Gasto actualizado:
                       <strong>
                         ${currency(
-                          resultData.expense.amount
-                        )}
+              resultData.expense.amount
+            )}
                       </strong>
                     </p>
                   `
-                  : ""
-              }
+            : ""
+          }
             </div>
           `,
 
@@ -11466,7 +11462,7 @@
         movement.productId
       );
     } catch (
-      error
+    error
     ) {
       Swal.close();
 
@@ -11544,6 +11540,12 @@
 
     await db.runTransaction(
       async transaction => {
+        /*
+         * ========================================================
+         * TODAS LAS LECTURAS DEBEN OCURRIR ANTES DE LAS ESCRITURAS
+         * ========================================================
+         */
+
         const movementSnap =
           await transaction.get(
             movementRef
@@ -11585,6 +11587,12 @@
           );
         }
 
+        /*
+         * --------------------------------------------------------
+         * NO PERMITIR ELIMINAR ENTRADAS DE CONVERSIÓN
+         * --------------------------------------------------------
+         */
+
         const conversionId =
           String(
             oldMovementRaw.conversionId ||
@@ -11605,6 +11613,12 @@
             "Esta entrada fue generada por una conversión y no se puede eliminar desde el historial de compras. Corrige o elimina la conversión desde su módulo correspondiente."
           );
         }
+
+        /*
+         * --------------------------------------------------------
+         * PRODUCTO
+         * --------------------------------------------------------
+         */
 
         deletedProductId =
           String(
@@ -11658,6 +11672,12 @@
           );
         }
 
+        /*
+         * --------------------------------------------------------
+         * NORMALIZAR MOVIMIENTO
+         * --------------------------------------------------------
+         */
+
         const normalizedMovement =
           normalizeMovementDocument(
             target,
@@ -11675,7 +11695,7 @@
             ? breakdown.totalUnits
             : Math.max(
               0,
-              decimalOrZero(
+              numberOrZero(
                 oldMovementRaw.entrada
               )
             );
@@ -11689,31 +11709,35 @@
           );
         }
 
+        /*
+         * --------------------------------------------------------
+         * STOCK
+         * --------------------------------------------------------
+         */
+
         previousStock =
           getCurrentStockUnits(
             productData
           );
 
         nextStock =
-          decimalOrZero(
-            previousStock -
-            removedEntry
-          );
+          previousStock -
+          removedEntry;
 
         if (
           nextStock <
           0
         ) {
           throw new Error(
-            `No se puede eliminar esta entrada porque el stock actual (${formatQuantity(
-              previousStock
-            )}) es menor que la cantidad del movimiento (${formatQuantity(
-              removedEntry
-            )}). El stock resultante sería ${formatQuantity(
-              nextStock
-            )}.`
+            `No se puede eliminar esta entrada porque el stock actual (${previousStock}) es menor que la cantidad del movimiento (${removedEntry}). El stock resultante sería ${nextStock}.`
           );
         }
+
+        /*
+         * --------------------------------------------------------
+         * COSTO DE LA ENTRADA
+         * --------------------------------------------------------
+         */
 
         const oldPaidUnits =
           breakdown.paidUnits;
@@ -11734,7 +11758,7 @@
 
           oldCostPerUnit =
             breakdown.unitsPerBox >
-            0
+              0
               ? oldCostPerBox /
               breakdown.unitsPerBox
               : 0;
@@ -11757,10 +11781,93 @@
               oldCostPerUnit
             );
 
+        /*
+         * --------------------------------------------------------
+         * LECTURA DEL GASTO VINCULADO
+         *
+         * IMPORTANTE:
+         * Esta lectura ocurre ANTES de cualquier update/delete.
+         * --------------------------------------------------------
+         */
+
+        const expenseId =
+          String(
+            oldMovementRaw.expenseId ||
+            ""
+          ).trim();
+
+        let expenseRef =
+          null;
+
+        let expenseSnap =
+          null;
+
+        let expenseData =
+          null;
+
+        let oldExpenseAmount =
+          0;
+
+        let nextExpenseAmount =
+          0;
+
+        if (
+          expenseId
+        ) {
+          expenseRef =
+            db
+              .collection(
+                EXPENSES_COLLECTION
+              )
+              .doc(
+                expenseId
+              );
+
+          expenseSnap =
+            await transaction.get(
+              expenseRef
+            );
+
+          if (
+            expenseSnap.exists
+          ) {
+            expenseData =
+              expenseSnap.data() ||
+              {};
+
+            oldExpenseAmount =
+              Math.max(
+                0,
+                numberOrZero(
+                  expenseData.amount
+                )
+              );
+
+            nextExpenseAmount =
+              Math.max(
+                0,
+                oldExpenseAmount -
+                removedCostTotal
+              );
+          }
+        }
+
+        /*
+         * ========================================================
+         * A PARTIR DE AQUÍ SOLO ESCRITURAS
+         * ========================================================
+         */
+
         const currentUnitsPerBox =
           getUnitsPerBox(
             productData
           );
+
+        /*
+         * --------------------------------------------------------
+         * ACTUALIZAR PRODUCTO
+         * --------------------------------------------------------
+         */
 
         transaction.update(
           productRef,
@@ -11772,12 +11879,10 @@
               nextStock,
 
             boxes:
-              currentUnitsPerBox > 0
-                ? decimalOrZero(
-                  nextStock /
-                  currentUnitsPerBox
-                )
-                : 0,
+              Math.floor(
+                nextStock /
+                currentUnitsPerBox
+              ),
 
             updatedAt:
               firebase.firestore
@@ -11786,90 +11891,73 @@
           }
         );
 
+        /*
+         * --------------------------------------------------------
+         * ELIMINAR MOVIMIENTO
+         * --------------------------------------------------------
+         */
+
         transaction.delete(
           movementRef
         );
 
-        const expenseId =
-          String(
-            oldMovementRaw.expenseId ||
-            ""
-          ).trim();
+        /*
+         * --------------------------------------------------------
+         * ACTUALIZAR GASTO
+         * --------------------------------------------------------
+         */
 
         if (
-          expenseId
+          expenseSnap &&
+          expenseSnap.exists &&
+          expenseRef
         ) {
-          const expenseRef =
-            db
-              .collection(
-                EXPENSES_COLLECTION
-              )
-              .doc(
-                expenseId
-              );
-
-          const expenseSnap =
-            await transaction.get(
-              expenseRef
-            );
-
-          if (
-            expenseSnap.exists
-          ) {
-            const expenseData =
-              expenseSnap.data() ||
-              {};
-
-            const oldExpenseAmount =
-              Math.max(
-                0,
-                numberOrZero(
-                  expenseData.amount
-                )
-              );
-
-            const nextExpenseAmount =
-              Math.max(
-                0,
-                oldExpenseAmount -
-                removedCostTotal
-              );
-
-            transaction.update(
-              expenseRef,
-              {
-                amount:
-                  nextExpenseAmount,
-
-                updatedAt:
-                  firebase.firestore
-                    .FieldValue
-                    .serverTimestamp(),
-
-                inventoryLastMovementDeletion:
-                  true
-              }
-            );
-
-            updatedExpense = {
-              id:
-                expenseId,
-
-              data:
-                expenseData,
-
+          transaction.update(
+            expenseRef,
+            {
               amount:
-                nextExpenseAmount
-            };
-          }
+                nextExpenseAmount,
+
+              updatedAt:
+                firebase.firestore
+                  .FieldValue
+                  .serverTimestamp(),
+
+              inventoryLastMovementDeletion:
+                true
+            }
+          );
+
+          updatedExpense = {
+            id:
+              expenseId,
+
+            data:
+              expenseData,
+
+            amount:
+              nextExpenseAmount
+          };
         }
       }
     );
+
+    /*
+     * ==========================================================
+     * ACTUALIZAR CACHÉ DE MOVIMIENTOS
+     * ==========================================================
+     */
 
     removeSessionDocument(
       MOVEMENTS_COLLECTION,
       target
     );
+
+    /*
+     * ==========================================================
+     * ACTUALIZAR CACHÉ DEL PRODUCTO
+     * ==========================================================
+     */
 
     const localProduct =
       findProductById(
@@ -11894,12 +11982,10 @@
           nextStock,
 
         boxes:
-          currentUnitsPerBox > 0
-            ? decimalOrZero(
-              nextStock /
-              currentUnitsPerBox
-            )
-            : 0,
+          Math.floor(
+            nextStock /
+            currentUnitsPerBox
+          ),
 
         updatedAt:
           Date.now()
@@ -11952,12 +12038,10 @@
               nextStock,
 
             boxes:
-              currentUnitsPerBox > 0
-                ? decimalOrZero(
-                  nextStock /
-                  currentUnitsPerBox
-                )
-                : 0,
+              Math.floor(
+                nextStock /
+                currentUnitsPerBox
+              ),
 
             updatedAt:
               Date.now()
@@ -11965,6 +12049,12 @@
         );
       }
     }
+
+    /*
+     * ==========================================================
+     * ACTUALIZAR CACHÉ DEL GASTO
+     * ==========================================================
+     */
 
     if (
       updatedExpense
@@ -11987,9 +12077,21 @@
       );
     }
 
+    /*
+     * ==========================================================
+     * INVALIDAR CACHÉ DE MOVIMIENTOS
+     * ==========================================================
+     */
+
     invalidateProductStockMovementsCache(
       deletedProductId
     );
+
+    /*
+     * ==========================================================
+     * RESULTADO
+     * ==========================================================
+     */
 
     return {
       movementId:
@@ -12202,17 +12304,16 @@
                 unidades y eliminará el movimiento.
               </p>
 
-              ${
-                movement.expenseId
-                  ? `
+              ${movement.expenseId
+            ? `
                     <p>
                       El gasto vinculado también
                       se ajustará restando el costo
                       de esta entrada.
                     </p>
                   `
-                  : ""
-              }
+            : ""
+          }
             </div>
           `,
 
@@ -12356,7 +12457,7 @@
 
       return true;
     } catch (
-      error
+    error
     ) {
       Swal.close();
 
@@ -12716,82 +12817,80 @@
                     <td>
                       <strong>
                         ${escapeHtml(
-                  movement.proveedorNombre ||
-                  "Sin proveedor"
-                )}
+                movement.proveedorNombre ||
+                "Sin proveedor"
+              )}
                       </strong>
 
-                      ${
-                        movement.proveedorRazonSocial
-                          ? `
+                      ${movement.proveedorRazonSocial
+                ? `
                             <small>
                               ${escapeHtml(
-                            movement.proveedorRazonSocial
-                          )}
+                  movement.proveedorRazonSocial
+                )}
                             </small>
                           `
-                          : ""
-                      }
+                : ""
+              }
                     </td>
 
                     <td>
                       <strong>
                         ${formatQuantity(
-                  movement.cajas
-                )}
+                movement.cajas
+              )}
                       </strong>
-                      ${
-                        decimalOrZero(
-                          movement.cajas
-                        ) === 1
-                          ? "caja"
-                          : "cajas"
-                      }
+                      ${decimalOrZero(
+                movement.cajas
+              ) === 1
+                ? "caja"
+                : "cajas"
+              }
 
                       ×
 
                       <strong>
                         ${formatQuantity(
-                  movement.unidadesPorCaja
-                )}
+                movement.unidadesPorCaja
+              )}
                       </strong>
 
                       <small>
                         ${formatQuantity(
-                  movement.unidades
-                )}
+                movement.unidades
+              )}
                         unidades sueltas
                       </small>
 
                       ${decimalOrZero(
-                  movement.cajasBono
-                ) > 0
-                  ? `
+                movement.cajasBono
+              ) > 0
+                ? `
                             <small>
                               +
                               ${formatQuantity(
-                    movement.cajasBono
-                  )}
+                  movement.cajasBono
+                )}
                               cajas bono
                             </small>
                           `
-                  : ""
-                }
+                : ""
+              }
 
                       ${decimalOrZero(
-                  movement.unidadesBono
-                ) > 0
-                  ? `
+                movement.unidadesBono
+              ) > 0
+                ? `
                             <small>
                               +
                               ${formatQuantity(
-                    movement.unidadesBono
-                  )}
+                  movement.unidadesBono
+                )}
                               unidades bono
                             </small>
                           `
-                  : ""
-                }
+                : ""
+              }
 
                       <br>
 
@@ -12799,8 +12898,8 @@
                         Total:
                         <strong>
                           ${formatQuantity(
-                  movement.entrada
-                )}
+                movement.entrada
+              )}
                         </strong>
                         unidades
                       </small>
@@ -12808,48 +12907,48 @@
 
                     <td>
                       ${currency(
-                  movement.costoUnitario
-                )}
+                movement.costoUnitario
+              )}
                     </td>
 
                     <td>
                       ${currency(
-                  movement.costoPorCaja
-                )}
+                movement.costoPorCaja
+              )}
                     </td>
 
                     <td>
                       <strong>
                         ${currency(
-                  movement.costoTotal
-                )}
+                movement.costoTotal
+              )}
                       </strong>
                     </td>
 
                     <td>
                       ${currency(
-                  movement.precioVenta
-                )}
+                movement.precioVenta
+              )}
                     </td>
 
                     <td>
                       ${escapeHtml(
-                  movement.referenciaLibro ||
-                  "—"
-                )}
+                movement.referenciaLibro ||
+                "—"
+              )}
                     </td>
 
                     <td>
                       ${escapeHtml(
-                  movement.numeroDocumento ||
-                  "—"
-                )}
+                movement.numeroDocumento ||
+                "—"
+              )}
                     </td>
 
                     <td>
                       ${formatQuantity(
-                  movement.saldoActual
-                )}
+                movement.saldoActual
+              )}
                     </td>
 
                     <td>
@@ -12860,8 +12959,8 @@
                           type="button"
                           class="btn-outline movement-edit-button"
                           data-movement-id="${escapeHtml(
-                  movement.id
-                )}"
+                movement.id
+              )}"
                         >
                           <i class="fas fa-edit"></i>
                           Editar
@@ -12871,16 +12970,16 @@
                           type="button"
                           class="btn-outline movement-delete-button"
                           data-movement-id="${escapeHtml(
-                  movement.id
-                )}"
+                movement.id
+              )}"
                           ${deleteDisabled
-                  ? `disabled title="${escapeHtml(
-                    deleteTitle
-                  )}"`
-                  : `title="${escapeHtml(
-                    deleteTitle
-                  )}"`
-                }
+                ? `disabled title="${escapeHtml(
+                  deleteTitle
+                )}"`
+                : `title="${escapeHtml(
+                  deleteTitle
+                )}"`
+              }
                         >
                           <i class="fas fa-trash"></i>
                           Eliminar
@@ -13583,7 +13682,7 @@
           1500
       });
     } catch (
-      error
+    error
     ) {
       console.error(
         "Error eliminando producto:",
@@ -14405,7 +14504,7 @@
 
       applySearch();
     } catch (
-      error
+    error
     ) {
       inventoryInitialized =
         false;
