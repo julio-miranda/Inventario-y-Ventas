@@ -198,7 +198,9 @@
     const number = Number(value);
 
     if (
-      !Number.isFinite(number)
+      !Number.isFinite(
+        number
+      )
     ) {
       return 0;
     }
@@ -1053,7 +1055,7 @@
         provider => {
           if (
             typeof provider ===
-              "string"
+            "string"
           ) {
             const resolved =
               getProviderById(
@@ -1264,7 +1266,7 @@
         provider => {
           const normalized =
             typeof provider ===
-              "string"
+            "string"
               ? getProviderById(
                   provider
                 )
@@ -2229,9 +2231,20 @@
                           class="provider-multi-option"
                           data-provider-search="${escapeHtml(
                             normalizeText(
-                              getProviderDisplayName(
-                                provider
-                              )
+                              [
+                                getProviderName(
+                                  provider
+                                ),
+                                getProviderBusinessName(
+                                  provider
+                                ),
+                                getProviderDisplayName(
+                                  provider
+                                ),
+                                providerId
+                              ]
+                                .filter(Boolean)
+                                .join(" ")
                             )
                           )}"
                         >
@@ -2257,6 +2270,7 @@
                                   getProviderBusinessName(
                                     provider
                                   ) ||
+                                  providerId ||
                                   "Proveedor"
                               )}
                             </strong>
@@ -4722,6 +4736,19 @@
     };
   }
 
+  /*
+   * ============================================================
+   * CAMBIO IMPORTANTE:
+   *
+   * El selector de proveedores SIEMPRE debe mostrar todos los
+   * proveedores disponibles del local.
+   *
+   * Los proveedores del producto y los proveedores ya seleccionados
+   * se incorporan a la lista aunque no estén todavía en la caché
+   * general, para evitar perder selecciones existentes.
+   * ============================================================
+   */
+
   function getBatchLineProviderOptions(
     line
   ) {
@@ -4730,22 +4757,15 @@
         line?.product
       );
 
-    if (
-      productProviders.length
-    ) {
-      return mergeProviderCollections(
-        productProviders,
-        getLineProviders(
-          line
-        )
+    const lineProviders =
+      getLineProviders(
+        line
       );
-    }
 
     return mergeProviderCollections(
       currentProvidersList,
-      getLineProviders(
-        line
-      )
+      productProviders,
+      lineProviders
     );
   }
 
@@ -4874,7 +4894,7 @@
           </label>
 
           <div
-            id="batch-provider-selector-${escapeHtml(
+            id="batch-provider-selector-container-${escapeHtml(
               line.id
             )}"
           >
@@ -4886,7 +4906,8 @@
           </div>
 
           <small>
-            Puedes seleccionar uno o varios proveedores.
+            Todos los proveedores del local están disponibles.
+            Puedes seleccionar uno o varios.
           </small>
         </div>
 
@@ -5305,6 +5326,21 @@
     };
   }
 
+  /*
+   * ============================================================
+   * REFRESCAR SELECTOR DE PROVEEDORES
+   *
+   * Ahora:
+   * - siempre muestra todos los proveedores del local;
+   * - incorpora los proveedores asociados al producto;
+   * - incorpora selecciones previas;
+   * - al cambiar de producto, marca inicialmente todos los
+   *   proveedores ya asociados al nuevo producto;
+   * - una vez inicializado ese producto, respeta exactamente
+   *   lo que el usuario seleccione o quite.
+   * ============================================================
+   */
+
   function refreshBatchProviderSelector(
     row,
     product,
@@ -5329,40 +5365,102 @@
         product
       );
 
-    const available =
-      productProviders.length
-        ? mergeProviderCollections(
-            productProviders,
-            currentIds.map(
-              id =>
-                getProviderById(
-                  id
-                )
-            )
+    const currentSelectedProviders =
+      currentIds.map(
+        id =>
+          getProviderById(
+            id
           )
-        : mergeProviderCollections(
-            currentIds.map(
-              id =>
-                getProviderById(
-                  id
-                )
-            ),
-            currentProvidersList
-          );
-
-    const selected =
-      setProviderSelector(
-        root,
-        available,
-        currentIds,
-        Boolean(
-          productProviders.length &&
-          currentIds.length ===
-            0
-        )
       );
 
-    return selected;
+    /*
+     * IMPORTANTE:
+     * Siempre incluir currentProvidersList.
+     *
+     * Antes el código hacía:
+     *
+     * productProviders.length
+     *   ? productProviders
+     *   : currentProvidersList
+     *
+     * Eso provocaba que al seleccionar un producto
+     * desaparecieran todos los proveedores globales.
+     */
+
+    const available =
+      mergeProviderCollections(
+        currentProvidersList,
+        productProviders,
+        currentSelectedProviders
+      );
+
+    const productId =
+      String(
+        product?.id ||
+        ""
+      ).trim();
+
+    const previousProductId =
+      String(
+        root.dataset.productId ||
+        ""
+      ).trim();
+
+    const productChanged =
+      productId !==
+      previousProductId;
+
+    let selectedIds =
+      currentIds;
+
+    /*
+     * Cuando el usuario acaba de seleccionar otro producto,
+     * se inicializa la selección con TODOS los proveedores
+     * que ya estaban asociados a ese producto.
+     *
+     * Esto no vuelve a seleccionar automáticamente proveedores
+     * después de que el usuario los quite, porque solamente
+     * ocurre cuando cambia el productId.
+     */
+
+    if (
+      productChanged
+    ) {
+      selectedIds =
+        getProviderIds(
+          productProviders
+        );
+
+      root.dataset.productId =
+        productId;
+    }
+
+    /*
+     * Solo conservar proveedores que realmente estén
+     * disponibles en la lista mostrada.
+     */
+
+    const availableIds =
+      getProviderIds(
+        available
+      );
+
+    selectedIds =
+      normalizeIdArray(
+        selectedIds
+      ).filter(
+        id =>
+          availableIds.includes(
+            id
+          )
+      );
+
+    return setProviderSelector(
+      root,
+      available,
+      selectedIds,
+      false
+    );
   }
 
   function updateBatchLineState(
@@ -5579,6 +5677,9 @@
               product
             ).length;
 
+          const totalAvailableProviders =
+            currentProvidersList.length;
+
           status.innerHTML = `
             <span class="batch-status success">
               Producto encontrado:
@@ -5605,6 +5706,22 @@
                 1
                   ? ""
                   : "es"
+              }
+              asociado${
+                providerCount ===
+                1
+                  ? ""
+                  : "s"
+              }
+              ·
+              ${
+                totalAvailableProviders
+              }
+              disponible${
+                totalAvailableProviders ===
+                1
+                  ? ""
+                  : "s"
               }
             </span>
           `;
@@ -5730,6 +5847,21 @@
       modeElement.addEventListener(
         "change",
         () => {
+          /*
+           * Al cambiar de tipo, permitir que el selector
+           * vuelva a sincronizarse con el producto actual.
+           */
+          const providerRoot =
+            row.querySelector(
+              '[data-role="provider-selector"]'
+            );
+
+          if (
+            providerRoot
+          ) {
+            delete providerRoot.dataset.productId;
+          }
+
           updateBatchLineState(
             row
           );
@@ -6019,6 +6151,32 @@
         ) {
           errors.push(
             `${label}: el precio no puede ser negativo.`
+          );
+        }
+
+        /*
+         * No obligamos a tener proveedor.
+         * Pero si hay proveedores seleccionados,
+         * todos deben existir en la lista actual.
+         */
+        const selectedIds =
+          normalizeIdArray(
+            line.proveedorIds
+          );
+
+        const missingProviders =
+          selectedIds.filter(
+            providerId =>
+              !getProviderById(
+                providerId
+              )
+          );
+
+        if (
+          missingProviders.length
+        ) {
+          errors.push(
+            `${label}: uno o más proveedores seleccionados no están disponibles en el local actual.`
           );
         }
       }
@@ -8513,21 +8671,16 @@
 
           /*
            * La lista global del producto es la unión
-           * de los proveedores antiguos y los seleccionados
-           * en esta entrada.
+           * de todos sus proveedores anteriores y los
+           * proveedores seleccionados en la entrada.
            */
+
           nextProviders =
             mergeProviderCollections(
               productProviders,
               selectedProviders
             );
 
-          /*
-           * Para mantener compatibilidad:
-           * el primer proveedor seleccionado tiene prioridad.
-           * Si no se seleccionó ninguno, se conserva
-           * el primer proveedor ya asociado.
-           */
           const movementProviders =
             selectedProviders.length
               ? selectedProviders
@@ -9223,8 +9376,13 @@
         </p>
 
         <p>
-          Puedes seleccionar uno o varios proveedores
-          por cada entrada.
+          El selector muestra todos los proveedores disponibles
+          del local y permite seleccionar uno o varios.
+        </p>
+
+        <p>
+          Los proveedores que ya estén asociados al producto
+          aparecerán seleccionados inicialmente.
         </p>
 
         <p>
@@ -9843,11 +10001,11 @@
 
     const availableProviders =
       mergeProviderCollections(
+        currentProvidersList,
         getProductProviders(
           product
         ),
-        movementProviders,
-        currentProvidersList
+        movementProviders
       );
 
     return `
@@ -9926,7 +10084,8 @@
             </div>
 
             <small>
-              Puedes seleccionar uno o varios proveedores.
+              Todos los proveedores disponibles del local
+              pueden seleccionarse.
             </small>
           </div>
 
@@ -14508,7 +14667,7 @@
       }
 
       .provider-multi-options {
-        max-height:145px;
+        max-height:240px;
         overflow-y:auto;
         border:1px solid #e5e7eb;
         border-radius:8px;
@@ -14882,6 +15041,10 @@
 
         .batch-products-container {
           max-height:55vh;
+        }
+
+        .provider-multi-options {
+          max-height:220px;
         }
 
         .movement-manager-title {
