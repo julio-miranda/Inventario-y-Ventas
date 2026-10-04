@@ -1,93 +1,4 @@
 // assets/js/controllers/inventory.controller.js
-//
-// INVENTARIO
-//
-// Características:
-//
-// - Stock visible = stock actual guardado en el producto.
-// - Las ventas se utilizan para métricas, sugerencias y alertas.
-// - Administrador/Bodega pueden editar y agregar.
-// - Administrador puede eliminar.
-// - Proveedor opcional.
-// - Producto existente o nuevo.
-// - Carga múltiple de productos.
-//
-// - Las cantidades de inventario aceptan decimales:
-//      cajas
-//      cajas bono
-//      unidades
-//      unidades bono
-//      unidades por caja
-//
-// - Cada entrada registra:
-//      cajas
-//      cajas bono
-//      unidades
-//      unidades bono
-//      unidades por caja
-//      costo por caja
-//      costo por unidad
-//      precio
-//      proveedor
-//      referencia
-//      documento
-//
-// - El proveedor del movimiento se guarda independientemente
-//   del proveedor actual del producto.
-//
-// - La búsqueda de proveedores permite:
-//      nombre
-//      razón social / denominación
-//      combinación nombre + razón social
-//
-// - La edición de una entrada modifica el stock mediante:
-//
-//      diferencia = nuevaEntrada - entradaAnterior
-//
-//      stockNuevo = stockActual + diferencia
-//
-// - Las cajas son editables y admiten decimales.
-// - Las unidades por caja son editables y admiten decimales.
-// - El proveedor específico del movimiento es editable.
-// - El historial de entradas muestra todas las entradas por
-//   defecto.
-// - La búsqueda principal de inventario acepta nombre, código
-//   y proveedor.
-// - El historial de entradas acepta nombre, código y proveedor.
-// - Se verifica la coherencia entre stock guardado y movimientos
-//   cuando no existen ventas históricas que expliquen la diferencia.
-//
-// - No usa onSnapshot().
-// - Las lecturas normales utilizan la caché de sesión administrada
-//   por app.js.
-// - Las entradas pagadas generan gasto automático.
-//
-// - CONVERSIONES:
-//      producto origen -> producto transformado
-//
-//   Ejemplo:
-//      Cerdo -> Chicharrón
-//      Chicharrón -> Tortillas con chicharrón
-//
-//   La conversión:
-//      - consume stock del producto origen;
-//      - incrementa stock del producto resultante;
-//      - calcula costo del producto producido;
-//      - puede crear el producto resultante si no existe;
-//      - registra la operación en "conversiones";
-//      - registra salida del origen;
-//      - registra entrada del producto resultante;
-//      - NO genera gasto de compra.
-//
-// - ELIMINACIÓN DE ENTRADAS:
-//      - Solo Administrador puede eliminar.
-//      - Las entradas generadas por conversión no se eliminan
-//        desde este historial para preservar la trazabilidad.
-//      - Al eliminar una entrada se revierte su cantidad del stock.
-//      - Si existe gasto vinculado, se descuenta el costo total
-//        pagado de esa entrada.
-//
-// ================================================================
 
 (function () {
   "use strict";
@@ -103,12 +14,8 @@
       typeof Swal !== "undefined"
     ) {
       Swal.fire({
-        icon:
-          "error",
-
-        title:
-          "Error",
-
+        icon: "error",
+        title: "Error",
         text:
           "Firebase no se cargó. Revisa la conexión o los scripts."
       });
@@ -143,10 +50,6 @@
     window.EXPENSES_COLLECTION_NAME ||
     "gastos";
 
-  const CONVERSIONS_COLLECTION =
-    window.CONVERSIONS_COLLECTION_NAME ||
-    "conversiones";
-
   const LOW_STOCK_THRESHOLD =
     5;
 
@@ -159,70 +62,46 @@
    * ============================================================
    */
 
-  let currentRole =
-    "";
+  let currentRole = "";
 
-  let canEditInventory =
-    false;
+  let canEditInventory = false;
 
-  let currentLocalId =
-    "";
+  let currentLocalId = "";
 
   let currentLocalInfo = {
-    id_local:
-      "",
-
-    nombre:
-      "",
-
-    numeroDocumento:
-      "",
-
-    ubicacion:
-      "",
-
-    contribuyente:
-      "",
-
-    tipoDocumento:
-      "",
-
-    nit:
-      "",
-
-    nrc:
-      ""
+    id_local: "",
+    nombre: "",
+    numeroDocumento: "",
+    ubicacion: "",
+    contribuyente: "",
+    tipoDocumento: "",
+    nit: "",
+    nrc: ""
   };
 
-  let currentUserInventoryContext =
-    null;
+  let currentUserInventoryContext = null;
 
-  let currentProductsList =
-    [];
+  let currentProductsList = [];
 
-  let currentProvidersList =
-    [];
+  let currentProvidersList = [];
 
-  let currentMonthlySalesMap =
-    {};
+  let currentMonthlySalesMap = {};
 
-  let currentMonthlyBoxesMap =
-    {};
+  let currentMonthlyBoxesMap = {};
 
-  let inventoryDT =
-    null;
+  let inventoryDT = null;
 
-  let inventoryLoadPromise =
-    null;
+  let inventoryLoadPromise = null;
 
-  let inventoryInitialized =
-    false;
+  let inventoryInitialized = false;
 
   const productStockMovementsCache =
     new Map();
 
   const productStockMovementsPending =
     new Map();
+
+  let batchLineCounter = 0;
 
   /*
    * ============================================================
@@ -306,33 +185,20 @@
   function numberOrZero(
     value
   ) {
-    const number =
-      Number(value);
+    const number = Number(value);
 
-    return Number.isFinite(
-      number
-    )
+    return Number.isFinite(number)
       ? number
       : 0;
   }
 
-  /*
-   * Todas las cantidades operativas ahora
-   * aceptan decimales.
-   *
-   * Se conservan hasta 6 posiciones decimales
-   * para evitar errores visuales de punto flotante.
-   */
   function decimalOrZero(
     value
   ) {
-    const number =
-      Number(value);
+    const number = Number(value);
 
     if (
-      !Number.isFinite(
-        number
-      )
+      !Number.isFinite(number)
     ) {
       return 0;
     }
@@ -340,38 +206,25 @@
     return Math.max(
       0,
       Math.round(
-        number *
-        1000000
-      ) /
-      1000000
+        number * 1000000
+      ) / 1000000
     );
   }
 
-  /*
-   * Compatibilidad con las llamadas existentes.
-   * Antes esta función hacía Math.floor().
-   * Ahora conserva los decimales.
-   */
   function integerOrZero(
     value
   ) {
-    return decimalOrZero(
-      value
-    );
+    return decimalOrZero(value);
   }
 
   function formatQuantity(
     value
   ) {
     const number =
-      decimalOrZero(
-        value
-      );
+      decimalOrZero(value);
 
     return number
-      .toFixed(
-        6
-      )
+      .toFixed(6)
       .replace(
         /\.?0+$/,
         ""
@@ -431,12 +284,36 @@
       );
   }
 
+  function normalizeIdArray(
+    values
+  ) {
+    const source =
+      Array.isArray(values)
+        ? values
+        : values
+          ? [values]
+          : [];
+
+    return Array.from(
+      new Set(
+        source
+          .map(
+            value =>
+              String(
+                value || ""
+              ).trim()
+          )
+          .filter(Boolean)
+      )
+    );
+  }
+
   function isAdministratorRole() {
     return (
       currentRole ===
-      "administrador" ||
+        "administrador" ||
       currentRole ===
-      "admin"
+        "admin"
     );
   }
 
@@ -654,9 +531,7 @@
     }
 
     const date =
-      new Date(
-        value
-      );
+      new Date(value);
 
     return isNaN(
       date.getTime()
@@ -671,9 +546,7 @@
     const value =
       date instanceof Date
         ? date
-        : new Date(
-          date
-        );
+        : new Date(date);
 
     if (
       isNaN(
@@ -727,19 +600,13 @@
     }
 
     const year =
-      Number(
-        match[1]
-      );
+      Number(match[1]);
 
     const month =
-      Number(
-        match[2]
-      );
+      Number(match[2]);
 
     const day =
-      Number(
-        match[3]
-      );
+      Number(match[3]);
 
     const date =
       new Date(
@@ -754,11 +621,11 @@
 
     if (
       date.getFullYear() !==
-      year ||
+        year ||
       date.getMonth() !==
-      month - 1 ||
+        month - 1 ||
       date.getDate() !==
-      day
+        day
     ) {
       return null;
     }
@@ -784,9 +651,7 @@
     const date =
       operationDate instanceof Date
         ? operationDate
-        : new Date(
-          operationDate
-        );
+        : new Date(operationDate);
 
     if (
       isNaN(
@@ -866,10 +731,10 @@
         }
       }
     } catch (
-    error
+      error
     ) {
       console.warn(
-        "No se pudo obtener dayKey mediante getTodayBounds:",
+        "No se pudo obtener dayKey:",
         error
       );
     }
@@ -984,18 +849,22 @@
 
     canEditInventory =
       currentRole ===
-      "administrador" ||
+        "administrador" ||
       currentRole ===
-      "admin" ||
+        "admin" ||
       currentRole ===
-      "bodega";
+        "bodega";
 
     getInventoryGreetingElements().forEach(
       element => {
         element.textContent =
-          `Hola, ${context.name ||
-          "Usuario"
-          } (${context.role || ""})`;
+          `Hola, ${
+            context.name ||
+            "Usuario"
+          } (${
+            context.role ||
+            ""
+          })`;
       }
     );
 
@@ -1005,7 +874,7 @@
     if (addButton) {
       addButton.style.display =
         canEditInventory &&
-          currentLocalId
+        currentLocalId
           ? ""
           : "none";
     }
@@ -1087,9 +956,7 @@
     }
 
     const name =
-      getProviderName(
-        provider
-      );
+      getProviderName(provider);
 
     const businessName =
       getProviderBusinessName(
@@ -1106,7 +973,10 @@
     return (
       name ||
       businessName ||
-      ""
+      String(
+        provider?.id ||
+        ""
+      ).trim()
     );
   }
 
@@ -1123,6 +993,7 @@
         provider.id ||
         provider.id_proveedor ||
         provider.proveedorId ||
+        provider.providerId ||
         fallbackId ||
         ""
       ).trim();
@@ -1147,7 +1018,6 @@
 
     return {
       id,
-
       ...provider,
 
       nombre,
@@ -1165,6 +1035,546 @@
           provider
         )
     };
+  }
+
+  function normalizeProviderCollection(
+    rawProviders,
+    rawIds = []
+  ) {
+    const providers =
+      [];
+
+    if (
+      Array.isArray(
+        rawProviders
+      )
+    ) {
+      rawProviders.forEach(
+        provider => {
+          if (
+            typeof provider ===
+              "string"
+          ) {
+            const resolved =
+              getProviderById(
+                provider
+              );
+
+            if (
+              resolved
+            ) {
+              providers.push(
+                resolved
+              );
+            }
+
+            return;
+          }
+
+          const normalized =
+            normalizeProviderObject(
+              provider
+            );
+
+          if (
+            normalized
+          ) {
+            const resolved =
+              normalized.id
+                ? getProviderById(
+                    normalized.id
+                  )
+                : null;
+
+            providers.push(
+              resolved
+                ? {
+                    ...normalized,
+                    ...resolved
+                  }
+                : normalized
+            );
+          }
+        }
+      );
+    }
+
+    normalizeIdArray(
+      rawIds
+    ).forEach(
+      providerId => {
+        const exists =
+          providers.some(
+            provider =>
+              String(
+                provider.id
+              ).trim() ===
+              providerId
+          );
+
+        if (
+          exists
+        ) {
+          return;
+        }
+
+        const provider =
+          getProviderById(
+            providerId
+          );
+
+        if (
+          provider
+        ) {
+          providers.push(
+            provider
+          );
+        } else {
+          providers.push(
+            normalizeProviderObject(
+              {
+                id:
+                  providerId
+              }
+            )
+          );
+        }
+      }
+    );
+
+    const result =
+      [];
+
+    const usedIds =
+      new Set();
+
+    const usedTexts =
+      new Set();
+
+    providers.forEach(
+      provider => {
+        if (!provider) {
+          return;
+        }
+
+        const id =
+          String(
+            provider.id ||
+            ""
+          ).trim();
+
+        const text =
+          normalizeText(
+            getProviderDisplayName(
+              provider
+            )
+          );
+
+        if (
+          id
+        ) {
+          if (
+            usedIds.has(id)
+          ) {
+            return;
+          }
+
+          usedIds.add(id);
+          result.push(
+            provider
+          );
+          return;
+        }
+
+        if (
+          text &&
+          usedTexts.has(text)
+        ) {
+          return;
+        }
+
+        if (
+          text
+        ) {
+          usedTexts.add(text);
+        }
+
+        result.push(
+          provider
+        );
+      }
+    );
+
+    return result;
+  }
+
+  function getProviderById(
+    providerId
+  ) {
+    const target =
+      String(
+        providerId ||
+        ""
+      ).trim();
+
+    if (!target) {
+      return null;
+    }
+
+    return (
+      currentProvidersList.find(
+        provider =>
+          String(
+            provider.id
+          ).trim() ===
+          target
+      ) ||
+      null
+    );
+  }
+
+  function getProviderIds(
+    providers
+  ) {
+    return normalizeIdArray(
+      (providers || [])
+        .map(
+          provider =>
+            provider?.id ||
+            provider
+        )
+    );
+  }
+
+  function mergeProviderCollections(
+    ...collections
+  ) {
+    const result =
+      [];
+
+    const seenIds =
+      new Set();
+
+    const seenTexts =
+      new Set();
+
+    collections
+      .flat()
+      .forEach(
+        provider => {
+          const normalized =
+            typeof provider ===
+              "string"
+              ? getProviderById(
+                  provider
+                )
+              : normalizeProviderObject(
+                  provider
+                );
+
+          if (!normalized) {
+            return;
+          }
+
+          const id =
+            String(
+              normalized.id ||
+              ""
+            ).trim();
+
+          const text =
+            normalizeText(
+              getProviderDisplayName(
+                normalized
+              )
+            );
+
+          if (
+            id
+          ) {
+            if (
+              seenIds.has(id)
+            ) {
+              return;
+            }
+
+            seenIds.add(id);
+            result.push(
+              normalized
+            );
+            return;
+          }
+
+          if (
+            text &&
+            seenTexts.has(text)
+          ) {
+            return;
+          }
+
+          if (
+            text
+          ) {
+            seenTexts.add(text);
+          }
+
+          result.push(
+            normalized
+          );
+        }
+      );
+
+    return result;
+  }
+
+  function getProductProviders(
+    product
+  ) {
+    if (!product) {
+      return [];
+    }
+
+    const rawProviders =
+      product.proveedores ||
+      product.providers ||
+      [];
+
+    const rawProviderIds =
+      product.proveedorIds ||
+      product.providerIds ||
+      [];
+
+    const providers =
+      normalizeProviderCollection(
+        rawProviders,
+        rawProviderIds
+      );
+
+    const legacyProvider =
+      normalizeProviderObject({
+        id:
+          product.proveedorId ||
+          product.providerId ||
+          "",
+        nombre:
+          product.proveedorNombre ||
+          product.providerName ||
+          "",
+        razonSocialDenominacion:
+          product.proveedorRazonSocial ||
+          product.proveedorRazonSocialDenominacion ||
+          product.proveedorDenominacion ||
+          product.providerBusinessName ||
+          ""
+      });
+
+    return mergeProviderCollections(
+      providers,
+      legacyProvider
+    );
+  }
+
+  function getProductProviderIds(
+    product
+  ) {
+    return getProviderIds(
+      getProductProviders(
+        product
+      )
+    );
+  }
+
+  function getProductProviderId(
+    product
+  ) {
+    return (
+      getProductProviderIds(
+        product
+      )[0] ||
+      ""
+    );
+  }
+
+  function getProductProviderName(
+    product
+  ) {
+    const provider =
+      getProductProviders(
+        product
+      )[0];
+
+    return (
+      getProviderName(
+        provider
+      ) ||
+      String(
+        product?.proveedorNombre ||
+        ""
+      ).trim()
+    );
+  }
+
+  function getProductProviderReason(
+    product
+  ) {
+    const provider =
+      getProductProviders(
+        product
+      )[0];
+
+    return (
+      getProviderBusinessName(
+        provider
+      ) ||
+      String(
+        product?.proveedorRazonSocial ||
+        product?.proveedorRazonSocialDenominacion ||
+        product?.proveedorDenominacion ||
+        ""
+      ).trim()
+    );
+  }
+
+  function getProductProvidersDisplay(
+    product
+  ) {
+    const providers =
+      getProductProviders(
+        product
+      );
+
+    if (
+      !providers.length
+    ) {
+      return "Sin proveedor";
+    }
+
+    return providers
+      .map(
+        provider =>
+          getProviderDisplayName(
+            provider
+          )
+      )
+      .filter(Boolean)
+      .join(" | ");
+  }
+
+  function getProductProvidersSearchText(
+    product
+  ) {
+    return getProductProviders(
+      product
+    )
+      .map(
+        provider =>
+          [
+            getProviderName(
+              provider
+            ),
+            getProviderBusinessName(
+              provider
+            ),
+            getProviderDisplayName(
+              provider
+            )
+          ]
+            .filter(Boolean)
+            .join(" ")
+      )
+      .join(" ");
+  }
+
+  function findProviderByText(
+    value
+  ) {
+    const text =
+      normalizeText(value);
+
+    if (!text) {
+      return null;
+    }
+
+    const exactName =
+      currentProvidersList.find(
+        provider =>
+          normalizeText(
+            getProviderName(
+              provider
+            )
+          ) ===
+          text
+      );
+
+    if (
+      exactName
+    ) {
+      return exactName;
+    }
+
+    const exactBusiness =
+      currentProvidersList.find(
+        provider =>
+          normalizeText(
+            getProviderBusinessName(
+              provider
+            )
+          ) ===
+          text
+      );
+
+    if (
+      exactBusiness
+    ) {
+      return exactBusiness;
+    }
+
+    const exactDisplay =
+      currentProvidersList.find(
+        provider =>
+          normalizeText(
+            getProviderDisplayName(
+              provider
+            )
+          ) ===
+          text
+      );
+
+    if (
+      exactDisplay
+    ) {
+      return exactDisplay;
+    }
+
+    return (
+      currentProvidersList.find(
+        provider =>
+          normalizeText(
+            getProviderDisplayName(
+              provider
+            )
+          ).includes(
+            text
+          )
+      ) ||
+      null
+    );
+  }
+
+  function resolveProviderSelection(
+    value
+  ) {
+    const text =
+      String(
+        value ||
+        ""
+      ).trim();
+
+    return text
+      ? findProviderByText(
+          text
+        )
+      : null;
   }
 
   async function loadInventoryProviders() {
@@ -1198,14 +1608,14 @@
           }
 
           const provider =
-            normalizeProviderObject(
-              {
-                id,
-                ...(data || {})
-              }
-            );
+            normalizeProviderObject({
+              id,
+              ...(data || {})
+            });
 
-          if (provider) {
+          if (
+            provider
+          ) {
             providers.push(
               provider
             );
@@ -1237,10 +1647,10 @@
 
       return currentProvidersList;
     } catch (
-    error
+      error
     ) {
       console.warn(
-        "No se pudieron cargar proveedores desde la caché de sesión:",
+        "No se pudieron cargar proveedores:",
         error
       );
 
@@ -1249,238 +1659,6 @@
 
       return [];
     }
-  }
-
-  function getProviderById(
-    providerId
-  ) {
-    const target =
-      String(
-        providerId ||
-        ""
-      ).trim();
-
-    if (!target) {
-      return null;
-    }
-
-    return (
-      currentProvidersList.find(
-        provider =>
-          String(
-            provider.id
-          ).trim() ===
-          target
-      ) ||
-      null
-    );
-  }
-
-  function findProviderByText(
-    value
-  ) {
-    const text =
-      normalizeText(
-        value
-      );
-
-    if (!text) {
-      return null;
-    }
-
-    const exactName =
-      currentProvidersList.find(
-        provider =>
-          normalizeText(
-            getProviderName(
-              provider
-            )
-          ) ===
-          text
-      );
-
-    if (
-      exactName
-    ) {
-      return exactName;
-    }
-
-    const exactBusinessName =
-      currentProvidersList.find(
-        provider =>
-          normalizeText(
-            getProviderBusinessName(
-              provider
-            )
-          ) ===
-          text
-      );
-
-    if (
-      exactBusinessName
-    ) {
-      return exactBusinessName;
-    }
-
-    const exactDisplay =
-      currentProvidersList.find(
-        provider =>
-          normalizeText(
-            getProviderDisplayName(
-              provider
-            )
-          ) ===
-          text
-      );
-
-    if (
-      exactDisplay
-    ) {
-      return exactDisplay;
-    }
-
-    const containsName =
-      currentProvidersList.find(
-        provider =>
-          normalizeText(
-            getProviderName(
-              provider
-            )
-          ).includes(
-            text
-          )
-      );
-
-    if (
-      containsName
-    ) {
-      return containsName;
-    }
-
-    const containsBusinessName =
-      currentProvidersList.find(
-        provider =>
-          normalizeText(
-            getProviderBusinessName(
-              provider
-            )
-          ).includes(
-            text
-          )
-      );
-
-    if (
-      containsBusinessName
-    ) {
-      return containsBusinessName;
-    }
-
-    return (
-      currentProvidersList.find(
-        provider =>
-          normalizeText(
-            getProviderDisplayName(
-              provider
-            )
-          ).includes(
-            text
-          )
-      ) || null
-    );
-  }
-
-  function resolveProviderSelection(
-    value
-  ) {
-    const text =
-      String(
-        value ||
-        ""
-      ).trim();
-
-    if (!text) {
-      return null;
-    }
-
-    return findProviderByText(
-      text
-    );
-  }
-
-  function getProviderComboboxHtml(
-    inputId,
-    listId,
-    value = "",
-    className = ""
-  ) {
-    const currentValue =
-      String(
-        value ||
-        ""
-      ).trim();
-
-    return `
-      <input
-        id="${escapeHtml(
-      inputId
-    )}"
-        type="text"
-        class="inv-combobox batch-provider ${escapeHtml(
-      className
-    )}"
-        list="${escapeHtml(
-      listId
-    )}"
-        value="${escapeHtml(
-      currentValue
-    )}"
-        placeholder="Nombre o razón social..."
-        autocomplete="off"
-      >
-
-      <datalist
-        id="${escapeHtml(
-      listId
-    )}"
-      >
-        ${currentProvidersList
-        .map(
-          provider => {
-            const name =
-              getProviderName(
-                provider
-              );
-
-            const businessName =
-              getProviderBusinessName(
-                provider
-              );
-
-            const display =
-              getProviderDisplayName(
-                provider
-              );
-
-            return `
-              <option
-                value="${escapeHtml(
-              display
-            )}"
-                label="${escapeHtml(
-              name
-            )}${businessName
-              ? ` — ${escapeHtml(
-                businessName
-              )}`
-              : ""
-              }"
-              ></option>
-            `;
-          }
-        )
-        .join("")}
-      </datalist>
-    `;
   }
 
   /*
@@ -1615,19 +1793,14 @@
         product
       );
 
-    if (
-      unitsPerBox <=
-      0
-    ) {
-      return 0;
-    }
-
-    return decimalOrZero(
-      getCurrentStockUnits(
-        product
-      ) /
-      unitsPerBox
-    );
+    return unitsPerBox > 0
+      ? decimalOrZero(
+          getCurrentStockUnits(
+            product
+          ) /
+            unitsPerBox
+        )
+      : 0;
   }
 
   function getCostPerUnit(
@@ -1654,17 +1827,11 @@
         product
       );
 
-    if (
-      costPerBox > 0 &&
+    return costPerBox > 0 &&
       unitsPerBox > 0
-    ) {
-      return (
-        costPerBox /
-        unitsPerBox
-      );
-    }
-
-    return 0;
+      ? costPerBox /
+          unitsPerBox
+      : 0;
   }
 
   function findProductById(
@@ -1682,46 +1849,16 @@
             product.id
           ).trim() ===
           target
-      ) || null
+      ) ||
+      null
     );
-  }
-
-  function getProductProviderId(
-    product
-  ) {
-    return String(
-      product?.proveedorId ||
-      ""
-    ).trim();
-  }
-
-  function getProductProviderName(
-    product
-  ) {
-    return String(
-      product?.proveedorNombre ||
-      ""
-    ).trim();
-  }
-
-  function getProductProviderReason(
-    product
-  ) {
-    return String(
-      product?.proveedorRazonSocial ||
-      product?.proveedorRazonSocialDenominacion ||
-      product?.proveedorDenominacion ||
-      ""
-    ).trim();
   }
 
   function findProductByText(
     value
   ) {
     const text =
-      normalizeText(
-        value
-      );
+      normalizeText(value);
 
     if (!text) {
       return null;
@@ -1732,19 +1869,15 @@
         product =>
           normalizeText(
             product.name
-          ) ===
-          text ||
+          ) === text ||
           normalizeText(
             getProductCode(
               product
             )
-          ) ===
-          text
+          ) === text
       );
 
-    if (
-      exact
-    ) {
+    if (exact) {
       return exact;
     }
 
@@ -1764,20 +1897,14 @@
             text
           ) ||
           normalizeText(
-            getProductProviderName(
-              product
-            )
-          ).includes(
-            text
-          ) ||
-          normalizeText(
-            getProductProviderReason(
+            getProductProvidersSearchText(
               product
             )
           ).includes(
             text
           )
-      ) || null
+      ) ||
+      null
     );
   }
 
@@ -1795,8 +1922,8 @@
       decimalOrZero(
         product
           ? getUnitsPerBox(
-            product
-          )
+              product
+            )
           : line?.unitsPerBox
       );
 
@@ -1818,8 +1945,8 @@
     const explicitCostPerBox =
       numberOrZero(
         line?.lastCostPerBox ??
-        line?.costoPorCaja ??
-        line?.costPerBox
+          line?.costoPorCaja ??
+          line?.costPerBox
       );
 
     if (
@@ -1831,8 +1958,8 @@
     const explicitCostPerUnit =
       numberOrZero(
         line?.lastCostPerUnit ??
-        line?.costoUnitario ??
-        line?.costPerUnit
+          line?.costoUnitario ??
+          line?.costPerUnit
       );
 
     if (
@@ -1844,9 +1971,7 @@
       );
     }
 
-    if (
-      product
-    ) {
+    if (product) {
       const productBoxCost =
         numberOrZero(
           product.lastCostPerBox
@@ -1889,8 +2014,8 @@
     const explicitCostPerUnit =
       numberOrZero(
         line?.lastCostPerUnit ??
-        line?.costoUnitario ??
-        line?.costPerUnit
+          line?.costoUnitario ??
+          line?.costPerUnit
       );
 
     if (
@@ -1907,7 +2032,7 @@
 
     return unitsPerBox > 0
       ? costPerBox /
-      unitsPerBox
+          unitsPerBox
       : 0;
   }
 
@@ -1945,11 +2070,3964 @@
       0,
       (
         paidBoxes *
-        unitsPerBox +
+          unitsPerBox +
         paidUnits
       ) *
-      costPerUnit
+        costPerUnit
     );
+  }
+
+  /*
+   * ============================================================
+   * PROVEEDORES EN LÍNEAS
+   * ============================================================
+   */
+
+  function getLineProviders(
+    line
+  ) {
+    const arrayProviders =
+      normalizeProviderCollection(
+        line?.proveedores ||
+          [],
+        line?.proveedorIds ||
+          []
+      );
+
+    const legacyProvider =
+      normalizeProviderObject({
+        id:
+          line?.proveedorId ||
+          "",
+        nombre:
+          line?.proveedorNombre ||
+          "",
+        razonSocialDenominacion:
+          line?.proveedorRazonSocial ||
+          ""
+      });
+
+    return mergeProviderCollections(
+      arrayProviders,
+      legacyProvider
+    );
+  }
+
+  function getLineProviderIds(
+    line
+  ) {
+    return getProviderIds(
+      getLineProviders(
+        line
+      )
+    );
+  }
+
+  function getLineProvidersDisplay(
+    line
+  ) {
+    const providers =
+      getLineProviders(
+        line
+      );
+
+    if (
+      !providers.length
+    ) {
+      return "Sin proveedor";
+    }
+
+    return providers
+      .map(
+        provider =>
+          getProviderDisplayName(
+            provider
+          )
+      )
+      .filter(Boolean)
+      .join(" | ");
+  }
+
+  /*
+   * ============================================================
+   * SELECTOR MÚLTIPLE DE PROVEEDORES
+   * ============================================================
+   */
+
+  function buildProviderMultiSelectHtml(
+    selectorId,
+    providers = [],
+    selectedIds = []
+  ) {
+    const normalizedSelected =
+      new Set(
+        normalizeIdArray(
+          selectedIds
+        )
+      );
+
+    const safeProviders =
+      mergeProviderCollections(
+        providers
+      );
+
+    return `
+      <div
+        id="${escapeHtml(
+          selectorId
+        )}"
+        class="provider-multi-select"
+        data-role="provider-selector"
+      >
+        <div class="provider-multi-header">
+          <span>
+            Selecciona uno o varios proveedores
+          </span>
+
+          <span
+            class="provider-multi-count"
+            data-role="provider-count"
+          >
+            ${
+              Array.from(
+                normalizedSelected
+              ).length
+            } seleccionados
+          </span>
+        </div>
+
+        <input
+          type="text"
+          class="provider-multi-search"
+          placeholder="Buscar proveedor..."
+          autocomplete="off"
+          data-role="provider-search"
+        >
+
+        <div
+          class="provider-multi-options"
+          data-role="provider-options"
+        >
+          ${
+            safeProviders.length
+              ? safeProviders
+                  .map(
+                    provider => {
+                      const providerId =
+                        String(
+                          provider.id ||
+                          ""
+                        ).trim();
+
+                      const checked =
+                        normalizedSelected.has(
+                          providerId
+                        );
+
+                      return `
+                        <label
+                          class="provider-multi-option"
+                          data-provider-search="${escapeHtml(
+                            normalizeText(
+                              getProviderDisplayName(
+                                provider
+                              )
+                            )
+                          )}"
+                        >
+                          <input
+                            type="checkbox"
+                            class="provider-multi-checkbox"
+                            value="${escapeHtml(
+                              providerId
+                            )}"
+                            ${
+                              checked
+                                ? "checked"
+                                : ""
+                            }
+                          >
+
+                          <span>
+                            <strong>
+                              ${escapeHtml(
+                                getProviderName(
+                                  provider
+                                ) ||
+                                  getProviderBusinessName(
+                                    provider
+                                  ) ||
+                                  "Proveedor"
+                              )}
+                            </strong>
+
+                            ${
+                              getProviderBusinessName(
+                                provider
+                              )
+                                ? `
+                                  <small>
+                                    ${escapeHtml(
+                                      getProviderBusinessName(
+                                        provider
+                                      )
+                                    )}
+                                  </small>
+                                `
+                                : ""
+                            }
+                          </span>
+                        </label>
+                      `;
+                    }
+                  )
+                  .join("")
+              : `
+                  <div class="provider-multi-empty">
+                    No hay proveedores disponibles para este local.
+                  </div>
+                `
+          }
+        </div>
+
+        <div
+          class="provider-multi-summary"
+          data-role="provider-summary"
+        >
+          ${
+            safeProviders
+              .filter(
+                provider =>
+                  normalizedSelected.has(
+                    String(
+                      provider.id ||
+                        ""
+                    ).trim()
+                  )
+              )
+              .map(
+                provider =>
+                  escapeHtml(
+                    getProviderDisplayName(
+                      provider
+                    )
+                  )
+              )
+              .join(" | ") ||
+            "Ningún proveedor seleccionado"
+          }
+        </div>
+      </div>
+    `;
+  }
+
+  function getProviderSelectorRoot(
+    rowOrSelector
+  ) {
+    if (
+      !rowOrSelector
+    ) {
+      return null;
+    }
+
+    if (
+      typeof rowOrSelector ===
+      "string"
+    ) {
+      return document.getElementById(
+        rowOrSelector
+      );
+    }
+
+    if (
+      rowOrSelector instanceof
+      Element
+    ) {
+      return rowOrSelector.querySelector(
+        '[data-role="provider-selector"]'
+      );
+    }
+
+    return null;
+  }
+
+  function getSelectedProviderIdsFromSelector(
+    root
+  ) {
+    if (!root) {
+      return [];
+    }
+
+    return normalizeIdArray(
+      Array.from(
+        root.querySelectorAll(
+          ".provider-multi-checkbox:checked"
+        )
+      ).map(
+        input =>
+          input.value
+      )
+    );
+  }
+
+  function updateProviderSelectorSummary(
+    root
+  ) {
+    if (!root) {
+      return;
+    }
+
+    const selectedIds =
+      getSelectedProviderIdsFromSelector(
+        root
+      );
+
+    const selectedSet =
+      new Set(
+        selectedIds
+      );
+
+    const providers =
+      currentProvidersList
+        .filter(
+          provider =>
+            selectedSet.has(
+              String(
+                provider.id
+              ).trim()
+            )
+        );
+
+    const summary =
+      root.querySelector(
+        '[data-role="provider-summary"]'
+      );
+
+    const count =
+      root.querySelector(
+        '[data-role="provider-count"]'
+      );
+
+    if (summary) {
+      summary.textContent =
+        providers
+          .map(
+            provider =>
+              getProviderDisplayName(
+                provider
+              )
+          )
+          .filter(Boolean)
+          .join(" | ") ||
+        "Ningún proveedor seleccionado";
+    }
+
+    if (count) {
+      count.textContent =
+        `${selectedIds.length} seleccionado${
+          selectedIds.length ===
+          1
+            ? ""
+            : "s"
+        }`;
+    }
+  }
+
+  function bindProviderSelectorEvents(
+    root
+  ) {
+    if (!root) {
+      return;
+    }
+
+    const search =
+      root.querySelector(
+        '[data-role="provider-search"]'
+      );
+
+    if (
+      search &&
+      search.dataset.bound !==
+        "1"
+    ) {
+      search.dataset.bound =
+        "1";
+
+      search.addEventListener(
+        "input",
+        () => {
+          const text =
+            normalizeText(
+              search.value
+            );
+
+          root
+            .querySelectorAll(
+              ".provider-multi-option"
+            )
+            .forEach(
+              option => {
+                const searchText =
+                  option.dataset
+                    .providerSearch ||
+                  "";
+
+                option.style.display =
+                  !text ||
+                  searchText.includes(
+                    text
+                  )
+                    ? ""
+                    : "none";
+              }
+            );
+        }
+      );
+    }
+
+    root
+      .querySelectorAll(
+        ".provider-multi-checkbox"
+      )
+      .forEach(
+        checkbox => {
+          if (
+            checkbox.dataset.bound ===
+            "1"
+          ) {
+            return;
+          }
+
+          checkbox.dataset.bound =
+            "1";
+
+          checkbox.addEventListener(
+            "change",
+            () => {
+              updateProviderSelectorSummary(
+                root
+              );
+            }
+          );
+        }
+      );
+  }
+
+  function setProviderSelector(
+    root,
+    providers,
+    selectedIds,
+    autoSelectFirst = false
+  ) {
+    if (!root) {
+      return [];
+    }
+
+    const available =
+      mergeProviderCollections(
+        providers
+      );
+
+    let selected =
+      normalizeIdArray(
+        selectedIds
+      );
+
+    const availableIds =
+      getProviderIds(
+        available
+      );
+
+    selected =
+      selected.filter(
+        id =>
+          availableIds.includes(
+            id
+          )
+      );
+
+    if (
+      !selected.length &&
+      autoSelectFirst &&
+      available.length
+    ) {
+      const firstId =
+        String(
+          available[0].id ||
+            ""
+        ).trim();
+
+      if (
+        firstId
+      ) {
+        selected = [
+          firstId
+        ];
+      }
+    }
+
+    root.innerHTML =
+      buildProviderMultiSelectHtml(
+        root.id,
+        available,
+        selected
+      );
+
+    bindProviderSelectorEvents(
+      root
+    );
+
+    return selected;
+  }
+
+  /*
+   * ============================================================
+   * PROYECCIONES
+   * ============================================================
+   */
+
+  function buildProjectionForProduct(
+    product
+  ) {
+    const stockUnits =
+      getCurrentStockUnits(
+        product
+      );
+
+    const stockBoxes =
+      getStockBoxes(
+        product
+      );
+
+    const unitsPerBox =
+      getUnitsPerBox(
+        product
+      );
+
+    const soldUnits =
+      decimalOrZero(
+        currentMonthlySalesMap[
+          product.id
+        ]
+      );
+
+    const soldBoxes =
+      decimalOrZero(
+        currentMonthlyBoxesMap[
+          product.id
+        ]
+      );
+
+    const costPerUnit =
+      getCostPerUnit(
+        product
+      );
+
+    let suggestedUnits =
+      soldUnits +
+      SAFETY_STOCK_DEFAULT -
+      stockUnits;
+
+    suggestedUnits =
+      Math.max(
+        0,
+        suggestedUnits
+      );
+
+    const suggestedBoxes =
+      unitsPerBox > 0
+        ? decimalOrZero(
+            suggestedUnits /
+              unitsPerBox
+          )
+        : 0;
+
+    let status =
+      "OK";
+
+    if (
+      suggestedUnits >
+      0
+    ) {
+      status =
+        "Reponer";
+    } else if (
+      stockUnits <=
+      LOW_STOCK_THRESHOLD
+    ) {
+      status =
+        "Bajo";
+    }
+
+    return {
+      stockUnits,
+      stockBoxes,
+      unitsPerBox,
+      soldUnits,
+      soldBoxes,
+      costPerUnit,
+      suggestedUnits,
+      suggestedBoxes,
+      status
+    };
+  }
+
+  function buildRowData(
+    product
+  ) {
+    const projection =
+      buildProjectionForProduct(
+        product
+      );
+
+    const providerDisplay =
+      getProductProvidersDisplay(
+        product
+      );
+
+    const productCode =
+      getProductCode(
+        product
+      );
+
+    return {
+      id:
+        product.id,
+
+      name:
+        product.name ||
+        "—",
+
+      providerName:
+        providerDisplay,
+
+      providerReason:
+        "",
+
+      productCode,
+
+      price:
+        numberOrZero(
+          product.price
+        ),
+
+      stockUnits:
+        projection.stockUnits,
+
+      stockBoxes:
+        projection.stockBoxes,
+
+      unitsPerBox:
+        projection.unitsPerBox,
+
+      soldMonthUnits:
+        projection.soldUnits,
+
+      soldMonthBoxes:
+        projection.soldBoxes,
+
+      costPerUnit:
+        projection.costPerUnit,
+
+      suggestedPurchaseUnits:
+        projection.suggestedUnits,
+
+      suggestedPurchaseBoxes:
+        projection.suggestedBoxes,
+
+      status:
+        projection.status,
+
+      searchText:
+        [
+          product.name,
+          productCode,
+          getProductProvidersSearchText(
+            product
+          )
+        ]
+          .filter(Boolean)
+          .join(" ")
+    };
+  }
+
+  function renderStatusChip(
+    status
+  ) {
+    if (
+      status ===
+      "Reponer"
+    ) {
+      return `
+        <span style="
+          padding:4px 8px;
+          border-radius:999px;
+          background:#fee2e2;
+          color:#b91c1c;
+          font-weight:700;
+        ">
+          Reponer
+        </span>
+      `;
+    }
+
+    if (
+      status ===
+      "Bajo"
+    ) {
+      return `
+        <span style="
+          padding:4px 8px;
+          border-radius:999px;
+          background:#fef3c7;
+          color:#92400e;
+          font-weight:700;
+        ">
+          Bajo
+        </span>
+      `;
+    }
+
+    return `
+      <span style="
+        padding:4px 8px;
+        border-radius:999px;
+        background:#dcfce7;
+        color:#166534;
+        font-weight:700;
+      ">
+        OK
+      </span>
+    `;
+  }
+
+  function renderStockDisplay(
+    row
+  ) {
+    const stock =
+      decimalOrZero(
+        row.stockUnits
+      );
+
+    const unitsPerBox =
+      decimalOrZero(
+        row.unitsPerBox
+      );
+
+    if (
+      unitsPerBox > 0
+    ) {
+      const boxesEquivalent =
+        decimalOrZero(
+          stock /
+            unitsPerBox
+        );
+
+      return `
+        <strong>
+          ${formatQuantity(
+            stock
+          )}
+        </strong>
+
+        <br>
+
+        <small>
+          ${formatQuantity(
+            boxesEquivalent
+          )}
+          ${
+            boxesEquivalent ===
+            1
+              ? "caja"
+              : "cajas"
+          }
+          equivalentes
+          ×
+          ${formatQuantity(
+            unitsPerBox
+          )}
+          unidades/caja
+        </small>
+      `;
+    }
+
+    return formatQuantity(
+      stock
+    );
+  }
+
+  function renderActions(
+    row
+  ) {
+    if (
+      !canEditInventory
+    ) {
+      return `
+        <span class="small">
+          Solo lectura
+        </span>
+      `;
+    }
+
+    const isAdmin =
+      isAdministratorRole();
+
+    return `
+      <button
+        type="button"
+        class="btn-outline"
+        data-action="movements"
+        data-id="${escapeHtml(
+          row.id
+        )}"
+      >
+        <i class="fas fa-history"></i>
+        Entradas
+      </button>
+
+      <button
+        type="button"
+        class="btn-outline"
+        data-action="delete"
+        data-id="${escapeHtml(
+          row.id
+        )}"
+        data-name="${escapeHtml(
+          row.name
+        )}"
+        style="margin-left:8px;"
+        ${
+          isAdmin
+            ? ""
+            : "disabled title='Solo administrador puede eliminar productos'"
+        }
+      >
+        <i class="fas fa-trash"></i>
+        Eliminar
+      </button>
+    `;
+  }
+
+  function ensureInventoryDataTable() {
+    if (
+      inventoryDT
+    ) {
+      return inventoryDT;
+    }
+
+    if (
+      !window.jQuery ||
+      !$.fn ||
+      !$.fn.DataTable
+    ) {
+      return null;
+    }
+
+    const table =
+      document.getElementById(
+        "inventoryTable"
+      );
+
+    if (!table) {
+      return null;
+    }
+
+    inventoryDT =
+      $("#inventoryTable")
+        .DataTable({
+          data: [],
+
+          columns: [
+            {
+              data:
+                "name",
+
+              title:
+                "Nombre",
+
+              render:
+                (
+                  data,
+                  type
+                ) =>
+                  type ===
+                    "display"
+                    ? escapeHtml(
+                        data
+                      )
+                    : data
+            },
+
+            {
+              data:
+                "providerName",
+
+              title:
+                "Proveedores",
+
+              render:
+                (
+                  data,
+                  type
+                ) =>
+                  type ===
+                    "display"
+                    ? escapeHtml(
+                        data ||
+                          "Sin proveedor"
+                      )
+                    : data
+            },
+
+            {
+              data:
+                "stockUnits",
+
+              title:
+                "Stock",
+
+              render:
+                (
+                  data,
+                  type,
+                  row
+                ) =>
+                  type ===
+                    "display"
+                    ? renderStockDisplay(
+                        row
+                      )
+                    : data
+            },
+
+            {
+              data:
+                "price",
+
+              title:
+                "Precio",
+
+              render:
+                (
+                  data,
+                  type
+                ) =>
+                  type ===
+                    "display"
+                    ? currency(
+                        data
+                      )
+                    : data
+            },
+
+            {
+              data:
+                "soldMonthUnits",
+
+              title:
+                "Vendido Mes (Unid.)",
+
+              render:
+                (
+                  data,
+                  type
+                ) =>
+                  type ===
+                    "display"
+                    ? formatQuantity(
+                        data
+                      )
+                    : data
+            },
+
+            {
+              data:
+                "soldMonthBoxes",
+
+              title:
+                "Vendido Mes (Cajas)",
+
+              render:
+                (
+                  data,
+                  type
+                ) =>
+                  type ===
+                    "display"
+                    ? formatQuantity(
+                        data
+                      )
+                    : data
+            },
+
+            {
+              data:
+                "costPerUnit",
+
+              title:
+                "Costo por unidad",
+
+              render:
+                (
+                  data,
+                  type
+                ) =>
+                  type ===
+                    "display"
+                    ? currency(
+                        data
+                      )
+                    : data
+            },
+
+            {
+              data:
+                "suggestedPurchaseUnits",
+
+              title:
+                "Sugerido Compra (Unid.)",
+
+              render:
+                (
+                  data,
+                  type
+                ) =>
+                  type ===
+                    "display"
+                    ? formatQuantity(
+                        data
+                      )
+                    : data
+            },
+
+            {
+              data:
+                "suggestedPurchaseBoxes",
+
+              title:
+                "Sugerido Compra (Cajas)",
+
+              render:
+                (
+                  data,
+                  type
+                ) =>
+                  type ===
+                    "display"
+                    ? formatQuantity(
+                        data
+                      )
+                    : data
+            },
+
+            {
+              data:
+                "status",
+
+              title:
+                "Estado",
+
+              render:
+                (
+                  data,
+                  type
+                ) =>
+                  type ===
+                    "display"
+                    ? renderStatusChip(
+                        data
+                      )
+                    : data
+            },
+
+            {
+              data:
+                "searchText",
+
+              title:
+                "Búsqueda",
+
+              visible:
+                false,
+
+              searchable:
+                true,
+
+              orderable:
+                false
+            },
+
+            {
+              data:
+                null,
+
+              title:
+                "Acciones",
+
+              orderable:
+                false,
+
+              searchable:
+                false,
+
+              render:
+                (
+                  data,
+                  type,
+                  row
+                ) =>
+                  type ===
+                    "display"
+                    ? renderActions(
+                        row
+                      )
+                    : ""
+            }
+          ],
+
+          pageLength:
+            10,
+
+          lengthMenu:
+            [
+              5,
+              10,
+              25,
+              50
+            ],
+
+          order: [
+            [
+              0,
+              "asc"
+            ]
+          ],
+
+          autoWidth:
+            false,
+
+          scrollX:
+            true,
+
+          scrollCollapse:
+            true,
+
+          deferRender:
+            true,
+
+          dom:
+            'rt<"bottom"ip><"clear">',
+
+          language: {
+            emptyTable:
+              "No hay productos registrados.",
+
+            zeroRecords:
+              "No se encontraron coincidencias.",
+
+            info:
+              "Mostrando _START_ a _END_ de _TOTAL_",
+
+            infoEmpty:
+              "No hay registros",
+
+            infoFiltered:
+              "(filtrado de _MAX_ registros)",
+
+            paginate: {
+              previous:
+                "‹",
+
+              next:
+                "›"
+            }
+          }
+        });
+
+    $("#inventoryTable tbody")
+      .off(
+        "click.inventoryMovements"
+      )
+      .on(
+        "click.inventoryMovements",
+        "button[data-action='movements']",
+        function () {
+          if (
+            !canEditInventory
+          ) {
+            return;
+          }
+
+          openMovementManagerModal(
+            String(
+              $(this).data(
+                "id"
+              )
+            )
+          );
+        }
+      );
+
+    $("#inventoryTable tbody")
+      .off(
+        "click.inventoryDelete"
+      )
+      .on(
+        "click.inventoryDelete",
+        "button[data-action='delete']",
+        function () {
+          if (
+            !canEditInventory
+          ) {
+            return;
+          }
+
+          confirmDeleteProduct(
+            String(
+              $(this).data(
+                "id"
+              )
+            ),
+            String(
+              $(this).data(
+                "name"
+              ) ||
+                ""
+            )
+          );
+        }
+      );
+
+    return inventoryDT;
+  }
+
+  function refreshInventoryView() {
+    const rows =
+      currentProductsList.map(
+        buildRowData
+      );
+
+    const totalValue =
+      rows.reduce(
+        (
+          sum,
+          row
+        ) =>
+          sum +
+          numberOrZero(
+            row.stockUnits
+          ) *
+            numberOrZero(
+              row.price
+            ),
+        0
+      );
+
+    const lowStock =
+      rows.filter(
+        row =>
+          row.stockUnits <=
+            LOW_STOCK_THRESHOLD ||
+          row.suggestedPurchaseUnits >
+            0
+      );
+
+    const totalProductsCard =
+      getInventoryTotalProductsCard();
+
+    const totalValueCard =
+      getInventoryTotalValueCard();
+
+    const lowStockCard =
+      getInventoryLowStockCard();
+
+    if (
+      totalProductsCard
+    ) {
+      totalProductsCard.textContent =
+        String(
+          rows.length
+        );
+    }
+
+    if (
+      totalValueCard
+    ) {
+      totalValueCard.textContent =
+        currency(
+          totalValue
+        );
+    }
+
+    if (
+      lowStockCard
+    ) {
+      lowStockCard.textContent =
+        String(
+          lowStock.length
+        );
+    }
+
+    renderLowStockPanel(
+      lowStock
+    );
+
+    const dt =
+      ensureInventoryDataTable();
+
+    if (dt) {
+      const searchInput =
+        getInventorySearchInput();
+
+      const searchValue =
+        searchInput
+          ? searchInput.value.trim()
+          : "";
+
+      dt.clear();
+      dt.rows.add(
+        rows
+      );
+      dt.draw(false);
+
+      dt.search(
+        searchValue
+      ).draw(false);
+
+      return;
+    }
+
+    renderInventoryFallback(
+      rows
+    );
+  }
+
+  function renderInventoryFallback(
+    rows
+  ) {
+    const inventoryTbody =
+      getInventoryTableBody();
+
+    if (
+      !inventoryTbody
+    ) {
+      return;
+    }
+
+    inventoryTbody.innerHTML =
+      "";
+
+    if (
+      !rows.length
+    ) {
+      inventoryTbody.innerHTML =
+        `
+          <tr>
+            <td colspan="12">
+              No hay productos registrados.
+            </td>
+          </tr>
+        `;
+
+      return;
+    }
+
+    rows.forEach(
+      row => {
+        const tr =
+          document.createElement(
+            "tr"
+          );
+
+        tr.innerHTML = `
+          <td>
+            ${escapeHtml(
+              row.name
+            )}
+          </td>
+
+          <td>
+            ${escapeHtml(
+              row.providerName ||
+                "Sin proveedor"
+            )}
+          </td>
+
+          <td>
+            ${renderStockDisplay(
+              row
+            )}
+          </td>
+
+          <td>
+            ${currency(
+              row.price
+            )}
+          </td>
+
+          <td>
+            ${formatQuantity(
+              row.soldMonthUnits
+            )}
+          </td>
+
+          <td>
+            ${formatQuantity(
+              row.soldMonthBoxes
+            )}
+          </td>
+
+          <td>
+            ${currency(
+              row.costPerUnit
+            )}
+          </td>
+
+          <td>
+            ${formatQuantity(
+              row.suggestedPurchaseUnits
+            )}
+          </td>
+
+          <td>
+            ${formatQuantity(
+              row.suggestedPurchaseBoxes
+            )}
+          </td>
+
+          <td>
+            ${renderStatusChip(
+              row.status
+            )}
+          </td>
+
+          <td>
+            ${renderActions(
+              row
+            )}
+          </td>
+        `;
+
+        inventoryTbody.appendChild(
+          tr
+        );
+      }
+    );
+  }
+
+  function renderLowStockPanel(
+    list
+  ) {
+    const lowStockPanel =
+      getLowStockPanel();
+
+    if (
+      !lowStockPanel
+    ) {
+      return;
+    }
+
+    if (
+      !list.length
+    ) {
+      lowStockPanel.style.display =
+        "none";
+
+      lowStockPanel.innerHTML =
+        "";
+
+      return;
+    }
+
+    lowStockPanel.style.display =
+      "block";
+
+    lowStockPanel.innerHTML =
+      "";
+
+    list.forEach(
+      product => {
+        const item =
+          document.createElement(
+            "div"
+          );
+
+        item.className =
+          "low-stock-item";
+
+        item.innerHTML = `
+          <div>
+            <strong>
+              ${escapeHtml(
+                product.name
+              )}
+            </strong>
+
+            <div class="small">
+              Proveedores:
+              ${escapeHtml(
+                product.providerName ||
+                  "Sin proveedor"
+              )}
+            </div>
+          </div>
+
+          <div>
+            Stock:
+            <strong>
+              ${formatQuantity(
+                product.stockUnits
+              )}
+            </strong>
+
+            |
+
+            Vendido:
+            <strong>
+              ${formatQuantity(
+                product.soldMonthUnits
+              )}
+            </strong>
+
+            |
+
+            Sugerido:
+            <strong>
+              ${formatQuantity(
+                product.suggestedPurchaseUnits
+              )}
+            </strong>
+          </div>
+        `;
+
+        lowStockPanel.appendChild(
+          item
+        );
+      }
+    );
+  }
+
+  /*
+   * ============================================================
+   * VENTAS
+   * ============================================================
+   */
+
+  function getSaleProductId(
+    product
+  ) {
+    return String(
+      product?.productId ||
+      product?.productID ||
+      product?.product_id ||
+      product?.id ||
+      ""
+    ).trim();
+  }
+
+  function aggregateMonthlySales(
+    documents
+  ) {
+    const unitsMap = {};
+
+    const boxesMap = {};
+
+    const now =
+      new Date();
+
+    const monthStart =
+      new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        1,
+        0,
+        0,
+        0,
+        0
+      );
+
+    const nextMonthStart =
+      new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        1,
+        0,
+        0,
+        0,
+        0
+      );
+
+    documents.forEach(
+      document => {
+        const sale =
+          document?.data ||
+          {};
+
+        if (
+          !matchesCurrentLocal(
+            sale
+          )
+        ) {
+          return;
+        }
+
+        const createdAtMs =
+          getTimestampMs(
+            sale.createdAt
+          );
+
+        if (
+          !createdAtMs ||
+          createdAtMs <
+            monthStart.getTime() ||
+          createdAtMs >=
+            nextMonthStart.getTime()
+        ) {
+          return;
+        }
+
+        const products =
+          Array.isArray(
+            sale.products
+          )
+            ? sale.products
+            : [];
+
+        products.forEach(
+          product => {
+            const productId =
+              getSaleProductId(
+                product
+              );
+
+            if (!productId) {
+              return;
+            }
+
+            const unitsPerBox =
+              Math.max(
+                0.000001,
+                numberOrZero(
+                  product.unitsPerBox
+                )
+              );
+
+            const mode =
+              normalizeText(
+                product.mode ||
+                  product.saleMode ||
+                  product.saleType ||
+                  ""
+              );
+
+            const quantity =
+              decimalOrZero(
+                product.quantity
+              );
+
+            const totalUnits =
+              decimalOrZero(
+                product.unitsTotal ??
+                  product.totalUnits
+              );
+
+            let soldUnits = 0;
+
+            let soldBoxes = 0;
+
+            if (
+              mode ===
+              "box"
+            ) {
+              soldBoxes =
+                quantity > 0
+                  ? quantity
+                  : totalUnits > 0
+                    ? totalUnits /
+                      unitsPerBox
+                    : 0;
+
+              soldUnits =
+                totalUnits > 0
+                  ? totalUnits
+                  : soldBoxes *
+                    unitsPerBox;
+            } else if (
+              mode ===
+              "unit"
+            ) {
+              soldUnits =
+                totalUnits > 0
+                  ? totalUnits
+                  : quantity;
+            } else if (
+              totalUnits > 0
+            ) {
+              soldUnits =
+                totalUnits;
+            } else if (
+              decimalOrZero(
+                product.boxes
+              ) > 0
+            ) {
+              soldBoxes =
+                decimalOrZero(
+                  product.boxes
+                );
+
+              soldUnits =
+                soldBoxes *
+                  unitsPerBox;
+            } else {
+              soldUnits =
+                quantity;
+            }
+
+            unitsMap[
+              productId
+            ] =
+              (
+                unitsMap[
+                  productId
+                ] || 0
+              ) +
+              soldUnits;
+
+            boxesMap[
+              productId
+            ] =
+              (
+                boxesMap[
+                  productId
+                ] || 0
+              ) +
+              soldBoxes;
+          }
+        );
+      }
+    );
+
+    return {
+      unitsMap,
+      boxesMap
+    };
+  }
+
+  function aggregateAllTimeSalesMap(
+    documents
+  ) {
+    const unitsMap = {};
+
+    documents.forEach(
+      document => {
+        const sale =
+          document?.data ||
+          {};
+
+        if (
+          !matchesCurrentLocal(
+            sale
+          )
+        ) {
+          return;
+        }
+
+        const products =
+          Array.isArray(
+            sale.products
+          )
+            ? sale.products
+            : [];
+
+        products.forEach(
+          product => {
+            const productId =
+              getSaleProductId(
+                product
+              );
+
+            if (!productId) {
+              return;
+            }
+
+            const unitsPerBox =
+              Math.max(
+                0.000001,
+                numberOrZero(
+                  product.unitsPerBox
+                )
+              );
+
+            const mode =
+              normalizeText(
+                product.mode ||
+                  product.saleMode ||
+                  product.saleType ||
+                  ""
+              );
+
+            const quantity =
+              decimalOrZero(
+                product.quantity
+              );
+
+            const totalUnits =
+              decimalOrZero(
+                product.unitsTotal ??
+                  product.totalUnits
+              );
+
+            let soldUnits = 0;
+
+            if (
+              mode ===
+              "box"
+            ) {
+              soldUnits =
+                totalUnits > 0
+                  ? totalUnits
+                  : quantity *
+                    unitsPerBox;
+            } else if (
+              mode ===
+              "unit"
+            ) {
+              soldUnits =
+                totalUnits > 0
+                  ? totalUnits
+                  : quantity;
+            } else if (
+              totalUnits > 0
+            ) {
+              soldUnits =
+                totalUnits;
+            } else if (
+              decimalOrZero(
+                product.boxes
+              ) > 0
+            ) {
+              soldUnits =
+                decimalOrZero(
+                  product.boxes
+                ) *
+                unitsPerBox;
+            } else {
+              soldUnits =
+                quantity;
+            }
+
+            unitsMap[
+              productId
+            ] =
+              (
+                unitsMap[
+                  productId
+                ] || 0
+              ) +
+              soldUnits;
+          }
+        );
+      }
+    );
+
+    return unitsMap;
+  }
+
+  /*
+   * ============================================================
+   * MOVIMIENTOS / RECONCILIACIÓN
+   * ============================================================
+   */
+
+  function calculateMovementNetStockMap(
+    movementDocuments
+  ) {
+    const stockMap = {};
+
+    movementDocuments.forEach(
+      ({
+        id,
+        data
+      }) => {
+        if (
+          !matchesCurrentLocal(
+            data
+          )
+        ) {
+          return;
+        }
+
+        const productId =
+          String(
+            data?.productId ||
+              data?.productID ||
+              data?.product_id ||
+              ""
+          ).trim();
+
+        if (!productId) {
+          return;
+        }
+
+        const movement =
+          normalizeMovementDocument(
+            id,
+            data
+          );
+
+        stockMap[
+          productId
+        ] =
+          (
+            stockMap[
+              productId
+            ] || 0
+          ) +
+          (
+            decimalOrZero(
+              movement.entrada
+            ) -
+            decimalOrZero(
+              movement.salida
+            )
+          );
+      }
+    );
+
+    return stockMap;
+  }
+
+  async function reconcileProductsAgainstMovements(
+    products,
+    movementDocuments,
+    salesDocuments
+  ) {
+    if (
+      !Array.isArray(
+        products
+      ) ||
+      !products.length
+    ) {
+      return;
+    }
+
+    const movementStockMap =
+      calculateMovementNetStockMap(
+        movementDocuments
+      );
+
+    const salesStockMap =
+      aggregateAllTimeSalesMap(
+        salesDocuments
+      );
+
+    const updates = [];
+
+    products.forEach(
+      product => {
+        const productId =
+          String(
+            product?.id ||
+              ""
+          ).trim();
+
+        if (!productId) {
+          return;
+        }
+
+        const movementNet =
+          decimalOrZero(
+            movementStockMap[
+              productId
+            ]
+          );
+
+        const historicalSales =
+          decimalOrZero(
+            salesStockMap[
+              productId
+            ]
+          );
+
+        if (
+          movementNet <=
+          0 ||
+          historicalSales >
+            0
+        ) {
+          return;
+        }
+
+        const currentStock =
+          getCurrentStockUnits(
+            product
+          );
+
+        if (
+          currentStock ===
+          movementNet
+        ) {
+          return;
+        }
+
+        updates.push({
+          product,
+          stock:
+            movementNet
+        });
+      }
+    );
+
+    if (
+      !updates.length
+    ) {
+      return;
+    }
+
+    for (
+      let index = 0;
+      index <
+      updates.length;
+      index +=
+      450
+    ) {
+      const chunk =
+        updates.slice(
+          index,
+          index + 450
+        );
+
+      const batch =
+        db.batch();
+
+      chunk.forEach(
+        ({
+          product,
+          stock
+        }) => {
+          const ref =
+            db
+              .collection(
+                PRODUCTS_COLLECTION
+              )
+              .doc(
+                product.id
+              );
+
+          const unitsPerBox =
+            getUnitsPerBox(
+              product
+            );
+
+          batch.update(
+            ref,
+            {
+              quantity:
+                stock,
+
+              stockCurrentUnits:
+                stock,
+
+              boxes:
+                unitsPerBox > 0
+                  ? decimalOrZero(
+                      stock /
+                        unitsPerBox
+                    )
+                  : 0,
+
+              updatedAt:
+                firebase.firestore
+                  .FieldValue
+                  .serverTimestamp()
+            }
+          );
+        }
+      );
+
+      await batch.commit();
+
+      chunk.forEach(
+        ({
+          product,
+          stock
+        }) => {
+          const unitsPerBox =
+            getUnitsPerBox(
+              product
+            );
+
+          product.quantity =
+            stock;
+
+          product.stockCurrentUnits =
+            stock;
+
+          product.boxes =
+            unitsPerBox > 0
+              ? decimalOrZero(
+                  stock /
+                    unitsPerBox
+                )
+              : 0;
+
+          upsertSessionDocument(
+            PRODUCTS_COLLECTION,
+            product.id,
+            {
+              ...product,
+              quantity:
+                stock,
+              stockCurrentUnits:
+                stock,
+              boxes:
+                product.boxes,
+              updatedAt:
+                Date.now()
+            }
+          );
+        }
+      );
+    }
+  }
+
+  /*
+   * ============================================================
+   * CARGA DE INVENTARIO
+   * ============================================================
+   */
+
+  async function loadInventoryData() {
+    if (
+      inventoryLoadPromise
+    ) {
+      return inventoryLoadPromise;
+    }
+
+    inventoryLoadPromise =
+      (async () => {
+        if (
+          !currentLocalId
+        ) {
+          currentProductsList =
+            [];
+
+          currentMonthlySalesMap =
+            {};
+
+          currentMonthlyBoxesMap =
+            {};
+
+          refreshInventoryView();
+
+          return;
+        }
+
+        const productDocuments =
+          getSessionCollection(
+            PRODUCTS_COLLECTION
+          );
+
+        const products =
+          [];
+
+        productDocuments.forEach(
+          ({
+            id,
+            data
+          }) => {
+            if (
+              !matchesCurrentLocal(
+                data
+              )
+            ) {
+              return;
+            }
+
+            const productProviders =
+              getProductProviders(
+                {
+                  ...data
+                }
+              );
+
+            const primaryProvider =
+              productProviders[0] ||
+              null;
+
+            const stockUnits =
+              getCurrentStockUnits(
+                data
+              );
+
+            products.push({
+              id,
+              ...data,
+
+              proveedorIds:
+                getProviderIds(
+                  productProviders
+                ),
+
+              proveedorIdsV2:
+                getProviderIds(
+                  productProviders
+                ),
+
+              proveedores:
+                productProviders,
+
+              proveedorId:
+                primaryProvider?.id ||
+                data.proveedorId ||
+                null,
+
+              proveedorNombre:
+                getProviderName(
+                  primaryProvider
+                ) ||
+                String(
+                  data.proveedorNombre ||
+                    ""
+                ).trim(),
+
+              proveedorRazonSocial:
+                getProviderBusinessName(
+                  primaryProvider
+                ) ||
+                String(
+                  data.proveedorRazonSocial ||
+                    data.proveedorRazonSocialDenominacion ||
+                    data.proveedorDenominacion ||
+                    ""
+                ).trim(),
+
+              id_local:
+                currentLocalId,
+
+              localNombre:
+                data.localNombre ||
+                currentLocalInfo.nombre ||
+                "",
+
+              localNumeroDocumento:
+                data.localNumeroDocumento ||
+                currentLocalInfo.numeroDocumento ||
+                "",
+
+              localUbicacion:
+                data.localUbicacion ||
+                currentLocalInfo.ubicacion ||
+                "",
+
+              localContribuyente:
+                data.localContribuyente ||
+                currentLocalInfo.contribuyente ||
+                "",
+
+              localTipoDocumento:
+                data.localTipoDocumento ||
+                currentLocalInfo.tipoDocumento ||
+                "",
+
+              localNIT:
+                data.localNIT ||
+                currentLocalInfo.nit ||
+                "",
+
+              localNRC:
+                data.localNRC ||
+                currentLocalInfo.nrc ||
+                "",
+
+              quantity:
+                stockUnits,
+
+              stockCurrentUnits:
+                stockUnits,
+
+              unitsPerBox:
+                Math.max(
+                  0.000001,
+                  decimalOrZero(
+                    data.unitsPerBox
+                  ) || 1
+                )
+            });
+          }
+        );
+
+        products.sort(
+          (
+            a,
+            b
+          ) =>
+            normalizeText(
+              a.name
+            ).localeCompare(
+              normalizeText(
+                b.name
+              ),
+              "es"
+            )
+        );
+
+        currentProductsList =
+          products;
+
+        const salesDocuments =
+          getSessionCollection(
+            SALES_COLLECTION
+          );
+
+        const sales =
+          aggregateMonthlySales(
+            salesDocuments
+          );
+
+        currentMonthlySalesMap =
+          sales.unitsMap;
+
+        currentMonthlyBoxesMap =
+          sales.boxesMap;
+
+        await reconcileProductsAgainstMovements(
+          currentProductsList,
+          getSessionCollection(
+            MOVEMENTS_COLLECTION
+          ),
+          salesDocuments
+        );
+
+        refreshInventoryView();
+
+        console.log(
+          "[Inventario] Datos cargados:",
+          {
+            productos:
+              currentProductsList.length,
+
+            ventas:
+              salesDocuments.length,
+
+            proveedores:
+              currentProvidersList.length
+          }
+        );
+      })();
+
+    try {
+      return await inventoryLoadPromise;
+    } finally {
+      inventoryLoadPromise =
+        null;
+    }
+  }
+
+  /*
+   * ============================================================
+   * PRODUCT COMBO
+   * ============================================================
+   */
+
+  function buildProductCombobox(
+    rowId,
+    value = ""
+  ) {
+    return `
+      <input
+        id="batch-product-${escapeHtml(
+          rowId
+        )}"
+        class="batch-product-input inv-combobox"
+        type="text"
+        list="batch-product-list-${escapeHtml(
+          rowId
+        )}"
+        value="${escapeHtml(
+          value
+        )}"
+        placeholder="Producto existente o nombre nuevo"
+        autocomplete="off"
+      >
+
+      <datalist
+        id="batch-product-list-${escapeHtml(
+          rowId
+        )}"
+      >
+        ${getProductComboOptionsHtml()}
+      </datalist>
+    `;
+  }
+
+  function refreshProductComboboxDatalist(
+    rowElement
+  ) {
+    const input =
+      rowElement.querySelector(
+        ".batch-product-input"
+      );
+
+    if (!input) {
+      return;
+    }
+
+    const listId =
+      input.getAttribute(
+        "list"
+      );
+
+    if (!listId) {
+      return;
+    }
+
+    const list =
+      document.getElementById(
+        listId
+      );
+
+    if (!list) {
+      return;
+    }
+
+    list.innerHTML =
+      getProductComboOptionsHtml();
+  }
+
+  function getProductComboOptionsHtml() {
+    return currentProductsList
+      .map(
+        product => {
+          const name =
+            String(
+              product.name ||
+                ""
+            ).trim();
+
+          const code =
+            getProductCode(
+              product
+            );
+
+          const providers =
+            getProductProvidersDisplay(
+              product
+            );
+
+          const display =
+            [
+              name,
+              code,
+              providers
+            ]
+              .filter(Boolean)
+              .join(
+                " — "
+              );
+
+          return `
+            <option
+              value="${escapeHtml(
+                name
+              )}"
+              label="${escapeHtml(
+                display
+              )}"
+            ></option>
+          `;
+        }
+      )
+      .join("");
+  }
+
+  function getProductFilterOptionsHtml() {
+    return currentProductsList
+      .map(
+        product => {
+          const name =
+            String(
+              product.name ||
+                ""
+            ).trim();
+
+          const code =
+            getProductCode(
+              product
+            );
+
+          const providers =
+            getProductProvidersDisplay(
+              product
+            );
+
+          const display =
+            [
+              name,
+              code,
+              providers
+            ]
+              .filter(Boolean)
+              .join(
+                " — "
+              );
+
+          return `
+            <option
+              value="${escapeHtml(
+                name
+              )}"
+              label="${escapeHtml(
+                display
+              )}"
+            ></option>
+          `;
+        }
+      )
+      .join("");
+  }
+
+  /*
+   * ============================================================
+   * LÍNEAS DE CARGA
+   * ============================================================
+   */
+
+  function createBatchLineData(
+    values = {}
+  ) {
+    batchLineCounter +=
+      1;
+
+    const initialUnitsPerBox =
+      Math.max(
+        0.000001,
+        decimalOrZero(
+          values.unitsPerBox
+        ) || 1
+      );
+
+    const initialCostPerBox =
+      numberOrZero(
+        values.lastCostPerBox ??
+          values.costoPorCaja
+      );
+
+    const initialCostPerUnit =
+      initialCostPerBox > 0
+        ? initialCostPerBox /
+          initialUnitsPerBox
+        : numberOrZero(
+            values.lastCostPerUnit ??
+              values.costoUnitario
+          );
+
+    const initialProviders =
+      getLineProviders(
+        values
+      );
+
+    return {
+      id:
+        `line-${batchLineCounter}`,
+
+      mode:
+        values.mode ||
+        "existing",
+
+      productText:
+        values.productText ||
+        "",
+
+      product:
+        values.product ||
+        null,
+
+      name:
+        values.name ||
+        "",
+
+      codigoProducto:
+        values.codigoProducto ||
+        "",
+
+      proveedorIds:
+        getProviderIds(
+          initialProviders
+        ),
+
+      proveedores:
+        initialProviders,
+
+      proveedorId:
+        getProviderIds(
+          initialProviders
+        )[0] ||
+        "",
+
+      proveedorNombre:
+        getProviderName(
+          initialProviders[0]
+        ) ||
+        "",
+
+      proveedorRazonSocial:
+        getProviderBusinessName(
+          initialProviders[0]
+        ) ||
+        "",
+
+      boxes:
+        decimalOrZero(
+          values.boxes
+        ),
+
+      bonusBoxes:
+        decimalOrZero(
+          values.bonusBoxes
+        ),
+
+      units:
+        decimalOrZero(
+          values.units
+        ),
+
+      bonusUnits:
+        decimalOrZero(
+          values.bonusUnits
+        ),
+
+      unitsPerBox:
+        initialUnitsPerBox,
+
+      lastCostPerBox:
+        initialCostPerBox,
+
+      lastCostPerUnit:
+        initialCostPerUnit,
+
+      price:
+        numberOrZero(
+          values.price
+        ),
+
+      referenciaLibro:
+        values.referenciaLibro ||
+        "",
+
+      numeroDocumento:
+        values.numeroDocumento ||
+        ""
+    };
+  }
+
+  function getBatchLineProviderOptions(
+    line
+  ) {
+    const productProviders =
+      getProductProviders(
+        line?.product
+      );
+
+    if (
+      productProviders.length
+    ) {
+      return mergeProviderCollections(
+        productProviders,
+        getLineProviders(
+          line
+        )
+      );
+    }
+
+    return mergeProviderCollections(
+      currentProvidersList,
+      getLineProviders(
+        line
+      )
+    );
+  }
+
+  function buildBatchLineHtml(
+    line
+  ) {
+    const isExisting =
+      line.mode ===
+      "existing";
+
+    const availableProviders =
+      getBatchLineProviderOptions(
+        line
+      );
+
+    const selectedProviderIds =
+      getProviderIds(
+        line.proveedores
+      );
+
+    const lineElement =
+      document.createElement(
+        "div"
+      );
+
+    lineElement.className =
+      "batch-product-row";
+
+    lineElement.dataset.lineId =
+      line.id;
+
+    lineElement.innerHTML = `
+      <div class="batch-row-header">
+
+        <div>
+          <strong>
+            Producto
+          </strong>
+
+          <span
+            class="batch-row-total"
+            data-role="total"
+          >
+            0 unidades
+          </span>
+        </div>
+
+        <button
+          type="button"
+          class="btn-outline batch-remove-row"
+        >
+          <i class="fas fa-times"></i>
+          Quitar
+        </button>
+
+      </div>
+
+      <div class="batch-grid">
+
+        <div class="inv-field">
+          <label>
+            Tipo
+          </label>
+
+          <select class="batch-mode">
+            <option
+              value="existing"
+              ${
+                isExisting
+                  ? "selected"
+                  : ""
+              }
+            >
+              Existente
+            </option>
+
+            <option
+              value="new"
+              ${
+                !isExisting
+                  ? "selected"
+                  : ""
+              }
+            >
+              Nuevo
+            </option>
+          </select>
+        </div>
+
+        <div class="inv-field batch-product-field">
+          <label>
+            Producto
+          </label>
+
+          <div class="batch-product-combobox">
+            ${buildProductCombobox(
+              line.id,
+              line.productText
+            )}
+          </div>
+
+          <div
+            class="batch-product-status"
+            data-role="product-status"
+          ></div>
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Código
+          </label>
+
+          <input
+            type="text"
+            class="batch-code"
+            value="${escapeHtml(
+              line.codigoProducto
+            )}"
+            placeholder="Código"
+          >
+        </div>
+
+        <div class="inv-field batch-provider-field">
+          <label>
+            Proveedores
+          </label>
+
+          <div
+            id="batch-provider-selector-${escapeHtml(
+              line.id
+            )}"
+          >
+            ${buildProviderMultiSelectHtml(
+              `batch-provider-selector-${line.id}`,
+              availableProviders,
+              selectedProviderIds
+            )}
+          </div>
+
+          <small>
+            Puedes seleccionar uno o varios proveedores.
+          </small>
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Cajas
+          </label>
+
+          <input
+            type="number"
+            class="batch-boxes"
+            min="0"
+            step="any"
+            inputmode="decimal"
+            value="${formatQuantity(
+              line.boxes
+            )}"
+          >
+        </div>
+
+        <div class="inv-field bonus-field">
+          <label>
+            Cajas bono
+          </label>
+
+          <input
+            type="number"
+            class="batch-bonus-boxes"
+            min="0"
+            step="any"
+            inputmode="decimal"
+            value="${formatQuantity(
+              line.bonusBoxes
+            )}"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Unidades
+          </label>
+
+          <input
+            type="number"
+            class="batch-units"
+            min="0"
+            step="any"
+            inputmode="decimal"
+            value="${formatQuantity(
+              line.units
+            )}"
+          >
+        </div>
+
+        <div class="inv-field bonus-field">
+          <label>
+            Unidades bono
+          </label>
+
+          <input
+            type="number"
+            class="batch-bonus-units"
+            min="0"
+            step="any"
+            inputmode="decimal"
+            value="${formatQuantity(
+              line.bonusUnits
+            )}"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Unidades por caja
+          </label>
+
+          <input
+            type="number"
+            class="batch-units-per-box"
+            min="0.000001"
+            step="any"
+            inputmode="decimal"
+            value="${formatQuantity(
+              line.unitsPerBox
+            )}"
+          >
+
+          <small>
+            Editable para productos nuevos y existentes.
+          </small>
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Costo por caja
+          </label>
+
+          <input
+            type="number"
+            class="batch-cost-box"
+            min="0"
+            step="0.01"
+            inputmode="decimal"
+            value="${line.lastCostPerBox}"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Costo por unidad
+          </label>
+
+          <input
+            type="text"
+            class="batch-cost-unit"
+            value="${line.lastCostPerUnit.toFixed(
+              4
+            )}"
+            readonly
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Precio
+          </label>
+
+          <input
+            type="number"
+            class="batch-price"
+            min="0"
+            step="0.01"
+            inputmode="decimal"
+            value="${line.price}"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Referencia libro
+          </label>
+
+          <input
+            type="text"
+            class="batch-reference"
+            value="${escapeHtml(
+              line.referenciaLibro
+            )}"
+            placeholder="Compra / Inventario"
+          >
+        </div>
+
+        <div class="inv-field">
+          <label>
+            Documento
+          </label>
+
+          <input
+            type="text"
+            class="batch-document"
+            value="${escapeHtml(
+              line.numeroDocumento
+            )}"
+            placeholder="Factura / documento"
+          >
+        </div>
+
+      </div>
+
+      <div class="batch-row-summary">
+
+        <span>
+          Stock agregado:
+          <strong data-role="total">
+            0
+          </strong>
+          unidades
+        </span>
+
+        <span>
+          Cajas totales:
+          <strong data-role="total-boxes">
+            0
+          </strong>
+        </span>
+
+        <span>
+          Normales:
+          <strong data-role="normal-units">
+            0
+          </strong>
+        </span>
+
+        <span>
+          Bonificadas:
+          <strong data-role="bonus-units">
+            0
+          </strong>
+        </span>
+
+      </div>
+    `;
+
+    bindBatchLineEvents(
+      lineElement
+    );
+
+    updateBatchLineState(
+      lineElement
+    );
+
+    return lineElement;
+  }
+
+  function readBatchLine(
+    row
+  ) {
+    const mode =
+      String(
+        row.querySelector(
+          ".batch-mode"
+        )?.value ||
+        ""
+      ).trim();
+
+    const productText =
+      String(
+        row.querySelector(
+          ".batch-product-input"
+        )?.value ||
+        ""
+      ).trim();
+
+    const code =
+      String(
+        row.querySelector(
+          ".batch-code"
+        )?.value ||
+        ""
+      ).trim();
+
+    const providerRoot =
+      row.querySelector(
+        '[data-role="provider-selector"]'
+      );
+
+    const providerIds =
+      getSelectedProviderIdsFromSelector(
+        providerRoot
+      );
+
+    const providers =
+      providerIds
+        .map(
+          providerId =>
+            getProviderById(
+              providerId
+            )
+        )
+        .filter(Boolean);
+
+    const boxes =
+      decimalOrZero(
+        row.querySelector(
+          ".batch-boxes"
+        )?.value
+      );
+
+    const bonusBoxes =
+      decimalOrZero(
+        row.querySelector(
+          ".batch-bonus-boxes"
+        )?.value
+      );
+
+    const units =
+      decimalOrZero(
+        row.querySelector(
+          ".batch-units"
+        )?.value
+      );
+
+    const bonusUnits =
+      decimalOrZero(
+        row.querySelector(
+          ".batch-bonus-units"
+        )?.value
+      );
+
+    const unitsPerBox =
+      Math.max(
+        0.000001,
+        decimalOrZero(
+          row.querySelector(
+            ".batch-units-per-box"
+          )?.value
+        ) || 1
+      );
+
+    const lastCostPerBox =
+      Math.max(
+        0,
+        numberOrZero(
+          row.querySelector(
+            ".batch-cost-box"
+          )?.value
+        )
+      );
+
+    const lastCostPerUnit =
+      unitsPerBox > 0
+        ? lastCostPerBox /
+          unitsPerBox
+        : 0;
+
+    const price =
+      Math.max(
+        0,
+        numberOrZero(
+          row.querySelector(
+            ".batch-price"
+          )?.value
+        )
+      );
+
+    const referenciaLibro =
+      String(
+        row.querySelector(
+          ".batch-reference"
+        )?.value ||
+        ""
+      ).trim();
+
+    const numeroDocumento =
+      String(
+        row.querySelector(
+          ".batch-document"
+        )?.value ||
+        ""
+      ).trim();
+
+    const matchedProduct =
+      findProductByText(
+        productText
+      );
+
+    return {
+      id:
+        row.dataset.lineId ||
+        "",
+
+      mode,
+
+      productText,
+
+      product:
+        matchedProduct,
+
+      name:
+        mode ===
+          "new"
+          ? productText
+          : (
+              matchedProduct?.name ||
+              productText
+            ),
+
+      codigoProducto:
+        code ||
+        getProductCode(
+          matchedProduct
+        ) ||
+        "",
+
+      proveedorIds:
+        providerIds,
+
+      proveedores:
+        providers,
+
+      proveedorId:
+        providerIds[0] ||
+        "",
+
+      proveedorNombre:
+        getProviderName(
+          providers[0]
+        ) ||
+        "",
+
+      proveedorRazonSocial:
+        getProviderBusinessName(
+          providers[0]
+        ) ||
+        "",
+
+      boxes,
+
+      bonusBoxes,
+
+      units,
+
+      bonusUnits,
+
+      unitsPerBox,
+
+      lastCostPerBox,
+
+      lastCostPerUnit,
+
+      price,
+
+      referenciaLibro,
+
+      numeroDocumento
+    };
+  }
+
+  function refreshBatchProviderSelector(
+    row,
+    product,
+    currentProviderIds
+  ) {
+    const root =
+      row.querySelector(
+        '[data-role="provider-selector"]'
+      );
+
+    if (!root) {
+      return [];
+    }
+
+    const currentIds =
+      normalizeIdArray(
+        currentProviderIds
+      );
+
+    const productProviders =
+      getProductProviders(
+        product
+      );
+
+    const available =
+      productProviders.length
+        ? mergeProviderCollections(
+            productProviders,
+            currentIds.map(
+              id =>
+                getProviderById(
+                  id
+                )
+            )
+          )
+        : mergeProviderCollections(
+            currentIds.map(
+              id =>
+                getProviderById(
+                  id
+                )
+            ),
+            currentProvidersList
+          );
+
+    const selected =
+      setProviderSelector(
+        root,
+        available,
+        currentIds,
+        Boolean(
+          productProviders.length &&
+          currentIds.length ===
+            0
+        )
+      );
+
+    return selected;
+  }
+
+  function updateBatchLineState(
+    row
+  ) {
+    let data =
+      readBatchLine(
+        row
+      );
+
+    const product =
+      data.product;
+
+    const providerRoot =
+      row.querySelector(
+        '[data-role="provider-selector"]'
+      );
+
+    if (
+      providerRoot
+    ) {
+      const beforeIds =
+        getSelectedProviderIdsFromSelector(
+          providerRoot
+        );
+
+      const selectedIds =
+        refreshBatchProviderSelector(
+          row,
+          product,
+          beforeIds
+        );
+
+      if (
+        selectedIds.join("|") !==
+        beforeIds.join("|")
+      ) {
+        data =
+          readBatchLine(
+            row
+          );
+      }
+    }
+
+    const mode =
+      data.mode;
+
+    const codeInput =
+      row.querySelector(
+        ".batch-code"
+      );
+
+    const unitsPerBoxInput =
+      row.querySelector(
+        ".batch-units-per-box"
+      );
+
+    const costBoxInput =
+      row.querySelector(
+        ".batch-cost-box"
+      );
+
+    const costUnitInput =
+      row.querySelector(
+        ".batch-cost-unit"
+      );
+
+    const priceInput =
+      row.querySelector(
+        ".batch-price"
+      );
+
+    const status =
+      row.querySelector(
+        '[data-role="product-status"]'
+      );
+
+    const totalElement =
+      row.querySelector(
+        '[data-role="total"]'
+      );
+
+    const totalBoxesElement =
+      row.querySelector(
+        '[data-role="total-boxes"]'
+      );
+
+    const normalUnitsElement =
+      row.querySelector(
+        '[data-role="normal-units"]'
+      );
+
+    const bonusUnitsElement =
+      row.querySelector(
+        '[data-role="bonus-units"]'
+      );
+
+    const totalNormal =
+      decimalOrZero(
+        data.boxes *
+          data.unitsPerBox +
+          data.units
+      );
+
+    const totalBonus =
+      decimalOrZero(
+        data.bonusBoxes *
+          data.unitsPerBox +
+          data.bonusUnits
+      );
+
+    const totalUnits =
+      decimalOrZero(
+        totalNormal +
+          totalBonus
+      );
+
+    const totalBoxes =
+      decimalOrZero(
+        data.boxes +
+          data.bonusBoxes
+      );
+
+    const calculatedCostPerUnit =
+      data.unitsPerBox > 0
+        ? data.lastCostPerBox /
+          data.unitsPerBox
+        : 0;
+
+    if (
+      costUnitInput
+    ) {
+      costUnitInput.value =
+        calculatedCostPerUnit.toFixed(
+          4
+        );
+    }
+
+    if (
+      totalElement
+    ) {
+      totalElement.textContent =
+        formatQuantity(
+          totalUnits
+        );
+    }
+
+    if (
+      totalBoxesElement
+    ) {
+      totalBoxesElement.textContent =
+        formatQuantity(
+          totalBoxes
+        );
+    }
+
+    if (
+      normalUnitsElement
+    ) {
+      normalUnitsElement.textContent =
+        formatQuantity(
+          totalNormal
+        );
+    }
+
+    if (
+      bonusUnitsElement
+    ) {
+      bonusUnitsElement.textContent =
+        formatQuantity(
+          totalBonus
+        );
+    }
+
+    if (
+      mode ===
+      "existing"
+    ) {
+      if (
+        product
+      ) {
+        const productUnitsPerBox =
+          getUnitsPerBox(
+            product
+          );
+
+        const enteredUnitsPerBox =
+          Math.max(
+            0.000001,
+            decimalOrZero(
+              unitsPerBoxInput?.value
+            ) ||
+              productUnitsPerBox
+          );
+
+        if (
+          unitsPerBoxInput &&
+          !String(
+            unitsPerBoxInput.value ||
+              ""
+          ).trim()
+        ) {
+          unitsPerBoxInput.value =
+            formatQuantity(
+              productUnitsPerBox
+            );
+        }
+
+        if (
+          status
+        ) {
+          const providerCount =
+            getProductProviders(
+              product
+            ).length;
+
+          status.innerHTML = `
+            <span class="batch-status success">
+              Producto encontrado:
+              ${escapeHtml(
+                product.name
+              )}
+              · Stock actual:
+              ${formatQuantity(
+                getCurrentStockUnits(
+                  product
+                )
+              )}
+              ·
+              ${formatQuantity(
+                enteredUnitsPerBox
+              )}
+              unid./caja
+              ·
+              ${
+                providerCount
+              }
+              proveedor${
+                providerCount ===
+                1
+                  ? ""
+                  : "es"
+              }
+            </span>
+          `;
+        }
+
+        if (
+          codeInput &&
+          !String(
+            codeInput.value ||
+              ""
+          ).trim()
+        ) {
+          codeInput.value =
+            getProductCode(
+              product
+            ) ||
+            "";
+        }
+
+        if (
+          costBoxInput &&
+          numberOrZero(
+            costBoxInput.value
+          ) <=
+            0
+        ) {
+          const existingCostBox =
+            numberOrZero(
+              product.lastCostPerBox
+            );
+
+          const existingCostUnit =
+            numberOrZero(
+              product.lastCostPerUnit
+            );
+
+          costBoxInput.value =
+            String(
+              existingCostBox > 0
+                ? existingCostBox
+                : existingCostUnit *
+                  enteredUnitsPerBox
+            );
+        }
+
+        if (
+          priceInput &&
+          numberOrZero(
+            priceInput.value
+          ) <=
+            0
+        ) {
+          priceInput.value =
+            String(
+              numberOrZero(
+                product.price
+              )
+            );
+        }
+      } else if (
+        status
+      ) {
+        status.innerHTML = `
+          <span class="batch-status warning">
+            Escribe o selecciona un producto existente.
+          </span>
+        `;
+      }
+    } else {
+      if (
+        status
+      ) {
+        status.innerHTML = `
+          <span class="batch-status info">
+            Producto nuevo
+          </span>
+        `;
+      }
+
+      if (
+        product &&
+        normalizeText(
+          product.name
+        ) ===
+          normalizeText(
+            data.name
+          )
+      ) {
+        if (
+          status
+        ) {
+          status.innerHTML = `
+            <span class="batch-status danger">
+              Ese producto ya existe. Usa "Existente".
+            </span>
+          `;
+        }
+      }
+    }
+  }
+
+  function bindBatchLineEvents(
+    row
+  ) {
+    const modeElement =
+      row.querySelector(
+        ".batch-mode"
+      );
+
+    const productElement =
+      row.querySelector(
+        ".batch-product-input"
+      );
+
+    const removeButton =
+      row.querySelector(
+        ".batch-remove-row"
+      );
+
+    if (
+      modeElement
+    ) {
+      modeElement.addEventListener(
+        "change",
+        () => {
+          updateBatchLineState(
+            row
+          );
+        }
+      );
+    }
+
+    if (
+      productElement
+    ) {
+      [
+        "input",
+        "change"
+      ].forEach(
+        eventName => {
+          productElement.addEventListener(
+            eventName,
+            () => {
+              updateBatchLineState(
+                row
+              );
+            }
+          );
+        }
+      );
+    }
+
+    row.querySelectorAll(
+      "input, select"
+    ).forEach(
+      input => {
+        if (
+          input ===
+            productElement ||
+          input ===
+            modeElement ||
+          input.classList.contains(
+            "provider-multi-search"
+          ) ||
+          input.classList.contains(
+            "provider-multi-checkbox"
+          )
+        ) {
+          return;
+        }
+
+        input.addEventListener(
+          "input",
+          () => {
+            updateBatchLineState(
+              row
+            );
+          }
+        );
+
+        input.addEventListener(
+          "change",
+          () => {
+            updateBatchLineState(
+              row
+            );
+          }
+        );
+      }
+    );
+
+    if (
+      removeButton
+    ) {
+      removeButton.addEventListener(
+        "click",
+        () => {
+          row.remove();
+
+          updateBatchLineNumbers();
+        }
+      );
+    }
+  }
+
+  function updateBatchLineNumbers() {
+    document
+      .querySelectorAll(
+        ".batch-product-row"
+      )
+      .forEach(
+        (
+          row,
+          index
+        ) => {
+          const title =
+            row.querySelector(
+              ".batch-row-header strong"
+            );
+
+          if (
+            title
+          ) {
+            title.textContent =
+              `Producto ${
+                index + 1
+              }`;
+          }
+
+          refreshProductComboboxDatalist(
+            row
+          );
+        }
+      );
+  }
+
+  function addBatchLine(
+    container,
+    values = {}
+  ) {
+    const line =
+      createBatchLineData(
+        values
+      );
+
+    const row =
+      buildBatchLineHtml(
+        line
+      );
+
+    container.appendChild(
+      row
+    );
+
+    updateBatchLineNumbers();
+
+    row
+      .querySelector(
+        ".batch-product-input"
+      )
+      ?.focus();
+
+    return row;
+  }
+
+  /*
+   * ============================================================
+   * VALIDACIÓN BATCH
+   * ============================================================
+   */
+
+  function validateBatchLines(
+    rows
+  ) {
+    const errors =
+      [];
+
+    const parsed =
+      rows.map(
+        readBatchLine
+      );
+
+    const namesForNew =
+      new Set();
+
+    parsed.forEach(
+      (
+        line,
+        index
+      ) => {
+        const label =
+          `Producto ${
+            index + 1
+          }`;
+
+        if (
+          !line.productText
+        ) {
+          errors.push(
+            `${label}: debes indicar el producto.`
+          );
+
+          return;
+        }
+
+        if (
+          line.mode ===
+          "existing"
+        ) {
+          if (
+            !line.product
+          ) {
+            errors.push(
+              `${label}: no se encontró el producto existente "${line.productText}".`
+            );
+
+            return;
+          }
+        }
+
+        if (
+          line.mode ===
+          "new"
+        ) {
+          if (
+            !line.name
+          ) {
+            errors.push(
+              `${label}: el nombre es obligatorio.`
+            );
+          }
+
+          const newKey =
+            normalizeText(
+              line.name
+            );
+
+          if (
+            findProductByText(
+              line.name
+            )
+          ) {
+            errors.push(
+              `${label}: "${line.name}" ya existe. Selecciona "Existente".`
+            );
+          }
+
+          if (
+            namesForNew.has(
+              newKey
+            )
+          ) {
+            errors.push(
+              `${label}: el mismo producto nuevo aparece más de una vez.`
+            );
+          }
+
+          namesForNew.add(
+            newKey
+          );
+
+          if (
+            !line.codigoProducto
+          ) {
+            errors.push(
+              `${label}: el código es obligatorio para un producto nuevo.`
+            );
+          }
+        }
+
+        const totalUnits =
+          decimalOrZero(
+            (
+              line.boxes +
+              line.bonusBoxes
+            ) *
+              line.unitsPerBox +
+              line.units +
+              line.bonusUnits
+          );
+
+        if (
+          totalUnits <=
+          0
+        ) {
+          errors.push(
+            `${label}: debes ingresar cajas, cajas bono, unidades o unidades bono.`
+          );
+        }
+
+        if (
+          line.unitsPerBox <=
+          0
+        ) {
+          errors.push(
+            `${label}: las unidades por caja deben ser mayores que cero.`
+          );
+        }
+
+        if (
+          line.lastCostPerBox <
+          0
+        ) {
+          errors.push(
+            `${label}: el costo por caja no puede ser negativo.`
+          );
+        }
+
+        if (
+          line.price <
+          0
+        ) {
+          errors.push(
+            `${label}: el precio no puede ser negativo.`
+          );
+        }
+      }
+    );
+
+    return {
+      errors,
+      parsed
+    };
   }
 
   /*
@@ -2013,10 +6091,18 @@
             costPerUnit *
             unitsPerBox;
 
+          const providerDisplay =
+            getLineProvidersDisplay(
+              line
+            );
+
           return [
-            `${index + 1}. ${line.name ||
-            line.productText ||
-            "Producto"
+            `${
+              index + 1
+            }. ${
+              line.name ||
+              line.productText ||
+              "Producto"
             }`,
 
             `Cajas pagadas: ${formatQuantity(
@@ -2051,20 +6137,10 @@
               cost
             )}`,
 
-            line.proveedorNombre
-              ? `Proveedor: ${line.proveedorNombre}`
-              : "",
-
-            line.proveedorRazonSocial
-              ? `Razón Social: ${line.proveedorRazonSocial}`
-              : ""
-          ]
-            .filter(
-              Boolean
-            )
-            .join(
-              " | "
-            );
+            `Proveedores: ${providerDisplay}`
+          ].join(
+            " | "
+          );
         }
       )
       .join(
@@ -2106,8 +6182,8 @@
       operationDate instanceof Date
         ? operationDate
         : parseOperationDate(
-          operationDate
-        );
+            operationDate
+          );
 
     if (
       !validOperationDate
@@ -2142,44 +6218,41 @@
         lines
       )
         ? lines.reduce(
-          (
-            sum,
-            line
-          ) => {
-            const product =
-              line.product ||
-              null;
+            (
+              sum,
+              line
+            ) => {
+              const product =
+                line.product ||
+                null;
 
-            const unitsPerBox =
-              getEffectiveUnitsPerBox(
-                line,
-                product
-              );
+              const unitsPerBox =
+                getEffectiveUnitsPerBox(
+                  line,
+                  product
+                );
 
-            const totalLineUnits =
-              (
+              return (
+                sum +
+                (
+                  decimalOrZero(
+                    line.boxes
+                  ) +
+                  decimalOrZero(
+                    line.bonusBoxes
+                  )
+                ) *
+                  unitsPerBox +
                 decimalOrZero(
-                  line.boxes
+                  line.units
                 ) +
                 decimalOrZero(
-                  line.bonusBoxes
+                  line.bonusUnits
                 )
-              ) *
-              unitsPerBox +
-              decimalOrZero(
-                line.units
-              ) +
-              decimalOrZero(
-                line.bonusUnits
               );
-
-            return (
-              sum +
-              totalLineUnits
-            );
-          },
-          0
-        )
+            },
+            0
+          )
         : 0;
 
     const expenseRef =
@@ -2192,10 +6265,11 @@
     const concept =
       productCount ===
         1
-        ? `Compra de inventario - ${lines[0]?.name ||
-        lines[0]?.productText ||
-        "Producto"
-        }`
+        ? `Compra de inventario - ${
+            lines[0]?.name ||
+            lines[0]?.productText ||
+            "Producto"
+          }`
         : `Compra de inventario - ${productCount} productos`;
 
     const details =
@@ -2206,23 +6280,16 @@
     const notes =
       [
         "Gasto generado automáticamente desde Inventario.",
-
         "Las cantidades bono no generan costo.",
-
         "El costo por caja equivale al costo por unidad multiplicado por las unidades por caja.",
-
         `Fecha de operación: ${formatOperationDate(
           validOperationDate
         )}`,
-
         `Productos ingresados: ${productCount}`,
-
         `Unidades totales ingresadas: ${formatQuantity(
           totalUnits
         )}`,
-
         "",
-
         details
       ].join(
         "\n"
@@ -2348,12 +6415,10 @@
               result =>
                 String(
                   result?.movementId ||
-                  ""
+                    ""
                 ).trim()
             )
-            .filter(
-              Boolean
-            )
+            .filter(Boolean)
         )
       );
 
@@ -2428,2460 +6493,9 @@
 
   /*
    * ============================================================
-   * VENTAS
-   * ============================================================
-   */
-
-  function getSaleProductId(
-    product
-  ) {
-    return String(
-      product?.productId ||
-      product?.productID ||
-      product?.product_id ||
-      product?.id ||
-      ""
-    ).trim();
-  }
-
-  function aggregateMonthlySales(
-    documents
-  ) {
-    const unitsMap =
-      {};
-
-    const boxesMap =
-      {};
-
-    const now =
-      new Date();
-
-    const monthStart =
-      new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        1,
-        0,
-        0,
-        0,
-        0
-      );
-
-    const nextMonthStart =
-      new Date(
-        now.getFullYear(),
-        now.getMonth() + 1,
-        1,
-        0,
-        0,
-        0,
-        0
-      );
-
-    documents.forEach(
-      document => {
-        const sale =
-          document?.data ||
-          {};
-
-        if (
-          !matchesCurrentLocal(
-            sale
-          )
-        ) {
-          return;
-        }
-
-        const createdAtMs =
-          getTimestampMs(
-            sale.createdAt
-          );
-
-        if (
-          createdAtMs &&
-          (
-            createdAtMs <
-            monthStart.getTime() ||
-            createdAtMs >=
-            nextMonthStart.getTime()
-          )
-        ) {
-          return;
-        }
-
-        if (
-          !createdAtMs
-        ) {
-          return;
-        }
-
-        const products =
-          Array.isArray(
-            sale.products
-          )
-            ? sale.products
-            : [];
-
-        products.forEach(
-          product => {
-            const productId =
-              getSaleProductId(
-                product
-              );
-
-            if (
-              !productId
-            ) {
-              return;
-            }
-
-            const unitsPerBox =
-              Math.max(
-                0.000001,
-                numberOrZero(
-                  product.unitsPerBox
-                )
-              );
-
-            const mode =
-              normalizeText(
-                product.mode ||
-                product.saleMode ||
-                product.saleType ||
-                ""
-              );
-
-            const quantity =
-              decimalOrZero(
-                product.quantity
-              );
-
-            const totalUnits =
-              decimalOrZero(
-                product.unitsTotal ??
-                product.totalUnits
-              );
-
-            let soldUnits =
-              0;
-
-            let soldBoxes =
-              0;
-
-            if (
-              mode ===
-              "box"
-            ) {
-              soldBoxes =
-                quantity > 0
-                  ? quantity
-                  : totalUnits > 0
-                    ? totalUnits /
-                    unitsPerBox
-                    : 0;
-
-              soldUnits =
-                totalUnits > 0
-                  ? totalUnits
-                  : soldBoxes *
-                  unitsPerBox;
-            } else if (
-              mode ===
-              "unit"
-            ) {
-              soldUnits =
-                totalUnits > 0
-                  ? totalUnits
-                  : quantity;
-            } else if (
-              totalUnits > 0
-            ) {
-              soldUnits =
-                totalUnits;
-            } else if (
-              decimalOrZero(
-                product.boxes
-              ) > 0
-            ) {
-              soldBoxes =
-                decimalOrZero(
-                  product.boxes
-                );
-
-              soldUnits =
-                soldBoxes *
-                unitsPerBox;
-            } else {
-              soldUnits =
-                quantity;
-            }
-
-            unitsMap[
-              productId
-            ] =
-              (
-                unitsMap[
-                productId
-                ] || 0
-              ) +
-              soldUnits;
-
-            boxesMap[
-              productId
-            ] =
-              (
-                boxesMap[
-                productId
-                ] || 0
-              ) +
-              soldBoxes;
-          }
-        );
-      }
-    );
-
-    return {
-      unitsMap,
-      boxesMap
-    };
-  }
-
-  function aggregateAllTimeSalesMap(
-    documents
-  ) {
-    const unitsMap =
-      {};
-
-    documents.forEach(
-      document => {
-        const sale =
-          document?.data ||
-          {};
-
-        if (
-          !matchesCurrentLocal(
-            sale
-          )
-        ) {
-          return;
-        }
-
-        const products =
-          Array.isArray(
-            sale.products
-          )
-            ? sale.products
-            : [];
-
-        products.forEach(
-          product => {
-            const productId =
-              getSaleProductId(
-                product
-              );
-
-            if (
-              !productId
-            ) {
-              return;
-            }
-
-            const unitsPerBox =
-              Math.max(
-                0.000001,
-                numberOrZero(
-                  product.unitsPerBox
-                )
-              );
-
-            const mode =
-              normalizeText(
-                product.mode ||
-                product.saleMode ||
-                product.saleType ||
-                ""
-              );
-
-            const quantity =
-              decimalOrZero(
-                product.quantity
-              );
-
-            const totalUnits =
-              decimalOrZero(
-                product.unitsTotal ??
-                product.totalUnits
-              );
-
-            let soldUnits =
-              0;
-
-            if (
-              mode ===
-              "box"
-            ) {
-              soldUnits =
-                totalUnits > 0
-                  ? totalUnits
-                  : quantity *
-                  unitsPerBox;
-            } else if (
-              mode ===
-              "unit"
-            ) {
-              soldUnits =
-                totalUnits > 0
-                  ? totalUnits
-                  : quantity;
-            } else if (
-              totalUnits > 0
-            ) {
-              soldUnits =
-                totalUnits;
-            } else if (
-              decimalOrZero(
-                product.boxes
-              ) > 0
-            ) {
-              soldUnits =
-                decimalOrZero(
-                  product.boxes
-                ) *
-                unitsPerBox;
-            } else {
-              soldUnits =
-                quantity;
-            }
-
-            unitsMap[
-              productId
-            ] =
-              (
-                unitsMap[
-                productId
-                ] || 0
-              ) +
-              soldUnits;
-          }
-        );
-      }
-    );
-
-    return unitsMap;
-  }
-
-  /*
-   * ============================================================
-   * SUMA MOVIMIENTOS
-   * ============================================================
-   */
-
-  function calculateMovementNetStockMap(
-    movementDocuments
-  ) {
-    const stockMap =
-      {};
-
-    movementDocuments.forEach(
-      ({
-        id,
-        data
-      }) => {
-        if (
-          !matchesCurrentLocal(
-            data
-          )
-        ) {
-          return;
-        }
-
-        const productId =
-          String(
-            data?.productId ||
-            data?.productID ||
-            data?.product_id ||
-            ""
-          ).trim();
-
-        if (
-          !productId
-        ) {
-          return;
-        }
-
-        const movement =
-          normalizeMovementDocument(
-            id,
-            data
-          );
-
-        const entry =
-          decimalOrZero(
-            movement.entrada
-          );
-
-        const exit =
-          decimalOrZero(
-            movement.salida
-          );
-
-        stockMap[
-          productId
-        ] =
-          (
-            stockMap[
-            productId
-            ] || 0
-          ) +
-          (
-            entry -
-            exit
-          );
-      }
-    );
-
-    return stockMap;
-  }
-
-  /*
-   * ============================================================
-   * RECONCILIACIÓN
-   * ============================================================
-   */
-
-  async function reconcileProductsAgainstMovements(
-    products,
-    movementDocuments,
-    salesDocuments
-  ) {
-    if (
-      !Array.isArray(
-        products
-      ) ||
-      !products.length
-    ) {
-      return;
-    }
-
-    const movementStockMap =
-      calculateMovementNetStockMap(
-        movementDocuments
-      );
-
-    const salesStockMap =
-      aggregateAllTimeSalesMap(
-        salesDocuments
-      );
-
-    const updates =
-      [];
-
-    products.forEach(
-      product => {
-        const productId =
-          String(
-            product?.id ||
-            ""
-          ).trim();
-
-        if (
-          !productId
-        ) {
-          return;
-        }
-
-        const movementNet =
-          decimalOrZero(
-            movementStockMap[
-            productId
-            ]
-          );
-
-        const historicalSales =
-          decimalOrZero(
-            salesStockMap[
-            productId
-            ]
-          );
-
-        if (
-          movementNet <=
-          0
-        ) {
-          return;
-        }
-
-        if (
-          historicalSales >
-          0
-        ) {
-          return;
-        }
-
-        const currentStock =
-          getCurrentStockUnits(
-            product
-          );
-
-        if (
-          currentStock ===
-          movementNet
-        ) {
-          return;
-        }
-
-        updates.push({
-          product,
-
-          previousStock:
-            currentStock,
-
-          stock:
-            movementNet
-        });
-      }
-    );
-
-    if (
-      !updates.length
-    ) {
-      return;
-    }
-
-    const chunks =
-      [];
-
-    for (
-      let index = 0;
-      index <
-      updates.length;
-      index +=
-      450
-    ) {
-      chunks.push(
-        updates.slice(
-          index,
-          index + 450
-        )
-      );
-    }
-
-    for (
-      const chunk of chunks
-    ) {
-      const batch =
-        db.batch();
-
-      chunk.forEach(
-        ({
-          product,
-          stock
-        }) => {
-          const ref =
-            db
-              .collection(
-                PRODUCTS_COLLECTION
-              )
-              .doc(
-                product.id
-              );
-
-          const unitsPerBox =
-            getUnitsPerBox(
-              product
-            );
-
-          batch.update(
-            ref,
-            {
-              quantity:
-                stock,
-
-              stockCurrentUnits:
-                stock,
-
-              boxes:
-                unitsPerBox > 0
-                  ? decimalOrZero(
-                    stock /
-                    unitsPerBox
-                  )
-                  : 0,
-
-              updatedAt:
-                firebase.firestore
-                  .FieldValue
-                  .serverTimestamp()
-            }
-          );
-        }
-      );
-
-      await batch.commit();
-
-      chunk.forEach(
-        ({
-          product,
-          stock
-        }) => {
-          const unitsPerBox =
-            getUnitsPerBox(
-              product
-            );
-
-          product.quantity =
-            stock;
-
-          product.stockCurrentUnits =
-            stock;
-
-          product.boxes =
-            unitsPerBox > 0
-              ? decimalOrZero(
-                stock /
-                unitsPerBox
-              )
-              : 0;
-
-          upsertSessionDocument(
-            PRODUCTS_COLLECTION,
-            product.id,
-            {
-              ...product,
-
-              quantity:
-                stock,
-
-              stockCurrentUnits:
-                stock,
-
-              boxes:
-                unitsPerBox > 0
-                  ? decimalOrZero(
-                    stock /
-                    unitsPerBox
-                  )
-                  : 0,
-
-              updatedAt:
-                Date.now()
-            }
-          );
-        }
-      );
-    }
-  }
-
-  /*
-   * ============================================================
-   * COMBOBOX PRODUCTO
-   * ============================================================
-   */
-
-  let batchLineCounter =
-    0;
-
-  function buildProductCombobox(
-    rowId,
-    value = ""
-  ) {
-    return `
-      <input
-        id="batch-product-${escapeHtml(
-      rowId
-    )}"
-        class="batch-product-input inv-combobox"
-        type="text"
-        list="batch-product-list-${escapeHtml(
-      rowId
-    )}"
-        value="${escapeHtml(
-      value
-    )}"
-        placeholder="Producto existente o nombre nuevo"
-        autocomplete="off"
-      >
-
-      <datalist
-        id="batch-product-list-${escapeHtml(
-      rowId
-    )}"
-      >
-        ${getProductComboOptionsHtml()}
-      </datalist>
-    `;
-  }
-
-  function refreshProductComboboxDatalist(
-    rowElement
-  ) {
-    const input =
-      rowElement.querySelector(
-        ".batch-product-input"
-      );
-
-    if (
-      !input
-    ) {
-      return;
-    }
-
-    const listId =
-      input.getAttribute(
-        "list"
-      );
-
-    if (
-      !listId
-    ) {
-      return;
-    }
-
-    const list =
-      document.getElementById(
-        listId
-      );
-
-    if (
-      !list
-    ) {
-      return;
-    }
-
-    list.innerHTML =
-      getProductComboOptionsHtml();
-  }
-
-  function createBatchLineData(
-    values = {}
-  ) {
-    batchLineCounter +=
-      1;
-
-    const initialUnitsPerBox =
-      Math.max(
-        0.000001,
-        decimalOrZero(
-          values.unitsPerBox
-        ) || 1
-      );
-
-    const initialCostPerBox =
-      numberOrZero(
-        values.lastCostPerBox ??
-        values.costoPorCaja
-      );
-
-    const initialCostPerUnit =
-      initialCostPerBox >
-        0
-        ? initialCostPerBox /
-        initialUnitsPerBox
-        : numberOrZero(
-          values.lastCostPerUnit ??
-          values.costoUnitario
-        );
-
-    return {
-      id:
-        `line-${batchLineCounter}`,
-
-      mode:
-        values.mode ||
-        "existing",
-
-      productText:
-        values.productText ||
-        "",
-
-      name:
-        values.name ||
-        "",
-
-      codigoProducto:
-        values.codigoProducto ||
-        "",
-
-      proveedorId:
-        values.proveedorId ||
-        "",
-
-      proveedorNombre:
-        values.proveedorNombre ||
-        "",
-
-      proveedorRazonSocial:
-        values.proveedorRazonSocial ||
-        values.proveedorRazonSocialDenominacion ||
-        "",
-
-      boxes:
-        decimalOrZero(
-          values.boxes
-        ),
-
-      bonusBoxes:
-        decimalOrZero(
-          values.bonusBoxes
-        ),
-
-      units:
-        decimalOrZero(
-          values.units
-        ),
-
-      bonusUnits:
-        decimalOrZero(
-          values.bonusUnits
-        ),
-
-      unitsPerBox:
-        initialUnitsPerBox,
-
-      lastCostPerBox:
-        initialCostPerBox,
-
-      lastCostPerUnit:
-        initialCostPerUnit,
-
-      price:
-        numberOrZero(
-          values.price
-        ),
-
-      referenciaLibro:
-        values.referenciaLibro ||
-        "",
-
-      numeroDocumento:
-        values.numeroDocumento ||
-        ""
-    };
-  }
-
-  function getProductComboOptionsHtml() {
-    return currentProductsList
-      .map(
-        product => {
-          const name =
-            String(
-              product.name ||
-              ""
-            ).trim();
-
-          const code =
-            getProductCode(
-              product
-            );
-
-          const provider =
-            getProductProviderName(
-              product
-            );
-
-          const providerReason =
-            getProductProviderReason(
-              product
-            );
-
-          const display =
-            [
-              name,
-              code ||
-              "",
-              provider ||
-              "",
-              providerReason ||
-              ""
-            ]
-              .filter(
-                Boolean
-              )
-              .join(
-                " — "
-              );
-
-          return `
-            <option
-              value="${escapeHtml(
-            name
-          )}"
-              label="${escapeHtml(
-            display
-          )}"
-            ></option>
-          `;
-        }
-      )
-      .join("");
-  }
-
-  function getProductFilterOptionsHtml() {
-    return currentProductsList
-      .map(
-        product => {
-          const name =
-            String(
-              product.name ||
-              ""
-            ).trim();
-
-          const code =
-            getProductCode(
-              product
-            );
-
-          const provider =
-            getProductProviderName(
-              product
-            );
-
-          const providerReason =
-            getProductProviderReason(
-              product
-            );
-
-          const display =
-            [
-              name,
-              code ||
-              "",
-              provider ||
-              "",
-              providerReason ||
-              ""
-            ]
-              .filter(
-                Boolean
-              )
-              .join(
-                " — "
-              );
-
-          return `
-            <option
-              value="${escapeHtml(
-            name
-          )}"
-              label="${escapeHtml(
-            display
-          )}"
-            ></option>
-          `;
-        }
-      )
-      .join("");
-  }
-
-  /*
-   * ============================================================
-   * PROYECCIONES
-   * ============================================================
-   */
-
-  function buildProjectionForProduct(
-    product
-  ) {
-    const stockUnits =
-      getCurrentStockUnits(
-        product
-      );
-
-    const stockBoxes =
-      getStockBoxes(
-        product
-      );
-
-    const unitsPerBox =
-      getUnitsPerBox(
-        product
-      );
-
-    const soldUnits =
-      decimalOrZero(
-        currentMonthlySalesMap[
-        product.id
-        ]
-      );
-
-    const soldBoxes =
-      decimalOrZero(
-        currentMonthlyBoxesMap[
-        product.id
-        ]
-      );
-
-    const costPerUnit =
-      getCostPerUnit(
-        product
-      );
-
-    let suggestedUnits =
-      soldUnits +
-      SAFETY_STOCK_DEFAULT -
-      stockUnits;
-
-    suggestedUnits =
-      Math.max(
-        0,
-        suggestedUnits
-      );
-
-    const suggestedBoxes =
-      unitsPerBox > 0
-        ? decimalOrZero(
-          suggestedUnits /
-          unitsPerBox
-        )
-        : 0;
-
-    let status =
-      "OK";
-
-    if (
-      suggestedUnits >
-      0
-    ) {
-      status =
-        "Reponer";
-    } else if (
-      stockUnits <=
-      LOW_STOCK_THRESHOLD
-    ) {
-      status =
-        "Bajo";
-    }
-
-    return {
-      stockUnits,
-
-      stockBoxes,
-
-      unitsPerBox,
-
-      soldUnits,
-
-      soldBoxes,
-
-      costPerUnit,
-
-      suggestedUnits,
-
-      suggestedBoxes,
-
-      status
-    };
-  }
-
-  function buildRowData(
-    product
-  ) {
-    const projection =
-      buildProjectionForProduct(
-        product
-      );
-
-    const providerName =
-      getProductProviderName(
-        product
-      );
-
-    const providerReason =
-      getProductProviderReason(
-        product
-      );
-
-    const productCode =
-      getProductCode(
-        product
-      );
-
-    return {
-      id:
-        product.id,
-
-      name:
-        product.name ||
-        "—",
-
-      providerName,
-
-      providerReason,
-
-      productCode,
-
-      price:
-        numberOrZero(
-          product.price
-        ),
-
-      stockUnits:
-        projection.stockUnits,
-
-      stockBoxes:
-        projection.stockBoxes,
-
-      unitsPerBox:
-        projection.unitsPerBox,
-
-      soldMonthUnits:
-        projection.soldUnits,
-
-      soldMonthBoxes:
-        projection.soldBoxes,
-
-      costPerUnit:
-        projection.costPerUnit,
-
-      suggestedPurchaseUnits:
-        projection.suggestedUnits,
-
-      suggestedPurchaseBoxes:
-        projection.suggestedBoxes,
-
-      status:
-        projection.status,
-
-      searchText:
-        [
-          product.name,
-          productCode,
-          providerName,
-          providerReason
-        ]
-          .filter(Boolean)
-          .join(" ")
-    };
-  }
-
-  /*
-   * ============================================================
-   * TABLA
-   * ============================================================
-   */
-
-  function renderStatusChip(
-    status
-  ) {
-    if (
-      status ===
-      "Reponer"
-    ) {
-      return `
-        <span style="
-          padding:4px 8px;
-          border-radius:999px;
-          background:#fee2e2;
-          color:#b91c1c;
-          font-weight:700;
-        ">
-          Reponer
-        </span>
-      `;
-    }
-
-    if (
-      status ===
-      "Bajo"
-    ) {
-      return `
-        <span style="
-          padding:4px 8px;
-          border-radius:999px;
-          background:#fef3c7;
-          color:#92400e;
-          font-weight:700;
-        ">
-          Bajo
-        </span>
-      `;
-    }
-
-    return `
-      <span style="
-        padding:4px 8px;
-        border-radius:999px;
-        background:#dcfce7;
-        color:#166534;
-        font-weight:700;
-      ">
-        OK
-      </span>
-    `;
-  }
-
-  function renderStockDisplay(
-    row
-  ) {
-    const stock =
-      decimalOrZero(
-        row.stockUnits
-      );
-
-    const unitsPerBox =
-      decimalOrZero(
-        row.unitsPerBox
-      );
-
-    if (
-      unitsPerBox > 0
-    ) {
-      const boxesEquivalent =
-        decimalOrZero(
-          stock /
-          unitsPerBox
-        );
-
-      return `
-        <strong>
-          ${formatQuantity(
-        stock
-      )}
-        </strong>
-
-        <br>
-
-        <small>
-          ${formatQuantity(
-        boxesEquivalent
-      )}
-          ${boxesEquivalent === 1
-          ? "caja"
-          : "cajas"
-        }
-          equivalentes
-
-          ×
-
-          ${formatQuantity(
-          unitsPerBox
-        )}
-          unidades/caja
-        </small>
-      `;
-    }
-
-    return formatQuantity(
-      stock
-    );
-  }
-
-  function renderActions(
-    row
-  ) {
-    if (
-      !canEditInventory
-    ) {
-      return `
-        <span class="small">
-          Solo lectura
-        </span>
-      `;
-    }
-
-    const isAdmin =
-      isAdministratorRole();
-
-    return `
-      <button
-        type="button"
-        class="btn-outline"
-        data-action="movements"
-        data-id="${escapeHtml(
-      row.id
-    )}"
-        title="Editar entradas de este producto"
-      >
-        <i class="fas fa-history"></i>
-        Entradas
-      </button>
-
-      <button
-        type="button"
-        class="btn-outline"
-        data-action="delete"
-        data-id="${escapeHtml(
-      row.id
-    )}"
-        data-name="${escapeHtml(
-      row.name
-    )}"
-        style="margin-left:8px;"
-        ${isAdmin
-        ? ""
-        : "disabled title='Solo administrador puede eliminar productos'"
-      }
-      >
-        <i class="fas fa-trash"></i>
-        Eliminar
-      </button>
-    `;
-  }
-
-  function ensureInventoryDataTable() {
-    if (
-      inventoryDT
-    ) {
-      return inventoryDT;
-    }
-
-    if (
-      !window.jQuery ||
-      !$.fn ||
-      !$.fn.DataTable
-    ) {
-      console.warn(
-        "DataTables no está cargado."
-      );
-
-      return null;
-    }
-
-    const table =
-      document.getElementById(
-        "inventoryTable"
-      );
-
-    if (!table) {
-      console.warn(
-        "No existe #inventoryTable."
-      );
-
-      return null;
-    }
-
-    inventoryDT =
-      $("#inventoryTable")
-        .DataTable({
-          data: [],
-
-          columns: [
-            {
-              data:
-                "name",
-
-              title:
-                "Nombre",
-
-              render:
-                (
-                  data,
-                  type
-                ) =>
-                  type ===
-                    "display"
-                    ? escapeHtml(
-                      data
-                    )
-                    : data
-            },
-
-            {
-              data:
-                "providerName",
-
-              title:
-                "Proveedor",
-
-              render:
-                (
-                  data,
-                  type,
-                  row
-                ) =>
-                  type ===
-                    "display"
-                    ? escapeHtml(
-                      row.providerReason
-                        ? `${data || "Sin proveedor"} — ${row.providerReason}`
-                        : data ||
-                        "Sin proveedor"
-                    )
-                    : data
-            },
-
-            {
-              data:
-                "stockUnits",
-
-              title:
-                "Stock",
-
-              render:
-                (
-                  data,
-                  type,
-                  row
-                ) =>
-                  type ===
-                    "display"
-                    ? renderStockDisplay(
-                      row
-                    )
-                    : data
-            },
-
-            {
-              data:
-                "price",
-
-              title:
-                "Precio",
-
-              render:
-                (
-                  data,
-                  type
-                ) =>
-                  type ===
-                    "display"
-                    ? currency(
-                      data
-                    )
-                    : data
-            },
-
-            {
-              data:
-                "soldMonthUnits",
-
-              title:
-                "Vendido Mes (Unid.)",
-
-              render:
-                (
-                  data,
-                  type
-                ) =>
-                  type ===
-                    "display"
-                    ? formatQuantity(
-                      data
-                    )
-                    : data
-            },
-
-            {
-              data:
-                "soldMonthBoxes",
-
-              title:
-                "Vendido Mes (Cajas)",
-
-              render:
-                (
-                  data,
-                  type
-                ) =>
-                  type ===
-                    "display"
-                    ? formatQuantity(
-                      data
-                    )
-                    : data
-            },
-
-            {
-              data:
-                "costPerUnit",
-
-              title:
-                "Costo por unidad",
-
-              render:
-                (
-                  data,
-                  type
-                ) =>
-                  type ===
-                    "display"
-                    ? currency(
-                      data
-                    )
-                    : data
-            },
-
-            {
-              data:
-                "suggestedPurchaseUnits",
-
-              title:
-                "Sugerido Compra (Unid.)",
-
-              render:
-                (
-                  data,
-                  type
-                ) =>
-                  type ===
-                    "display"
-                    ? formatQuantity(
-                      data
-                    )
-                    : data
-            },
-
-            {
-              data:
-                "suggestedPurchaseBoxes",
-
-              title:
-                "Sugerido Compra (Cajas)",
-
-              render:
-                (
-                  data,
-                  type
-                ) =>
-                  type ===
-                    "display"
-                    ? formatQuantity(
-                      data
-                    )
-                    : data
-            },
-
-            {
-              data:
-                "status",
-
-              title:
-                "Estado",
-
-              render:
-                (
-                  data,
-                  type
-                ) =>
-                  type ===
-                    "display"
-                    ? renderStatusChip(
-                      data
-                    )
-                    : data
-            },
-
-            {
-              data:
-                "searchText",
-
-              title:
-                "Búsqueda",
-
-              visible:
-                false,
-
-              searchable:
-                true,
-
-              orderable:
-                false
-            },
-
-            {
-              data:
-                null,
-
-              title:
-                "Acciones",
-
-              orderable:
-                false,
-
-              searchable:
-                false,
-
-              render:
-                (
-                  data,
-                  type,
-                  row
-                ) =>
-                  type ===
-                    "display"
-                    ? renderActions(
-                      row
-                    )
-                    : ""
-            }
-          ],
-
-          pageLength:
-            10,
-
-          lengthMenu:
-            [
-              5,
-              10,
-              25,
-              50
-            ],
-
-          order: [
-            [
-              0,
-              "asc"
-            ]
-          ],
-
-          autoWidth:
-            false,
-
-          scrollX:
-            true,
-
-          scrollCollapse:
-            true,
-
-          deferRender:
-            true,
-
-          dom:
-            'rt<"bottom"ip><"clear">',
-
-          language: {
-            emptyTable:
-              "No hay productos registrados.",
-
-            zeroRecords:
-              "No se encontraron coincidencias.",
-
-            info:
-              "Mostrando _START_ a _END_ de _TOTAL_",
-
-            infoEmpty:
-              "No hay registros",
-
-            infoFiltered:
-              "(filtrado de _MAX_ registros)",
-
-            paginate: {
-              previous:
-                "‹",
-
-              next:
-                "›"
-            }
-          }
-        });
-
-    $("#inventoryTable tbody")
-      .off(
-        "click.inventoryMovements"
-      )
-      .on(
-        "click.inventoryMovements",
-        "button[data-action='movements']",
-        function () {
-          if (
-            !canEditInventory
-          ) {
-            return;
-          }
-
-          openMovementManagerModal(
-            String(
-              $(this).data(
-                "id"
-              )
-            )
-          );
-        }
-      );
-
-    $("#inventoryTable tbody")
-      .off(
-        "click.inventoryDelete"
-      )
-      .on(
-        "click.inventoryDelete",
-        "button[data-action='delete']",
-        function () {
-          if (
-            !canEditInventory
-          ) {
-            return;
-          }
-
-          confirmDeleteProduct(
-            String(
-              $(this).data(
-                "id"
-              )
-            ),
-            String(
-              $(this).data(
-                "name"
-              ) ||
-              ""
-            )
-          );
-        }
-      );
-
-    return inventoryDT;
-  }
-
-  /*
-   * ============================================================
-   * RESUMEN
-   * ============================================================
-   */
-
-  function refreshInventoryView() {
-    const rows =
-      currentProductsList.map(
-        buildRowData
-      );
-
-    const totalValue =
-      rows.reduce(
-        (
-          sum,
-          row
-        ) =>
-          sum +
-          (
-            numberOrZero(
-              row.stockUnits
-            ) *
-            numberOrZero(
-              row.price
-            )
-          ),
-        0
-      );
-
-    const lowStock =
-      rows.filter(
-        row =>
-          row.stockUnits <=
-          LOW_STOCK_THRESHOLD ||
-          row.suggestedPurchaseUnits >
-          0
-      );
-
-    const totalProductsCard =
-      getInventoryTotalProductsCard();
-
-    const totalValueCard =
-      getInventoryTotalValueCard();
-
-    const lowStockCard =
-      getInventoryLowStockCard();
-
-    if (
-      totalProductsCard
-    ) {
-      totalProductsCard.textContent =
-        String(
-          rows.length
-        );
-    }
-
-    if (
-      totalValueCard
-    ) {
-      totalValueCard.textContent =
-        currency(
-          totalValue
-        );
-    }
-
-    if (
-      lowStockCard
-    ) {
-      lowStockCard.textContent =
-        String(
-          lowStock.length
-        );
-    }
-
-    renderLowStockPanel(
-      lowStock
-    );
-
-    const dt =
-      ensureInventoryDataTable();
-
-    if (
-      dt
-    ) {
-      const searchInput =
-        getInventorySearchInput();
-
-      const searchValue =
-        searchInput
-          ? searchInput.value.trim()
-          : "";
-
-      dt.clear();
-
-      dt.rows.add(
-        rows
-      );
-
-      dt.draw(
-        false
-      );
-
-      dt.search(
-        searchValue
-      ).draw(
-        false
-      );
-
-      return;
-    }
-
-    renderInventoryFallback(
-      rows
-    );
-  }
-
-  function renderInventoryFallback(
-    rows
-  ) {
-    const inventoryTbody =
-      getInventoryTableBody();
-
-    if (
-      !inventoryTbody
-    ) {
-      return;
-    }
-
-    inventoryTbody.innerHTML =
-      "";
-
-    if (
-      !rows.length
-    ) {
-      inventoryTbody.innerHTML =
-        `
-          <tr>
-            <td colspan="12">
-              No hay productos registrados.
-            </td>
-          </tr>
-        `;
-
-      return;
-    }
-
-    rows.forEach(
-      row => {
-        const tr =
-          document.createElement(
-            "tr"
-          );
-
-        tr.innerHTML = `
-          <td>
-            ${escapeHtml(
-          row.name
-        )}
-          </td>
-
-          <td>
-            ${escapeHtml(
-          row.providerReason
-            ? `${row.providerName ||
-            "Sin proveedor"
-            } — ${row.providerReason}`
-            : row.providerName ||
-            "Sin proveedor"
-        )}
-          </td>
-
-          <td>
-            ${renderStockDisplay(
-          row
-        )}
-          </td>
-
-          <td>
-            ${currency(
-          row.price
-        )}
-          </td>
-
-          <td>
-            ${formatQuantity(
-          row.soldMonthUnits
-        )}
-          </td>
-
-          <td>
-            ${formatQuantity(
-          row.soldMonthBoxes
-        )}
-          </td>
-
-          <td>
-            ${currency(
-          row.costPerUnit
-        )}
-          </td>
-
-          <td>
-            ${formatQuantity(
-          row.suggestedPurchaseUnits
-        )}
-          </td>
-
-          <td>
-            ${formatQuantity(
-          row.suggestedPurchaseBoxes
-        )}
-          </td>
-
-          <td>
-            ${renderStatusChip(
-          row.status
-        )}
-          </td>
-
-          <td>
-            ${renderActions(
-          row
-        )}
-          </td>
-        `;
-
-        inventoryTbody.appendChild(
-          tr
-        );
-      }
-    );
-  }
-
-  function renderLowStockPanel(
-    list
-  ) {
-    const lowStockPanel =
-      getLowStockPanel();
-
-    if (
-      !lowStockPanel
-    ) {
-      return;
-    }
-
-    if (
-      !list.length
-    ) {
-      lowStockPanel.style.display =
-        "none";
-
-      lowStockPanel.innerHTML =
-        "";
-
-      return;
-    }
-
-    lowStockPanel.style.display =
-      "block";
-
-    lowStockPanel.innerHTML =
-      "";
-
-    list.forEach(
-      product => {
-        const item =
-          document.createElement(
-            "div"
-          );
-
-        item.className =
-          "low-stock-item";
-
-        item.innerHTML = `
-          <div>
-            <strong>
-              ${escapeHtml(
-          product.name
-        )}
-            </strong>
-
-            <div class="small">
-              Proveedor:
-              ${escapeHtml(
-          product.providerReason
-            ? `${product.providerName ||
-            "Sin proveedor"
-            } — ${product.providerReason}`
-            : product.providerName ||
-            "Sin proveedor"
-        )}
-            </div>
-          </div>
-
-          <div>
-            Stock:
-            <strong>
-              ${formatQuantity(
-          product.stockUnits
-        )}
-            </strong>
-
-            |
-
-            Vendido:
-            <strong>
-              ${formatQuantity(
-          product.soldMonthUnits
-        )}
-            </strong>
-
-            |
-
-            Sugerido:
-            <strong>
-              ${formatQuantity(
-          product.suggestedPurchaseUnits
-        )}
-            </strong>
-          </div>
-        `;
-
-        lowStockPanel.appendChild(
-          item
-        );
-      }
-    );
-  }
-
-  /*
-   * ============================================================
-   * CARGA INVENTARIO
-   * ============================================================
-   */
-
-  async function loadInventoryData() {
-    if (
-      inventoryLoadPromise
-    ) {
-      return inventoryLoadPromise;
-    }
-
-    inventoryLoadPromise =
-      (async () => {
-        if (
-          !currentLocalId
-        ) {
-          currentProductsList =
-            [];
-
-          currentMonthlySalesMap =
-            {};
-
-          currentMonthlyBoxesMap =
-            {};
-
-          refreshInventoryView();
-
-          return;
-        }
-
-        const productDocuments =
-          getSessionCollection(
-            PRODUCTS_COLLECTION
-          );
-
-        const products =
-          [];
-
-        productDocuments.forEach(
-          ({
-            id,
-            data
-          }) => {
-            if (
-              !matchesCurrentLocal(
-                data
-              )
-            ) {
-              return;
-            }
-
-            const providerId =
-              String(
-                data.proveedorId ||
-                ""
-              ).trim();
-
-            let providerName =
-              String(
-                data.proveedorNombre ||
-                ""
-              ).trim();
-
-            let providerReason =
-              String(
-                data.proveedorRazonSocial ||
-                data.proveedorRazonSocialDenominacion ||
-                data.proveedorDenominacion ||
-                ""
-              ).trim();
-
-            if (
-              providerId
-            ) {
-              const provider =
-                getProviderById(
-                  providerId
-                );
-
-              if (
-                provider
-              ) {
-                providerName =
-                  getProviderName(
-                    provider
-                  ) ||
-                  providerName;
-
-                providerReason =
-                  getProviderBusinessName(
-                    provider
-                  ) ||
-                  providerReason;
-              }
-            }
-
-            const stockUnits =
-              getCurrentStockUnits(
-                data
-              );
-
-            products.push({
-              id,
-
-              ...data,
-
-              proveedorId:
-                providerId ||
-                null,
-
-              proveedorNombre:
-                providerName,
-
-              proveedorRazonSocial:
-                providerReason,
-
-              id_local:
-                currentLocalId,
-
-              localNombre:
-                data.localNombre ||
-                currentLocalInfo.nombre ||
-                "",
-
-              localNumeroDocumento:
-                data.localNumeroDocumento ||
-                currentLocalInfo.numeroDocumento ||
-                "",
-
-              localUbicacion:
-                data.localUbicacion ||
-                currentLocalInfo.ubicacion ||
-                "",
-
-              localContribuyente:
-                data.localContribuyente ||
-                currentLocalInfo.contribuyente ||
-                "",
-
-              localTipoDocumento:
-                data.localTipoDocumento ||
-                currentLocalInfo.tipoDocumento ||
-                "",
-
-              localNIT:
-                data.localNIT ||
-                currentLocalInfo.nit ||
-                "",
-
-              localNRC:
-                data.localNRC ||
-                currentLocalInfo.nrc ||
-                "",
-
-              quantity:
-                stockUnits,
-
-              stockCurrentUnits:
-                stockUnits,
-
-              unitsPerBox:
-                Math.max(
-                  0.000001,
-                  decimalOrZero(
-                    data.unitsPerBox
-                  ) || 1
-                )
-            });
-          }
-        );
-
-        products.sort(
-          (
-            a,
-            b
-          ) =>
-            normalizeText(
-              a.name
-            ).localeCompare(
-              normalizeText(
-                b.name
-              ),
-              "es"
-            )
-        );
-
-        currentProductsList =
-          products;
-
-        const salesDocuments =
-          getSessionCollection(
-            SALES_COLLECTION
-          );
-
-        const sales =
-          aggregateMonthlySales(
-            salesDocuments
-          );
-
-        currentMonthlySalesMap =
-          sales.unitsMap;
-
-        currentMonthlyBoxesMap =
-          sales.boxesMap;
-
-        await reconcileProductsAgainstMovements(
-          currentProductsList,
-          getSessionCollection(
-            MOVEMENTS_COLLECTION
-          ),
-          salesDocuments
-        );
-
-        refreshInventoryView();
-
-        console.log(
-          "[Inventario] Datos cargados desde caché:",
-          {
-            productos:
-              currentProductsList.length,
-
-            ventas:
-              salesDocuments.length,
-
-            proveedores:
-              currentProvidersList.length
-          }
-        );
-      })();
-
-    try {
-      return await inventoryLoadPromise;
-    } finally {
-      inventoryLoadPromise =
-        null;
-    }
-  }
-
-  /*
-   * ============================================================
-   * RECARGAR INVENTARIO DESPUÉS DE UNA CONVERSIÓN
-   * ============================================================
-   */
-
-  async function reloadInventoryAfterConversion() {
-    inventoryLoadPromise =
-      null;
-
-    currentProductsList =
-      [];
-
-    currentMonthlySalesMap =
-      {};
-
-    currentMonthlyBoxesMap =
-      {};
-
-    invalidateAllMovementsCache();
-
-    await loadInventoryData();
-
-    applySearch();
-
-    ensureGlobalMovementsButton();
-    ensureConversionButton();
-  }
-
-  /*
-   * ============================================================
-   * CARGA DEL MÓDULO DE CONVERSIONES
-   * ============================================================
-   */
-
-  async function ensureConversionModuleLoaded() {
-    if (
-      window.InventoryConversions
-    ) {
-      return window.InventoryConversions;
-    }
-
-    await import(
-      "./conversion.js"
-    );
-
-    if (
-      !window.InventoryConversions
-    ) {
-      throw new Error(
-        "No se pudo cargar el módulo de conversiones."
-      );
-    }
-
-    return window.InventoryConversions;
-  }
-
-  /*
-   * ============================================================
-   * BOTÓN DE CONVERSIONES
-   * ============================================================
-   */
-
-  function ensureConversionButton() {
-    const existing =
-      document.getElementById(
-        "btnConversions"
-      );
-
-    if (
-      existing
-    ) {
-      existing.style.display =
-        canEditInventory &&
-          currentLocalId
-          ? ""
-          : "none";
-
-      return existing;
-    }
-
-    const btnAdd =
-      getInventoryAddButton();
-
-    if (
-      !btnAdd ||
-      !canEditInventory ||
-      !currentLocalId
-    ) {
-      return null;
-    }
-
-    const button =
-      document.createElement(
-        "button"
-      );
-
-    button.id =
-      "btnConversions";
-
-    button.type =
-      "button";
-
-    button.className =
-      "btn-outline";
-
-    button.innerHTML = `
-      <i class="fas fa-arrows-alt-h"></i>
-      Convertir productos
-    `;
-
-    button.style.marginLeft =
-      "8px";
-
-    button.addEventListener(
-      "click",
-      async () => {
-        try {
-          const module =
-            await ensureConversionModuleLoaded();
-
-          if (
-            typeof module.openConversionModal !==
-            "function"
-          ) {
-            throw new Error(
-              "El módulo de conversiones no expone openConversionModal()."
-            );
-          }
-
-          await module.openConversionModal();
-
-        } catch (
-        error
-        ) {
-          console.error(
-            "Error abriendo conversiones:",
-            error
-          );
-
-          if (
-            typeof Swal !==
-            "undefined"
-          ) {
-            await Swal.fire(
-              "Error",
-              error.message ||
-              "No se pudo abrir el módulo de conversiones.",
-              "error"
-            );
-          }
-        }
-      }
-    );
-
-    btnAdd.parentNode?.insertBefore(
-      button,
-      btnAdd.nextSibling
-    );
-
-    return button;
-  }
-
-  /*
-   * ============================================================
    * MOVIMIENTOS
    * ============================================================
    */
-
-  function invalidateProductStockMovementsCache(
-    productId
-  ) {
-    const target =
-      String(
-        productId ||
-        ""
-      ).trim();
-
-    if (
-      target
-    ) {
-      productStockMovementsCache.delete(
-        target
-      );
-    }
-  }
-
-  function invalidateAllMovementsCache() {
-    productStockMovementsCache.clear();
-  }
 
   function getMovementUnitsPerBox(
     movement,
@@ -4890,7 +6504,7 @@
     const movementValue =
       decimalOrZero(
         movement?.unidadesPorCaja ??
-        movement?.unitsPerBox
+          movement?.unitsPerBox
       );
 
     if (
@@ -4902,8 +6516,8 @@
     const productValue =
       product
         ? decimalOrZero(
-          product.unitsPerBox
-        )
+            product.unitsPerBox
+          )
         : 0;
 
     return productValue > 0
@@ -4923,44 +6537,44 @@
 
     const hasExplicitBreakdown =
       movement?.cajas !==
-      undefined ||
+        undefined ||
       movement?.cajasBono !==
-      undefined ||
+        undefined ||
       movement?.unidades !==
-      undefined ||
+        undefined ||
       movement?.unidadesBono !==
-      undefined ||
+        undefined ||
       movement?.boxes !==
-      undefined ||
+        undefined ||
       movement?.bonusBoxes !==
-      undefined ||
+        undefined ||
       movement?.units !==
-      undefined ||
+        undefined ||
       movement?.bonusUnits !==
-      undefined;
+        undefined;
 
     let cajas =
       decimalOrZero(
         movement?.cajas ??
-        movement?.boxes
+          movement?.boxes
       );
 
     let cajasBono =
       decimalOrZero(
         movement?.cajasBono ??
-        movement?.bonusBoxes
+          movement?.bonusBoxes
       );
 
     let unidades =
       decimalOrZero(
         movement?.unidades ??
-        movement?.units
+          movement?.units
       );
 
     let unidadesBono =
       decimalOrZero(
         movement?.unidadesBono ??
-        movement?.bonusUnits
+          movement?.bonusUnits
       );
 
     if (
@@ -4978,9 +6592,9 @@
 
       if (
         paidUnits <=
-        0 &&
+          0 &&
         bonusUnits <=
-        0
+          0
       ) {
         paidUnits =
           Math.max(
@@ -4991,17 +6605,12 @@
           );
       }
 
-      /*
-       * Para registros antiguos que solo guardaban
-       * entrada total, se representa todo como
-       * cajas equivalentes decimales.
-       */
       cajas =
         unitsPerBox > 0
           ? decimalOrZero(
-            paidUnits /
-            unitsPerBox
-          )
+              paidUnits /
+                unitsPerBox
+            )
           : 0;
 
       unidades =
@@ -5010,9 +6619,9 @@
       cajasBono =
         unitsPerBox > 0
           ? decimalOrZero(
-            bonusUnits /
-            unitsPerBox
-          )
+              bonusUnits /
+                unitsPerBox
+            )
           : 0;
 
       unidadesBono =
@@ -5022,40 +6631,70 @@
     const paidUnits =
       decimalOrZero(
         cajas *
-        unitsPerBox +
-        unidades
+          unitsPerBox +
+          unidades
       );
 
     const bonusUnits =
       decimalOrZero(
         cajasBono *
-        unitsPerBox +
-        unidadesBono
+          unitsPerBox +
+          unidadesBono
       );
 
     const totalUnits =
       decimalOrZero(
         paidUnits +
-        bonusUnits
+          bonusUnits
       );
 
     return {
       cajas,
-
       cajasBono,
-
       unidades,
-
       unidadesBono,
-
       unitsPerBox,
-
       paidUnits,
-
       bonusUnits,
-
       totalUnits
     };
+  }
+
+  function normalizeMovementProviders(
+    source
+  ) {
+    const arrayProviders =
+      normalizeProviderCollection(
+        source?.proveedores ||
+          source?.providers ||
+          [],
+        source?.proveedorIds ||
+          source?.providerIds ||
+          []
+      );
+
+    const legacy =
+      normalizeProviderObject({
+        id:
+          source?.proveedorId ||
+          source?.providerId ||
+          "",
+        nombre:
+          source?.proveedorNombre ||
+          source?.providerName ||
+          "",
+        razonSocialDenominacion:
+          source?.proveedorRazonSocial ||
+          source?.proveedorRazonSocialDenominacion ||
+          source?.proveedorDenominacion ||
+          source?.providerBusinessName ||
+          ""
+      });
+
+    return mergeProviderCollections(
+      arrayProviders,
+      legacy
+    );
   }
 
   function normalizeMovementDocument(
@@ -5068,9 +6707,9 @@
     const productId =
       String(
         source.productId ||
-        source.productID ||
-        source.product_id ||
-        ""
+          source.productID ||
+          source.product_id ||
+          ""
       ).trim();
 
     const product =
@@ -5094,8 +6733,8 @@
       breakdown.totalUnits > 0
         ? breakdown.totalUnits
         : decimalOrZero(
-          source.entrada
-        );
+            source.entrada
+          );
 
     const salida =
       decimalOrZero(
@@ -5107,89 +6746,76 @@
         source.costoUnitario
       ) > 0
         ? numberOrZero(
-          source.costoUnitario
-        )
+            source.costoUnitario
+          )
         : numberOrZero(
-          source.costoPorUnidad
-        );
+            source.costoPorUnidad
+          );
 
     const costoPorCaja =
       numberOrZero(
         source.costoPorCaja
       ) > 0
         ? numberOrZero(
-          source.costoPorCaja
-        )
+            source.costoPorCaja
+          )
         : costoUnitario *
-        unitsPerBox;
+          unitsPerBox;
 
     const precioVenta =
       numberOrZero(
         source.precioVenta ??
-        source.price
+          source.price
       );
 
     const costoTotal =
       source.costoTotal !==
         undefined &&
-        source.costoTotal !==
+      source.costoTotal !==
         null
         ? Math.max(
-          0,
-          numberOrZero(
-            source.costoTotal
+            0,
+            numberOrZero(
+              source.costoTotal
+            )
           )
-        )
         : Math.max(
-          0,
-          breakdown.paidUnits *
-          costoUnitario
-        );
+            0,
+            breakdown.paidUnits *
+              costoUnitario
+          );
 
-    const movementProviderId =
-      String(
-        source.proveedorId ||
-        ""
-      ).trim();
+    const providers =
+      normalizeMovementProviders(
+        source
+      );
 
-    const movementProviderName =
-      String(
-        source.proveedorNombre ||
-        ""
-      ).trim();
-
-    const movementProviderReason =
-      String(
-        source.proveedorRazonSocial ||
-        source.proveedorRazonSocialDenominacion ||
-        source.proveedorDenominacion ||
-        ""
-      ).trim();
-
-    const providerById =
-      getProviderById(
-        movementProviderId
+    const providerIds =
+      getProviderIds(
+        providers
       );
 
     const providerName =
-      movementProviderName ||
-      getProviderName(
-        providerById
-      ) ||
-      getProductProviderName(
-        product
-      ) ||
-      "";
+      providers
+        .map(
+          provider =>
+            getProviderName(
+              provider
+            )
+        )
+        .filter(Boolean)
+        .join(" | ");
 
     const providerReason =
-      movementProviderReason ||
-      getProviderBusinessName(
-        providerById
-      ) ||
-      getProductProviderReason(
-        product
-      ) ||
-      "";
+      providers
+        .map(
+          provider =>
+            getProviderBusinessName(
+              provider
+            )
+        )
+        .filter(Boolean)
+        .join(" | ");
 
     return {
       id,
@@ -5201,39 +6827,91 @@
       productName:
         String(
           source.productName ||
-          product?.name ||
-          ""
+            product?.name ||
+            ""
         ).trim(),
 
       codigoProducto:
         String(
           source.codigoProducto ||
-          source.productCode ||
-          getProductCode(
-            product
-          ) ||
-          ""
+            source.productCode ||
+            getProductCode(
+              product
+            ) ||
+            ""
         ).trim(),
 
-      providerName,
+      proveedores:
+        providers,
+
+      proveedorIds:
+        providerIds,
+
+      providerIds:
+        providerIds,
+
+      providerList:
+        providers,
+
+      providerDisplay:
+        providers.length
+          ? providers
+              .map(
+                provider =>
+                  getProviderDisplayName(
+                    provider
+                  )
+              )
+              .filter(Boolean)
+              .join(" | ")
+          : "Sin proveedor",
 
       proveedorId:
-        movementProviderId ||
+        providerIds[0] ||
         getProductProviderId(
           product
         ) ||
         "",
 
       proveedorNombre:
-        providerName,
+        providerName ||
+        getProductProviderName(
+          product
+        ) ||
+        "",
 
       proveedorRazonSocial:
-        providerReason,
+        providerReason ||
+        getProductProviderReason(
+          product
+        ) ||
+        "",
+
+      providerId:
+        providerIds[0] ||
+        getProductProviderId(
+          product
+        ) ||
+        "",
+
+      providerName:
+        providerName ||
+        getProductProviderName(
+          product
+        ) ||
+        "",
+
+      providerBusinessName:
+        providerReason ||
+        getProductProviderReason(
+          product
+        ) ||
+        "",
 
       tipoMovimiento:
         String(
           source.tipoMovimiento ||
-          ""
+            ""
         )
           .trim()
           .toLowerCase(),
@@ -5241,16 +6919,16 @@
       referenciaLibro:
         String(
           source.referenciaLibro ||
-          source.referenceBook ||
-          source.bookReference ||
-          ""
+            source.referenceBook ||
+            source.bookReference ||
+            ""
         ).trim(),
 
       numeroDocumento:
         String(
           source.numeroDocumento ||
-          source.documentNumber ||
-          ""
+            source.documentNumber ||
+            ""
         ).trim(),
 
       entrada,
@@ -5325,14 +7003,26 @@
       expenseId:
         String(
           source.expenseId ||
-          ""
+            ""
         ).trim(),
 
       detalle:
         String(
           source.detalle ||
-          ""
+            ""
         ),
+
+      conversionId:
+        String(
+          source.conversionId ||
+            ""
+        ).trim(),
+
+      conversionType:
+        String(
+          source.conversionType ||
+            ""
+        ).trim(),
 
       fechaOperacion:
         getMovementOperationDateValue(
@@ -5345,300 +7035,6 @@
         )
     };
   }
-
-  async function loadProductStockMovements(
-    productId
-  ) {
-    const target =
-      String(
-        productId ||
-        ""
-      ).trim();
-
-    if (
-      !target
-    ) {
-      return [];
-    }
-
-    if (
-      productStockMovementsCache.has(
-        target
-      )
-    ) {
-      return (
-        productStockMovementsCache.get(
-          target
-        ) || []
-      );
-    }
-
-    if (
-      productStockMovementsPending.has(
-        target
-      )
-    ) {
-      return productStockMovementsPending.get(
-        target
-      );
-    }
-
-    const promise =
-      (async () => {
-        try {
-          const movementDocuments =
-            getSessionCollection(
-              MOVEMENTS_COLLECTION
-            );
-
-          const movements =
-            [];
-
-          movementDocuments.forEach(
-            ({
-              id,
-              data
-            }) => {
-              if (
-                !matchesCurrentLocal(
-                  data
-                )
-              ) {
-                return;
-              }
-
-              const movementProductId =
-                String(
-                  data.productId ||
-                  data.productID ||
-                  data.product_id ||
-                  ""
-                ).trim();
-
-              if (
-                movementProductId !==
-                target
-              ) {
-                return;
-              }
-
-              const movement =
-                normalizeMovementDocument(
-                  id,
-                  data
-                );
-
-              const product =
-                findProductById(
-                  target
-                );
-
-              movement.productCurrentName =
-                product?.name ||
-                movement.productName ||
-                "Producto";
-
-              movement.productCurrentProvider =
-                getProductProviderName(
-                  product
-                );
-
-              movement.productCurrentProviderReason =
-                getProductProviderReason(
-                  product
-                );
-
-              movement.productCurrentStock =
-                product
-                  ? getCurrentStockUnits(
-                    product
-                  )
-                  : movement.saldoActual;
-
-              movement.productCurrentPrice =
-                product
-                  ? numberOrZero(
-                    product.price
-                  )
-                  : movement.precioVenta;
-
-              movement.productCurrentCostPerBox =
-                product
-                  ? numberOrZero(
-                    product.lastCostPerBox
-                  )
-                  : movement.costoPorCaja;
-
-              movements.push(
-                movement
-              );
-            }
-          );
-
-          movements.sort(
-            (
-              a,
-              b
-            ) =>
-              getMovementOperationDateValue(
-                b
-              ).localeCompare(
-                getMovementOperationDateValue(
-                  a
-                )
-              ) ||
-              numberOrZero(
-                b.createdAtMs
-              ) -
-              numberOrZero(
-                a.createdAtMs
-              )
-          );
-
-          productStockMovementsCache.set(
-            target,
-            movements
-          );
-
-          return movements;
-        } catch (
-        error
-        ) {
-          console.error(
-            "Error leyendo movimientos desde la caché:",
-            error
-          );
-
-          return [];
-        }
-      })();
-
-    productStockMovementsPending.set(
-      target,
-      promise
-    );
-
-    try {
-      return await promise;
-    } finally {
-      productStockMovementsPending.delete(
-        target
-      );
-    }
-  }
-
-  async function loadAllEntryMovements() {
-    const movementDocuments =
-      getSessionCollection(
-        MOVEMENTS_COLLECTION
-      );
-
-    const movements =
-      [];
-
-    movementDocuments.forEach(
-      ({
-        id,
-        data
-      }) => {
-        if (
-          !matchesCurrentLocal(
-            data
-          )
-        ) {
-          return;
-        }
-
-        const movement =
-          normalizeMovementDocument(
-            id,
-            data
-          );
-
-        if (
-          movement.tipoMovimiento !==
-          "entrada"
-        ) {
-          return;
-        }
-
-        if (
-          !movement.productId
-        ) {
-          return;
-        }
-
-        const product =
-          findProductById(
-            movement.productId
-          );
-
-        movement.productCurrentName =
-          product?.name ||
-          movement.productName ||
-          "Producto";
-
-        movement.productCurrentProvider =
-          getProductProviderName(
-            product
-          );
-
-        movement.productCurrentProviderReason =
-          getProductProviderReason(
-            product
-          );
-
-        movement.productCurrentStock =
-          product
-            ? getCurrentStockUnits(
-              product
-            )
-            : movement.saldoActual;
-
-        movement.productCurrentPrice =
-          product
-            ? numberOrZero(
-              product.price
-            )
-            : movement.precioVenta;
-
-        movement.productCurrentCostPerBox =
-          product
-            ? numberOrZero(
-              product.lastCostPerBox
-            )
-            : movement.costoPorCaja;
-
-        movements.push(
-          movement
-        );
-      }
-    );
-
-    movements.sort(
-      (
-        a,
-        b
-      ) =>
-        getMovementOperationDateValue(
-          b
-        ).localeCompare(
-          getMovementOperationDateValue(
-            a
-          )
-        ) ||
-        b.createdAtMs -
-        a.createdAtMs
-    );
-
-    return movements;
-  }
-
-  /*
-   * ============================================================
-   * MOVIMIENTO
-   * ============================================================
-   */
 
   function buildMovementData({
     productId,
@@ -5670,6 +7066,9 @@
     proveedorNombre = "",
     proveedorRazonSocial = "",
 
+    proveedorIds = [],
+    proveedores = [],
+
     detalle,
     user,
     operationDate,
@@ -5686,8 +7085,8 @@
       operationDate instanceof Date
         ? operationDate
         : parseOperationDate(
-          operationDate
-        );
+            operationDate
+          );
 
     const normalizedUnitsPerBox =
       Math.max(
@@ -5720,49 +7119,49 @@
     const calculatedPaidUnits =
       decimalOrZero(
         normalizedBoxes *
-        normalizedUnitsPerBox +
-        normalizedUnits
+          normalizedUnitsPerBox +
+          normalizedUnits
       );
 
     const calculatedBonusUnits =
       decimalOrZero(
         normalizedBonusBoxes *
-        normalizedUnitsPerBox +
-        normalizedBonusUnits
+          normalizedUnitsPerBox +
+          normalizedBonusUnits
       );
 
     const normalizedPaidUnits =
       entradaPagada !==
         undefined &&
-        entradaPagada !==
+      entradaPagada !==
         null
         ? decimalOrZero(
-          entradaPagada
-        )
+            entradaPagada
+          )
         : calculatedPaidUnits;
 
     const normalizedBonusUnitsTotal =
       entradaBono !==
         undefined &&
-        entradaBono !==
+      entradaBono !==
         null
         ? decimalOrZero(
-          entradaBono
-        )
+            entradaBono
+          )
         : calculatedBonusUnits;
 
     const normalizedEntry =
       entrada !==
         undefined &&
-        entrada !==
+      entrada !==
         null
         ? decimalOrZero(
-          entrada
-        )
+            entrada
+          )
         : decimalOrZero(
-          normalizedPaidUnits +
-          normalizedBonusUnitsTotal
-        );
+            normalizedPaidUnits +
+              normalizedBonusUnitsTotal
+          );
 
     let normalizedCostUnit =
       Math.max(
@@ -5808,19 +7207,82 @@
     const normalizedCostTotal =
       costoTotal !==
         undefined &&
-        costoTotal !==
+      costoTotal !==
         null
         ? Math.max(
-          0,
-          numberOrZero(
-            costoTotal
+            0,
+            numberOrZero(
+              costoTotal
+            )
           )
-        )
         : Math.max(
-          0,
-          normalizedPaidUnits *
-          normalizedCostUnit
-        );
+            0,
+            normalizedPaidUnits *
+              normalizedCostUnit
+          );
+
+    const providerCollection =
+      mergeProviderCollections(
+        proveedores,
+        normalizeIdArray(
+          proveedorIds
+        ).map(
+          id =>
+            getProviderById(
+              id
+            )
+        ),
+        normalizeProviderObject({
+          id:
+            proveedorId,
+          nombre:
+            proveedorNombre,
+          razonSocialDenominacion:
+            proveedorRazonSocial
+        })
+      );
+
+    const normalizedProviderIds =
+      getProviderIds(
+        providerCollection
+      );
+
+    const primaryProvider =
+      providerCollection[0] ||
+      null;
+
+    const providerNames =
+      providerCollection
+        .map(
+          provider =>
+            getProviderName(
+              provider
+            )
+        )
+        .filter(Boolean);
+
+    const providerReasons =
+      providerCollection
+        .map(
+          provider =>
+            getProviderBusinessName(
+              provider
+            )
+        )
+        .filter(Boolean);
+
+    const providerDisplay =
+      providerCollection.length
+        ? providerCollection
+            .map(
+              provider =>
+                getProviderDisplayName(
+                  provider
+                )
+            )
+            .filter(Boolean)
+            .join(" | ")
+        : "Sin proveedor";
 
     return {
       productId,
@@ -5935,58 +7397,64 @@
       costoTotal:
         normalizedCostTotal,
 
+      proveedores:
+        providerCollection,
+
+      proveedorIds:
+        normalizedProviderIds,
+
+      providerIds:
+        normalizedProviderIds,
+
+      providerList:
+        providerCollection,
+
+      providerDisplay,
+
       proveedorId:
-        String(
-          proveedorId ||
-          ""
-        ).trim(),
+        primaryProvider?.id ||
+        "",
 
       proveedorNombre:
-        String(
-          proveedorNombre ||
-          ""
-        ).trim(),
+        providerNames.join(
+          " | "
+        ),
 
       proveedorRazonSocial:
-        String(
-          proveedorRazonSocial ||
-          ""
-        ).trim(),
+        providerReasons.join(
+          " | "
+        ),
 
       providerId:
-        String(
-          proveedorId ||
-          ""
-        ).trim(),
+        primaryProvider?.id ||
+        "",
 
       providerName:
-        String(
-          proveedorNombre ||
-          ""
-        ).trim(),
+        providerNames.join(
+          " | "
+        ),
 
       providerBusinessName:
-        String(
-          proveedorRazonSocial ||
-          ""
-        ).trim(),
+        providerReasons.join(
+          " | "
+        ),
 
       expenseId:
         String(
           expenseId ||
-          ""
+            ""
         ).trim(),
 
       conversionId:
         String(
           conversionId ||
-          ""
+            ""
         ).trim(),
 
       conversionType:
         String(
           conversionType ||
-          ""
+            ""
         ).trim(),
 
       detalle:
@@ -5996,8 +7464,8 @@
       fechaOperacion:
         validOperationDate
           ? getLocalDateInputValue(
-            validOperationDate
-          )
+              validOperationDate
+            )
           : "",
 
       id_local:
@@ -6044,6 +7512,276 @@
     };
   }
 
+  async function loadProductStockMovements(
+    productId
+  ) {
+    const target =
+      String(
+        productId ||
+          ""
+      ).trim();
+
+    if (!target) {
+      return [];
+    }
+
+    if (
+      productStockMovementsCache.has(
+        target
+      )
+    ) {
+      return (
+        productStockMovementsCache.get(
+          target
+        ) || []
+      );
+    }
+
+    if (
+      productStockMovementsPending.has(
+        target
+      )
+    ) {
+      return productStockMovementsPending.get(
+        target
+      );
+    }
+
+    const promise =
+      (async () => {
+        const movementDocuments =
+          getSessionCollection(
+            MOVEMENTS_COLLECTION
+          );
+
+        const movements =
+          [];
+
+        movementDocuments.forEach(
+          ({
+            id,
+            data
+          }) => {
+            if (
+              !matchesCurrentLocal(
+                data
+              )
+            ) {
+              return;
+            }
+
+            const movementProductId =
+              String(
+                data.productId ||
+                  data.productID ||
+                  data.product_id ||
+                  ""
+              ).trim();
+
+            if (
+              movementProductId !==
+              target
+            ) {
+              return;
+            }
+
+            const movement =
+              normalizeMovementDocument(
+                id,
+                data
+              );
+
+            const product =
+              findProductById(
+                target
+              );
+
+            movement.productCurrentName =
+              product?.name ||
+              movement.productName ||
+              "Producto";
+
+            movement.productCurrentProvider =
+              getProductProvidersDisplay(
+                product
+              );
+
+            movement.productCurrentStock =
+              product
+                ? getCurrentStockUnits(
+                    product
+                  )
+                : movement.saldoActual;
+
+            movement.productCurrentPrice =
+              product
+                ? numberOrZero(
+                    product.price
+                  )
+                : movement.precioVenta;
+
+            movements.push(
+              movement
+            );
+          }
+        );
+
+        movements.sort(
+          (
+            a,
+            b
+          ) =>
+            getMovementOperationDateValue(
+              b
+            ).localeCompare(
+              getMovementOperationDateValue(
+                a
+              )
+            ) ||
+            numberOrZero(
+              b.createdAtMs
+            ) -
+              numberOrZero(
+                a.createdAtMs
+              )
+        );
+
+        productStockMovementsCache.set(
+          target,
+          movements
+        );
+
+        return movements;
+      })();
+
+    productStockMovementsPending.set(
+      target,
+      promise
+    );
+
+    try {
+      return await promise;
+    } finally {
+      productStockMovementsPending.delete(
+        target
+      );
+    }
+  }
+
+  async function loadAllEntryMovements() {
+    const movementDocuments =
+      getSessionCollection(
+        MOVEMENTS_COLLECTION
+      );
+
+    const movements = [];
+
+    movementDocuments.forEach(
+      ({
+        id,
+        data
+      }) => {
+        if (
+          !matchesCurrentLocal(
+            data
+          )
+        ) {
+          return;
+        }
+
+        const movement =
+          normalizeMovementDocument(
+            id,
+            data
+          );
+
+        if (
+          movement.tipoMovimiento !==
+          "entrada"
+        ) {
+          return;
+        }
+
+        if (
+          !movement.productId
+        ) {
+          return;
+        }
+
+        const product =
+          findProductById(
+            movement.productId
+          );
+
+        movement.productCurrentName =
+          product?.name ||
+          movement.productName ||
+          "Producto";
+
+        movement.productCurrentProvider =
+          getProductProvidersDisplay(
+            product
+          );
+
+        movement.productCurrentStock =
+          product
+            ? getCurrentStockUnits(
+                product
+              )
+            : movement.saldoActual;
+
+        movement.productCurrentPrice =
+          product
+            ? numberOrZero(
+                product.price
+              )
+            : movement.precioVenta;
+
+        movements.push(
+          movement
+        );
+      }
+    );
+
+    movements.sort(
+      (
+        a,
+        b
+      ) =>
+        getMovementOperationDateValue(
+          b
+        ).localeCompare(
+          getMovementOperationDateValue(
+            a
+          )
+        ) ||
+        b.createdAtMs -
+          a.createdAtMs
+    );
+
+    return movements;
+  }
+
+  function invalidateProductStockMovementsCache(
+    productId
+  ) {
+    const target =
+      String(
+        productId ||
+          ""
+      ).trim();
+
+    if (target) {
+      productStockMovementsCache.delete(
+        target
+      );
+    }
+  }
+
+  function invalidateAllMovementsCache() {
+    productStockMovementsCache.clear();
+  }
+
   /*
    * ============================================================
    * CREAR PRODUCTO NUEVO
@@ -6086,21 +7824,21 @@
     const totalPaidUnits =
       decimalOrZero(
         paidBoxes *
-        unitsPerBox +
-        paidUnits
+          unitsPerBox +
+          paidUnits
       );
 
     const totalBonusUnits =
       decimalOrZero(
         bonusBoxes *
-        unitsPerBox +
-        bonusUnits
+          unitsPerBox +
+          bonusUnits
       );
 
     const totalUnits =
       decimalOrZero(
         totalPaidUnits +
-        totalBonusUnits
+          totalBonusUnits
       );
 
     if (
@@ -6116,8 +7854,8 @@
       operationDate instanceof Date
         ? operationDate
         : parseOperationDate(
-          operationDate
-        );
+            operationDate
+          );
 
     if (
       !validOperationDate
@@ -6138,6 +7876,20 @@
           PRODUCTS_COLLECTION
         )
         .doc();
+
+    const selectedProviders =
+      getLineProviders(
+        line
+      );
+
+    const providerIds =
+      getProviderIds(
+        selectedProviders
+      );
+
+    const primaryProvider =
+      selectedProviders[0] ||
+      null;
 
     const costPerUnit =
       getEffectiveCostPerUnitForLine(
@@ -6176,16 +7928,45 @@
         line.codigoProducto ||
         "",
 
+      proveedorIds:
+        providerIds,
+
+      providerIds:
+        providerIds,
+
+      proveedores:
+        selectedProviders,
+
       proveedorId:
-        line.proveedorId ||
+        primaryProvider?.id ||
         null,
 
       proveedorNombre:
-        line.proveedorNombre ||
+        getProviderName(
+          primaryProvider
+        ) ||
         "",
 
       proveedorRazonSocial:
-        line.proveedorRazonSocial ||
+        getProviderBusinessName(
+          primaryProvider
+        ) ||
+        "",
+
+      providerId:
+        primaryProvider?.id ||
+        null,
+
+      providerName:
+        getProviderName(
+          primaryProvider
+        ) ||
+        "",
+
+      providerBusinessName:
+        getProviderBusinessName(
+          primaryProvider
+        ) ||
         "",
 
       quantity:
@@ -6200,7 +7981,7 @@
       boxes:
         decimalOrZero(
           totalUnits /
-          unitsPerBox
+            unitsPerBox
         ),
 
       unitsPerBox,
@@ -6335,14 +8116,11 @@
         entradaBono:
           totalBonusUnits,
 
-        proveedorId:
-          line.proveedorId,
+        proveedorIds:
+          providerIds,
 
-        proveedorNombre:
-          line.proveedorNombre,
-
-        proveedorRazonSocial:
-          line.proveedorRazonSocial,
+        proveedores:
+          selectedProviders,
 
         detalle:
           [
@@ -6390,24 +8168,16 @@
               totalPurchaseCost
             )}`,
 
-            line.proveedorNombre
-              ? `Proveedor: ${line.proveedorNombre}`
-              : "",
-
-            line.proveedorRazonSocial
-              ? `Razón Social: ${line.proveedorRazonSocial}`
-              : "",
+            `Proveedores: ${getLineProvidersDisplay(
+              line
+            )}`,
 
             `Fecha de operación: ${formatOperationDate(
               validOperationDate
             )}`
-          ]
-            .filter(
-              Boolean
-            )
-            .join(
-              " | "
-            ),
+          ].join(
+            " | "
+          ),
 
         user,
 
@@ -6504,7 +8274,7 @@
 
   /*
    * ============================================================
-   * AGREGAR STOCK A PRODUCTO EXISTENTE
+   * PRODUCTO EXISTENTE
    * ============================================================
    */
 
@@ -6520,9 +8290,9 @@
         decimalOrZero(
           line.unitsPerBox
         ) ||
-        getUnitsPerBox(
-          product
-        )
+          getUnitsPerBox(
+            product
+          )
       );
 
     const paidBoxes =
@@ -6548,21 +8318,21 @@
     const totalPaidUnits =
       decimalOrZero(
         paidBoxes *
-        unitsPerBox +
-        paidUnits
+          unitsPerBox +
+          paidUnits
       );
 
     const totalBonusUnits =
       decimalOrZero(
         bonusBoxes *
-        unitsPerBox +
-        bonusUnits
+          unitsPerBox +
+          bonusUnits
       );
 
     const totalUnits =
       decimalOrZero(
         totalPaidUnits +
-        totalBonusUnits
+          totalBonusUnits
       );
 
     if (
@@ -6578,8 +8348,8 @@
       operationDate instanceof Date
         ? operationDate
         : parseOperationDate(
-          operationDate
-        );
+            operationDate
+          );
 
     if (
       !validOperationDate
@@ -6618,14 +8388,8 @@
     let nextPrice =
       0;
 
-    let nextProviderId =
-      null;
-
-    let nextProviderName =
-      "";
-
-    let nextProviderRazonSocial =
-      "";
+    let nextProviders =
+      [];
 
     let movementData =
       null;
@@ -6668,7 +8432,7 @@
           nextStock =
             decimalOrZero(
               previousStock +
-              totalUnits
+                totalUnits
             );
 
           const inputCostPerBox =
@@ -6726,49 +8490,67 @@
             }
           }
 
-          const normalizedPrice =
+          nextPrice =
             numberOrZero(
               line.price
+            ) > 0
+              ? numberOrZero(
+                  line.price
+                )
+              : numberOrZero(
+                  data.price
+                );
+
+          const productProviders =
+            getProductProviders(
+              data
             );
 
-          nextPrice =
-            normalizedPrice > 0
-              ? normalizedPrice
-              : numberOrZero(
-                data.price
-              );
+          const selectedProviders =
+            getLineProviders(
+              line
+            );
 
-          if (
-            line.proveedorId
-          ) {
-            nextProviderId =
-              line.proveedorId;
+          /*
+           * La lista global del producto es la unión
+           * de los proveedores antiguos y los seleccionados
+           * en esta entrada.
+           */
+          nextProviders =
+            mergeProviderCollections(
+              productProviders,
+              selectedProviders
+            );
 
-            nextProviderName =
-              line.proveedorNombre ||
-              "";
+          /*
+           * Para mantener compatibilidad:
+           * el primer proveedor seleccionado tiene prioridad.
+           * Si no se seleccionó ninguno, se conserva
+           * el primer proveedor ya asociado.
+           */
+          const movementProviders =
+            selectedProviders.length
+              ? selectedProviders
+              : productProviders.length
+                ? [
+                    productProviders[0]
+                  ]
+                : [];
 
-            nextProviderRazonSocial =
-              line.proveedorRazonSocial ||
-              "";
-          } else {
-            nextProviderId =
-              data.proveedorId ||
-              null;
+          const primaryProvider =
+            movementProviders[0] ||
+            nextProviders[0] ||
+            null;
 
-            nextProviderName =
-              String(
-                data.proveedorNombre ||
-                ""
-              ).trim();
+          const nextProviderIds =
+            getProviderIds(
+              nextProviders
+            );
 
-            nextProviderRazonSocial =
-              String(
-                data.proveedorRazonSocial ||
-                data.proveedorRazonSocialDenominacion ||
-                ""
-              ).trim();
-          }
+          const movementProviderIds =
+            getProviderIds(
+              movementProviders
+            );
 
           const totalPurchaseCost =
             totalPaidUnits *
@@ -6854,14 +8636,11 @@
               entradaBono:
                 totalBonusUnits,
 
-              proveedorId:
-                nextProviderId,
+              proveedorIds:
+                movementProviderIds,
 
-              proveedorNombre:
-                nextProviderName,
-
-              proveedorRazonSocial:
-                nextProviderRazonSocial,
+              proveedores:
+                movementProviders,
 
               detalle:
                 [
@@ -6909,24 +8688,28 @@
                     totalPurchaseCost
                   )}`,
 
-                  nextProviderName
-                    ? `Proveedor: ${nextProviderName}`
-                    : "",
-
-                  nextProviderRazonSocial
-                    ? `Razón Social: ${nextProviderRazonSocial}`
-                    : "",
+                  `Proveedores: ${
+                    movementProviders.length
+                      ? movementProviders
+                          .map(
+                            provider =>
+                              getProviderDisplayName(
+                                provider
+                              )
+                          )
+                          .filter(Boolean)
+                          .join(
+                            " | "
+                          )
+                      : "Sin proveedor"
+                  }`,
 
                   `Fecha de operación: ${formatOperationDate(
                     validOperationDate
                   )}`
-                ]
-                  .filter(
-                    Boolean
-                  )
-                  .join(
-                    " | "
-                  ),
+                ].join(
+                  " | "
+                ),
 
               user,
 
@@ -6951,14 +8734,46 @@
                 ) ||
                 "",
 
+              proveedorIds:
+                nextProviderIds,
+
+              providerIds:
+                nextProviderIds,
+
+              proveedores:
+                nextProviders,
+
               proveedorId:
-                nextProviderId,
+                primaryProvider?.id ||
+                null,
 
               proveedorNombre:
-                nextProviderName,
+                getProviderName(
+                  primaryProvider
+                ) ||
+                "",
 
               proveedorRazonSocial:
-                nextProviderRazonSocial,
+                getProviderBusinessName(
+                  primaryProvider
+                ) ||
+                "",
+
+              providerId:
+                primaryProvider?.id ||
+                null,
+
+              providerName:
+                getProviderName(
+                  primaryProvider
+                ) ||
+                "",
+
+              providerBusinessName:
+                getProviderBusinessName(
+                  primaryProvider
+                ) ||
+                "",
 
               quantity:
                 nextStock,
@@ -6975,7 +8790,7 @@
               boxes:
                 decimalOrZero(
                   nextStock /
-                  unitsPerBox
+                    unitsPerBox
                 ),
 
               unitsPerBox,
@@ -7032,7 +8847,10 @@
               movementRef.id,
 
             movementCostTotal:
-              totalPurchaseCost
+              totalPurchaseCost,
+
+            providerIds:
+              movementProviderIds
           };
         }
       );
@@ -7042,34 +8860,58 @@
         product.id
       );
 
+    const primaryProvider =
+      nextProviders[0] ||
+      null;
+
     const updatedProductData = {
       ...(localProduct ||
         product),
 
-      codigoProducto:
-        line.codigoProducto ||
-        getProductCode(
-          localProduct ||
-          product
-        ) ||
-        "",
+      proveedorIds:
+        getProviderIds(
+          nextProviders
+        ),
 
-      productCode:
-        line.codigoProducto ||
-        getProductCode(
-          localProduct ||
-          product
-        ) ||
-        "",
+      providerIds:
+        getProviderIds(
+          nextProviders
+        ),
+
+      proveedores:
+        nextProviders,
 
       proveedorId:
-        nextProviderId,
+        primaryProvider?.id ||
+        null,
 
       proveedorNombre:
-        nextProviderName,
+        getProviderName(
+          primaryProvider
+        ) ||
+        "",
 
       proveedorRazonSocial:
-        nextProviderRazonSocial,
+        getProviderBusinessName(
+          primaryProvider
+        ) ||
+        "",
+
+      providerId:
+        primaryProvider?.id ||
+        null,
+
+      providerName:
+        getProviderName(
+          primaryProvider
+        ) ||
+        "",
+
+      providerBusinessName:
+        getProviderBusinessName(
+          primaryProvider
+        ) ||
+        "",
 
       quantity:
         nextStock,
@@ -7079,15 +8921,17 @@
 
       stockBaseUnits:
         numberOrZero(
-          localProduct?.stockBaseUnits ||
-          product.stockBaseUnits
+          (
+            localProduct ||
+            product
+          ).stockBaseUnits
         ) ||
         previousStock,
 
       boxes:
         decimalOrZero(
           nextStock /
-          unitsPerBox
+            unitsPerBox
         ),
 
       unitsPerBox,
@@ -7216,1245 +9060,6 @@
 
   /*
    * ============================================================
-   * COMBOBOX / LÍNEAS DE CARGA
-   * ============================================================
-   */
-
-  function buildBatchLineHtml(
-    line
-  ) {
-    const isExisting =
-      line.mode ===
-      "existing";
-
-    const lineElement =
-      document.createElement(
-        "div"
-      );
-
-    lineElement.className =
-      "batch-product-row";
-
-    lineElement.dataset.lineId =
-      line.id;
-
-    const providerValue =
-      line.proveedorId
-        ? getProviderDisplayName(
-          getProviderById(
-            line.proveedorId
-          )
-        ) ||
-        line.proveedorNombre
-        : line.proveedorNombre;
-
-    lineElement.innerHTML = `
-      <div class="batch-row-header">
-
-        <div>
-          <strong>
-            Producto ${batchLineCounter}
-          </strong>
-
-          <span
-            class="batch-row-total"
-            data-role="total"
-          >
-            0 unidades
-          </span>
-        </div>
-
-        <button
-          type="button"
-          class="btn-outline batch-remove-row"
-          data-action="remove"
-        >
-          <i class="fas fa-times"></i>
-          Quitar
-        </button>
-
-      </div>
-
-      <div class="batch-grid">
-
-        <div class="inv-field">
-          <label>
-            Tipo
-          </label>
-
-          <select
-            class="batch-mode"
-          >
-            <option
-              value="existing"
-              ${isExisting
-        ? "selected"
-        : ""
-      }
-            >
-              Existente
-            </option>
-
-            <option
-              value="new"
-              ${!isExisting
-        ? "selected"
-        : ""
-      }
-            >
-              Nuevo
-            </option>
-          </select>
-        </div>
-
-        <div class="inv-field batch-product-field">
-          <label>
-            Producto
-          </label>
-
-          <div class="batch-product-combobox">
-            ${buildProductCombobox(
-        line.id,
-        line.productText
-      )}
-          </div>
-
-          <div
-            class="batch-product-status"
-            data-role="product-status"
-          ></div>
-        </div>
-
-        <div class="inv-field">
-          <label>
-            Código
-          </label>
-
-          <input
-            type="text"
-            class="batch-code"
-            value="${escapeHtml(
-        line.codigoProducto
-      )}"
-            placeholder="Código"
-          >
-        </div>
-
-        <div class="inv-field">
-          <label>
-            Proveedor
-          </label>
-
-          ${getProviderComboboxHtml(
-        `batch-provider-${line.id}`,
-        `batch-provider-list-${line.id}`,
-        providerValue
-      )}
-
-          <small>
-            Busca por nombre o razón social.
-          </small>
-        </div>
-
-        <div class="inv-field">
-          <label>
-            Cajas
-          </label>
-
-          <input
-            type="number"
-            class="batch-boxes"
-            min="0"
-            step="any"
-            inputmode="decimal"
-            value="${formatQuantity(
-        line.boxes
-      )}"
-          >
-        </div>
-
-        <div class="inv-field bonus-field">
-          <label>
-            Cajas bono
-          </label>
-
-          <input
-            type="number"
-            class="batch-bonus-boxes"
-            min="0"
-            step="any"
-            inputmode="decimal"
-            value="${formatQuantity(
-        line.bonusBoxes
-      )}"
-          >
-        </div>
-
-        <div class="inv-field">
-          <label>
-            Unidades
-          </label>
-
-          <input
-            type="number"
-            class="batch-units"
-            min="0"
-            step="any"
-            inputmode="decimal"
-            value="${formatQuantity(
-        line.units
-      )}"
-          >
-        </div>
-
-        <div class="inv-field bonus-field">
-          <label>
-            Unidades bono
-          </label>
-
-          <input
-            type="number"
-            class="batch-bonus-units"
-            min="0"
-            step="any"
-            inputmode="decimal"
-            value="${formatQuantity(
-        line.bonusUnits
-      )}"
-          >
-        </div>
-
-        <div class="inv-field">
-          <label>
-            Unidades por caja
-          </label>
-
-          <input
-            type="number"
-            class="batch-units-per-box"
-            min="0.000001"
-            step="any"
-            inputmode="decimal"
-            value="${formatQuantity(
-        line.unitsPerBox
-      )}"
-          >
-
-          <small>
-            Editable también para productos existentes.
-          </small>
-        </div>
-
-        <div class="inv-field">
-          <label>
-            Costo por caja
-          </label>
-
-          <input
-            type="number"
-            class="batch-cost-box"
-            min="0"
-            step="0.01"
-            inputmode="decimal"
-            value="${line.lastCostPerBox}"
-          >
-        </div>
-
-        <div class="inv-field">
-          <label>
-            Costo por unidad
-          </label>
-
-          <input
-            type="text"
-            class="batch-cost-unit"
-            value="${line.lastCostPerUnit.toFixed(
-        4
-      )}"
-            readonly
-          >
-        </div>
-
-        <div class="inv-field">
-          <label>
-            Precio
-          </label>
-
-          <input
-            type="number"
-            class="batch-price"
-            min="0"
-            step="0.01"
-            inputmode="decimal"
-            value="${line.price}"
-          >
-        </div>
-
-        <div class="inv-field">
-          <label>
-            Referencia libro
-          </label>
-
-          <input
-            type="text"
-            class="batch-reference"
-            value="${escapeHtml(
-        line.referenciaLibro
-      )}"
-            placeholder="Compra / Inventario"
-          >
-        </div>
-
-        <div class="inv-field">
-          <label>
-            Documento
-          </label>
-
-          <input
-            type="text"
-            class="batch-document"
-            value="${escapeHtml(
-        line.numeroDocumento
-      )}"
-            placeholder="Factura / documento"
-          >
-        </div>
-
-      </div>
-
-      <div class="batch-row-summary">
-
-        <span>
-          Stock agregado:
-          <strong data-role="total">
-            0
-          </strong>
-          unidades
-        </span>
-
-        <span>
-          Cajas totales:
-          <strong data-role="total-boxes">
-            0
-          </strong>
-        </span>
-
-        <span>
-          Normales:
-          <strong data-role="normal-units">
-            0
-          </strong>
-        </span>
-
-        <span>
-          Bonificadas:
-          <strong data-role="bonus-units">
-            0
-          </strong>
-        </span>
-
-      </div>
-    `;
-
-    bindBatchLineEvents(
-      lineElement
-    );
-
-    updateBatchLineState(
-      lineElement
-    );
-
-    return lineElement;
-  }
-
-  function readBatchLine(
-    row
-  ) {
-    const mode =
-      String(
-        row.querySelector(
-          ".batch-mode"
-        )?.value ||
-        ""
-      ).trim();
-
-    const productText =
-      String(
-        row.querySelector(
-          ".batch-product-input"
-        )?.value ||
-        ""
-      ).trim();
-
-    const code =
-      String(
-        row.querySelector(
-          ".batch-code"
-        )?.value ||
-        ""
-      ).trim();
-
-    const providerElement =
-      row.querySelector(
-        ".batch-provider"
-      );
-
-    const providerValue =
-      String(
-        providerElement?.value ||
-        ""
-      ).trim();
-
-    const provider =
-      resolveProviderSelection(
-        providerValue
-      );
-
-    const boxes =
-      decimalOrZero(
-        row.querySelector(
-          ".batch-boxes"
-        )?.value
-      );
-
-    const bonusBoxes =
-      decimalOrZero(
-        row.querySelector(
-          ".batch-bonus-boxes"
-        )?.value
-      );
-
-    const units =
-      decimalOrZero(
-        row.querySelector(
-          ".batch-units"
-        )?.value
-      );
-
-    const bonusUnits =
-      decimalOrZero(
-        row.querySelector(
-          ".batch-bonus-units"
-        )?.value
-      );
-
-    const unitsPerBox =
-      Math.max(
-        0.000001,
-        decimalOrZero(
-          row.querySelector(
-            ".batch-units-per-box"
-          )?.value
-        ) || 1
-      );
-
-    const lastCostPerBox =
-      Math.max(
-        0,
-        numberOrZero(
-          row.querySelector(
-            ".batch-cost-box"
-          )?.value
-        )
-      );
-
-    const lastCostPerUnit =
-      unitsPerBox > 0
-        ? lastCostPerBox /
-        unitsPerBox
-        : 0;
-
-    const price =
-      Math.max(
-        0,
-        numberOrZero(
-          row.querySelector(
-            ".batch-price"
-          )?.value
-        )
-      );
-
-    const referenciaLibro =
-      String(
-        row.querySelector(
-          ".batch-reference"
-        )?.value ||
-        ""
-      ).trim();
-
-    const numeroDocumento =
-      String(
-        row.querySelector(
-          ".batch-document"
-        )?.value ||
-        ""
-      ).trim();
-
-    const matchedProduct =
-      findProductByText(
-        productText
-      );
-
-    return {
-      id:
-        row.dataset.lineId ||
-        "",
-
-      mode,
-
-      productText,
-
-      product:
-        matchedProduct,
-
-      name:
-        mode ===
-          "new"
-          ? productText
-          : (
-            matchedProduct?.name ||
-            productText
-          ),
-
-      codigoProducto:
-        code ||
-        getProductCode(
-          matchedProduct
-        ) ||
-        "",
-
-      proveedorId:
-        provider
-          ? String(
-            provider.id
-          ).trim()
-          : "",
-
-      proveedorNombre:
-        provider
-          ? getProviderName(
-            provider
-          )
-          : "",
-
-      proveedorRazonSocial:
-        provider
-          ? getProviderBusinessName(
-            provider
-          )
-          : "",
-
-      boxes,
-
-      bonusBoxes,
-
-      units,
-
-      bonusUnits,
-
-      unitsPerBox,
-
-      lastCostPerBox,
-
-      lastCostPerUnit,
-
-      price,
-
-      referenciaLibro,
-
-      numeroDocumento
-    };
-  }
-
-  function updateBatchLineState(
-    row
-  ) {
-    const data =
-      readBatchLine(
-        row
-      );
-
-    const mode =
-      data.mode;
-
-    const product =
-      data.product;
-
-    const codeInput =
-      row.querySelector(
-        ".batch-code"
-      );
-
-    const unitsPerBoxInput =
-      row.querySelector(
-        ".batch-units-per-box"
-      );
-
-    const costBoxInput =
-      row.querySelector(
-        ".batch-cost-box"
-      );
-
-    const costUnitInput =
-      row.querySelector(
-        ".batch-cost-unit"
-      );
-
-    const priceInput =
-      row.querySelector(
-        ".batch-price"
-      );
-
-    const providerInput =
-      row.querySelector(
-        ".batch-provider"
-      );
-
-    const status =
-      row.querySelector(
-        '[data-role="product-status"]'
-      );
-
-    const totalElement =
-      row.querySelector(
-        '[data-role="total"]'
-      );
-
-    const totalBoxesElement =
-      row.querySelector(
-        '[data-role="total-boxes"]'
-      );
-
-    const normalUnitsElement =
-      row.querySelector(
-        '[data-role="normal-units"]'
-      );
-
-    const bonusUnitsElement =
-      row.querySelector(
-        '[data-role="bonus-units"]'
-      );
-
-    const totalNormal =
-      decimalOrZero(
-        data.boxes *
-        data.unitsPerBox +
-        data.units
-      );
-
-    const totalBonus =
-      decimalOrZero(
-        data.bonusBoxes *
-        data.unitsPerBox +
-        data.bonusUnits
-      );
-
-    const totalUnits =
-      decimalOrZero(
-        totalNormal +
-        totalBonus
-      );
-
-    const totalBoxes =
-      decimalOrZero(
-        data.boxes +
-        data.bonusBoxes
-      );
-
-    const calculatedCostPerUnit =
-      data.unitsPerBox > 0
-        ? data.lastCostPerBox /
-        data.unitsPerBox
-        : 0;
-
-    if (
-      costUnitInput
-    ) {
-      costUnitInput.value =
-        calculatedCostPerUnit.toFixed(
-          4
-        );
-    }
-
-    if (
-      totalElement
-    ) {
-      totalElement.textContent =
-        formatQuantity(
-          totalUnits
-        );
-    }
-
-    if (
-      totalBoxesElement
-    ) {
-      totalBoxesElement.textContent =
-        formatQuantity(
-          totalBoxes
-        );
-    }
-
-    if (
-      normalUnitsElement
-    ) {
-      normalUnitsElement.textContent =
-        formatQuantity(
-          totalNormal
-        );
-    }
-
-    if (
-      bonusUnitsElement
-    ) {
-      bonusUnitsElement.textContent =
-        formatQuantity(
-          totalBonus
-        );
-    }
-
-    if (
-      mode ===
-      "existing"
-    ) {
-      if (
-        product
-      ) {
-        const productUnitsPerBox =
-          getUnitsPerBox(
-            product
-          );
-
-        const enteredUnitsPerBox =
-          Math.max(
-            0.000001,
-            decimalOrZero(
-              unitsPerBoxInput?.value
-            ) ||
-            productUnitsPerBox
-          );
-
-        if (
-          unitsPerBoxInput &&
-          !String(
-            unitsPerBoxInput.value ||
-            ""
-          ).trim()
-        ) {
-          unitsPerBoxInput.value =
-            formatQuantity(
-              productUnitsPerBox
-            );
-        }
-
-        const unitsPerBoxChanged =
-          enteredUnitsPerBox !==
-          productUnitsPerBox;
-
-        if (
-          status
-        ) {
-          status.innerHTML = `
-            <span class="batch-status success">
-              Producto encontrado:
-              ${escapeHtml(
-            product.name
-          )}
-              · Stock actual:
-              ${formatQuantity(
-            getCurrentStockUnits(
-              product
-            )
-          )}
-              ·
-              ${formatQuantity(
-            enteredUnitsPerBox
-          )}
-              unid./caja
-
-              ${unitsPerBoxChanged
-              ? `
-                    <br>
-                    <span
-                      style="
-                        color:#9a3412;
-                        font-weight:700;
-                      "
-                    >
-                      Se actualizará el empaque:
-                      ${formatQuantity(
-                productUnitsPerBox
-              )}
-                      →
-                      ${formatQuantity(
-                enteredUnitsPerBox
-              )}
-                      unidades/caja
-                    </span>
-                  `
-              : ""
-            }
-            </span>
-          `;
-        }
-
-        if (
-          codeInput &&
-          !String(
-            codeInput.value ||
-            ""
-          ).trim()
-        ) {
-          codeInput.value =
-            getProductCode(
-              product
-            ) ||
-            "";
-        }
-
-        if (
-          unitsPerBoxInput
-        ) {
-          unitsPerBoxInput.disabled =
-            false;
-        }
-
-        if (
-          costBoxInput &&
-          numberOrZero(
-            costBoxInput.value
-          ) <=
-          0
-        ) {
-          const existingCostBox =
-            numberOrZero(
-              product.lastCostPerBox
-            );
-
-          const existingCostUnit =
-            numberOrZero(
-              product.lastCostPerUnit
-            );
-
-          costBoxInput.value =
-            String(
-              existingCostBox > 0
-                ? existingCostBox
-                : existingCostUnit *
-                enteredUnitsPerBox
-            );
-        }
-
-        if (
-          priceInput &&
-          numberOrZero(
-            priceInput.value
-          ) <=
-          0
-        ) {
-          priceInput.value =
-            String(
-              numberOrZero(
-                product.price
-              )
-            );
-        }
-
-        if (
-          providerInput &&
-          !providerInput.value
-        ) {
-          const provider =
-            getProviderById(
-              getProductProviderId(
-                product
-              )
-            );
-
-          providerInput.value =
-            provider
-              ? getProviderDisplayName(
-                provider
-              )
-              : getProductProviderName(
-                product
-              ) || "";
-        }
-      } else {
-        if (
-          status
-        ) {
-          status.innerHTML = `
-            <span class="batch-status warning">
-              Escribe o selecciona un producto existente.
-            </span>
-          `;
-        }
-
-        if (
-          unitsPerBoxInput
-        ) {
-          unitsPerBoxInput.disabled =
-            false;
-        }
-      }
-    } else {
-      if (
-        status
-      ) {
-        status.innerHTML = `
-          <span class="batch-status info">
-            Producto nuevo
-          </span>
-        `;
-      }
-
-      if (
-        unitsPerBoxInput
-      ) {
-        unitsPerBoxInput.disabled =
-          false;
-      }
-
-      if (
-        product &&
-        normalizeText(
-          product.name
-        ) ===
-        normalizeText(
-          data.name
-        )
-      ) {
-        if (
-          status
-        ) {
-          status.innerHTML = `
-            <span class="batch-status danger">
-              Ese producto ya existe. Usa "Existente".
-            </span>
-          `;
-        }
-      }
-    }
-  }
-
-  function bindBatchLineEvents(
-    row
-  ) {
-    const modeElement =
-      row.querySelector(
-        ".batch-mode"
-      );
-
-    const productElement =
-      row.querySelector(
-        ".batch-product-input"
-      );
-
-    const removeButton =
-      row.querySelector(
-        ".batch-remove-row"
-      );
-
-    if (
-      modeElement
-    ) {
-      modeElement.addEventListener(
-        "change",
-        () => {
-          updateBatchLineState(
-            row
-          );
-        }
-      );
-    }
-
-    if (
-      productElement
-    ) {
-      [
-        "input",
-        "change"
-      ].forEach(
-        eventName => {
-          productElement.addEventListener(
-            eventName,
-            () => {
-              updateBatchLineState(
-                row
-              );
-            }
-          );
-        }
-      );
-    }
-
-    row.querySelectorAll(
-      "input, select"
-    ).forEach(
-      input => {
-        if (
-          input ===
-          productElement ||
-          input ===
-          modeElement
-        ) {
-          return;
-        }
-
-        input.addEventListener(
-          "input",
-          () => {
-            updateBatchLineState(
-              row
-            );
-          }
-        );
-
-        input.addEventListener(
-          "change",
-          () => {
-            updateBatchLineState(
-              row
-            );
-          }
-        );
-      }
-    );
-
-    if (
-      removeButton
-    ) {
-      removeButton.addEventListener(
-        "click",
-        () => {
-          row.remove();
-
-          updateBatchLineNumbers();
-        }
-      );
-    }
-  }
-
-  function updateBatchLineNumbers() {
-    document
-      .querySelectorAll(
-        ".batch-product-row"
-      )
-      .forEach(
-        (
-          row,
-          index
-        ) => {
-          const title =
-            row.querySelector(
-              ".batch-row-header strong"
-            );
-
-          if (
-            title
-          ) {
-            title.textContent =
-              `Producto ${index + 1
-              }`;
-          }
-
-          refreshProductComboboxDatalist(
-            row
-          );
-        }
-      );
-  }
-
-  function addBatchLine(
-    container,
-    values = {}
-  ) {
-    const line =
-      createBatchLineData(
-        values
-      );
-
-    const row =
-      buildBatchLineHtml(
-        line
-      );
-
-    container.appendChild(
-      row
-    );
-
-    updateBatchLineNumbers();
-
-    row
-      .querySelector(
-        ".batch-product-input"
-      )
-      ?.focus();
-
-    return row;
-  }
-
-  /*
-   * ============================================================
-   * VALIDACIÓN BATCH
-   * ============================================================
-   */
-
-  function validateBatchLines(
-    rows
-  ) {
-    const errors =
-      [];
-
-    const parsed =
-      rows.map(
-        readBatchLine
-      );
-
-    const namesForNew =
-      new Set();
-
-    parsed.forEach(
-      (
-        line,
-        index
-      ) => {
-        const label =
-          `Producto ${index + 1
-          }`;
-
-        if (
-          !line.productText
-        ) {
-          errors.push(
-            `${label}: debes indicar el producto.`
-          );
-
-          return;
-        }
-
-        if (
-          line.mode ===
-          "existing"
-        ) {
-          if (
-            !line.product
-          ) {
-            errors.push(
-              `${label}: no se encontró el producto existente "${line.productText}".`
-            );
-
-            return;
-          }
-        }
-
-        if (
-          line.mode ===
-          "new"
-        ) {
-          if (
-            !line.name
-          ) {
-            errors.push(
-              `${label}: el nombre es obligatorio.`
-            );
-          }
-
-          const newKey =
-            normalizeText(
-              line.name
-            );
-
-          if (
-            findProductByText(
-              line.name
-            )
-          ) {
-            errors.push(
-              `${label}: "${line.name}" ya existe. Selecciona "Existente".`
-            );
-          }
-
-          if (
-            namesForNew.has(
-              newKey
-            )
-          ) {
-            errors.push(
-              `${label}: el mismo producto nuevo aparece más de una vez.`
-            );
-          }
-
-          namesForNew.add(
-            newKey
-          );
-
-          if (
-            !line.codigoProducto
-          ) {
-            errors.push(
-              `${label}: el código es obligatorio para un producto nuevo.`
-            );
-          }
-        }
-
-        const totalUnits =
-          decimalOrZero(
-            (
-              line.boxes +
-              line.bonusBoxes
-            ) *
-            line.unitsPerBox +
-            line.units +
-            line.bonusUnits
-          );
-
-        if (
-          totalUnits <=
-          0
-        ) {
-          errors.push(
-            `${label}: debes ingresar cajas, cajas bono, unidades o unidades bono.`
-          );
-        }
-
-        if (
-          line.unitsPerBox <=
-          0
-        ) {
-          errors.push(
-            `${label}: las unidades por caja deben ser mayores que cero.`
-          );
-        }
-
-        if (
-          line.lastCostPerBox <
-          0
-        ) {
-          errors.push(
-            `${label}: el costo por caja no puede ser negativo.`
-          );
-        }
-
-        if (
-          line.price <
-          0
-        ) {
-          errors.push(
-            `${label}: el precio no puede ser negativo.`
-          );
-        }
-      }
-    );
-
-    return {
-      errors,
-      parsed
-    };
-  }
-
-  /*
-   * ============================================================
    * PROCESAMIENTO BATCH
    * ============================================================
    */
@@ -8471,8 +9076,8 @@
       operationDate instanceof Date
         ? operationDate
         : parseOperationDate(
-          operationDate
-        );
+            operationDate
+          );
 
     if (
       !validOperationDate
@@ -8492,23 +9097,19 @@
       index++
     ) {
       const line =
-        lines[
-        index
-        ];
+        lines[index];
 
       const label =
-        `Producto ${index + 1
+        `Producto ${
+          index + 1
         }`;
 
       if (
         line.mode ===
         "existing"
       ) {
-        const product =
-          line.product;
-
         if (
-          !product
+          !line.product
         ) {
           throw new Error(
             `${label}: producto existente no encontrado.`
@@ -8517,7 +9118,7 @@
 
         const result =
           await addStockToExistingProduct(
-            product,
+            line.product,
             line,
             user,
             validOperationDate
@@ -8527,7 +9128,7 @@
           ...result,
 
           name:
-            product.name
+            line.product.name
         });
 
         continue;
@@ -8559,9 +9160,8 @@
 
   function buildBatchModalHtml() {
     return `
-      <div
-        class="batch-operation-date-box"
-      >
+      <div class="batch-operation-date-box">
+
         <div class="inv-field">
           <label
             for="batch-operation-date"
@@ -8577,7 +9177,7 @@
 
           <small>
             Esta fecha se utilizará para el movimiento
-            de inventario y para el gasto automático.
+            y para el gasto automático.
           </small>
         </div>
 
@@ -8588,8 +9188,8 @@
           Fecha seleccionada:
           <strong>
             ${formatOperationDate(
-      new Date()
-    )}
+              new Date()
+            )}
           </strong>
         </div>
       </div>
@@ -8623,6 +9223,16 @@
         </p>
 
         <p>
+          Puedes seleccionar uno o varios proveedores
+          por cada entrada.
+        </p>
+
+        <p>
+          Los proveedores seleccionados en un producto
+          existente se agregan a su lista de proveedores asociados.
+        </p>
+
+        <p>
           Las cajas bono y unidades bono aumentan
           el stock pero no generan costo.
         </p>
@@ -8630,15 +9240,6 @@
         <p>
           Las cantidades de cajas, unidades y unidades
           por caja admiten valores decimales.
-        </p>
-
-        <p>
-          El costo por caja corresponde al costo por unidad
-          multiplicado por las unidades por caja.
-        </p>
-
-        <p>
-          El proveedor puede buscarse por nombre o razón social.
         </p>
 
         <p>
@@ -8691,7 +9292,7 @@
           buildBatchModalHtml(),
 
         width:
-          "1100px",
+          "1150px",
 
         showCancelButton:
           true,
@@ -8771,31 +9372,26 @@
                       dateInput.value
                     );
 
-                  if (
+                  datePreview.innerHTML =
                     selectedDate
-                  ) {
-                    datePreview.innerHTML = `
-                      Fecha seleccionada:
-                      <strong>
-                        ${escapeHtml(
-                      formatOperationDate(
-                        selectedDate
-                      )
-                    )}
-                      </strong>
-                    `;
-                  } else {
-                    datePreview.innerHTML = `
-                      <span
-                        style="
+                      ? `
+                        Fecha seleccionada:
+                        <strong>
+                          ${escapeHtml(
+                            formatOperationDate(
+                              selectedDate
+                            )
+                          )}
+                        </strong>
+                      `
+                      : `
+                        <span style="
                           color:#b91c1c;
                           font-weight:700;
-                        "
-                      >
-                        Fecha no válida.
-                      </span>
-                    `;
-                  }
+                        ">
+                          Fecha no válida.
+                        </span>
+                      `;
                 }
               );
             }
@@ -8813,9 +9409,7 @@
                 "batch-operation-date"
               );
 
-            if (
-              !container
-            ) {
+            if (!container) {
               Swal.showValidationMessage(
                 "No se pudo construir el formulario."
               );
@@ -8823,19 +9417,9 @@
               return;
             }
 
-            if (
-              !dateInput
-            ) {
-              Swal.showValidationMessage(
-                "No se pudo obtener la fecha de operación."
-              );
-
-              return;
-            }
-
             const operationDate =
               parseOperationDate(
-                dateInput.value
+                dateInput?.value
               );
 
             if (
@@ -8889,10 +9473,8 @@
 
             return {
               operationDate,
-
               operationDateValue:
                 dateInput.value,
-
               lines:
                 validation.parsed
             };
@@ -8918,27 +9500,16 @@
 
     const operationDate =
       payload.operationDate instanceof
-        Date
+      Date
         ? payload.operationDate
         : parseOperationDate(
-          payload.operationDateValue
-        );
+            payload.operationDateValue
+          );
 
     if (
-      !lines.length
-    ) {
-      return;
-    }
-
-    if (
+      !lines.length ||
       !operationDate
     ) {
-      await Swal.fire(
-        "Fecha inválida",
-        "La fecha de operación seleccionada no es válida.",
-        "error"
-      );
-
       return;
     }
 
@@ -8949,19 +9520,16 @@
 
         html:
           `
-            <div>
-              Preparando ${lines.length
-          } producto(s)...
-              <br><br>
-              <strong>
-                Fecha de operación:
-              </strong>
-              ${escapeHtml(
-            formatOperationDate(
-              operationDate
-            )
-          )}
-            </div>
+            Preparando ${lines.length} producto(s)...
+            <br><br>
+            <strong>
+              Fecha de operación:
+            </strong>
+            ${escapeHtml(
+              formatOperationDate(
+                operationDate
+              )
+            )}
           `,
 
         allowOutsideClick:
@@ -9019,7 +9587,7 @@
             calculateLinePurchaseCost(
               line,
               line.product ||
-              null
+                null
             ),
           0
         );
@@ -9036,7 +9604,7 @@
             totalPurchaseCost,
             lines,
             auth.currentUser ||
-            null,
+              null,
             operationDate
           );
 
@@ -9049,13 +9617,13 @@
           );
         }
       } catch (
-      error
+        error
       ) {
         expenseError =
           error;
 
         console.error(
-          "El inventario fue guardado, pero no se pudo registrar el gasto automático:",
+          "Inventario guardado, pero falló el gasto automático:",
           error
         );
       }
@@ -9063,41 +9631,6 @@
       Swal.close();
 
       refreshInventoryView();
-
-      const expenseStatus =
-        expenseError
-          ? `
-              <p
-                style="
-                  color:#b91c1c;
-                  font-weight:700;
-                "
-              >
-                Advertencia:
-                el inventario se guardó correctamente,
-                pero el gasto automático no pudo registrarse.
-              </p>
-            `
-          : totalPurchaseCost >
-            0
-            ? `
-                <p>
-                  Gasto registrado:
-                  <strong>
-                    ${currency(
-              totalPurchaseCost
-            )}
-                  </strong>
-                </p>
-              `
-            : `
-                <p>
-                  Gasto registrado:
-                  <strong>
-                    $0.00
-                  </strong>
-                </p>
-              `;
 
       await Swal.fire({
         icon:
@@ -9112,19 +9645,16 @@
 
         html:
           `
-            <div
-              style="
-                text-align:left;
-              "
-            >
+            <div style="text-align:left">
+
               <p>
                 Fecha de operación:
                 <strong>
                   ${escapeHtml(
-            formatOperationDate(
-              operationDate
-            )
-          )}
+                    formatOperationDate(
+                      operationDate
+                    )
+                  )}
                 </strong>
               </p>
 
@@ -9153,8 +9683,8 @@
                 Unidades agregadas:
                 <strong>
                   ${formatQuantity(
-            totalUnits
-          )}
+                    totalUnits
+                  )}
                 </strong>
               </p>
 
@@ -9162,32 +9692,52 @@
                 Costo total:
                 <strong>
                   ${currency(
-            totalPurchaseCost
-          )}
+                    totalPurchaseCost
+                  )}
                 </strong>
               </p>
 
-              ${expenseStatus}
-            </div>
-          `,
+              ${
+                expenseError
+                  ? `
+                    <p style="
+                      color:#b91c1c;
+                      font-weight:700;
+                    ">
+                      El inventario se guardó,
+                      pero no se pudo registrar
+                      el gasto automático.
+                    </p>
+                  `
+                  : `
+                    <p>
+                      Gasto registrado:
+                      <strong>
+                        ${currency(
+                          totalPurchaseCost
+                        )}
+                      </strong>
+                    </p>
+                  `
+              }
 
-        confirmButtonText:
-          "Aceptar"
+            </div>
+          `
       });
     } catch (
-    error
+      error
     ) {
       Swal.close();
 
       console.error(
-        "Error procesando carga múltiple:",
+        "Error procesando carga:",
         error
       );
 
       await Swal.fire(
         "Error",
         error.message ||
-        "No se pudo completar la operación.",
+          "No se pudo completar la operación.",
         "error"
       );
     }
@@ -9195,7 +9745,7 @@
 
   /*
    * ============================================================
-   * FORMULARIO DE EDICIÓN
+   * EDICIÓN DE MOVIMIENTO
    * ============================================================
    */
 
@@ -9219,10 +9769,10 @@
         0.000001,
         decimalOrZero(
           movement.unidadesPorCaja ??
-          movement.unitsPerBox
+            movement.unitsPerBox
         ) ||
-        breakdown.unitsPerBox ||
-        1
+          breakdown.unitsPerBox ||
+          1
       );
 
     const productUnitsPerBox =
@@ -9242,9 +9792,9 @@
 
     if (
       currentCostPerUnit <=
-      0 &&
+        0 &&
       currentCostPerBox >
-      0
+        0
     ) {
       currentCostPerUnit =
         currentCostPerBox /
@@ -9253,9 +9803,9 @@
 
     if (
       currentCostPerBox <=
-      0 &&
+        0 &&
       currentCostPerUnit >
-      0
+        0
     ) {
       currentCostPerBox =
         currentCostPerUnit *
@@ -9264,9 +9814,9 @@
 
     if (
       currentCostPerUnit <=
-      0 &&
+        0 &&
       currentCostPerBox <=
-      0
+        0
     ) {
       currentCostPerUnit =
         getCostPerUnit(
@@ -9286,88 +9836,61 @@
         product?.price
       );
 
-    const movementProvider =
-      getProviderById(
-        movement.proveedorId
+    const movementProviders =
+      normalizeMovementProviders(
+        movement
       );
 
-    const movementProviderDisplay =
-      movementProvider
-        ? getProviderDisplayName(
-          movementProvider
-        )
-        : (
-          [
-            movement.proveedorNombre,
-            movement.proveedorRazonSocial
-          ]
-            .filter(Boolean)
-            .join(
-              " — "
-            )
-        );
+    const availableProviders =
+      mergeProviderCollections(
+        getProductProviders(
+          product
+        ),
+        movementProviders,
+        currentProvidersList
+      );
 
     return `
-      <div
-        class="movement-edit-form"
-      >
+      <div class="movement-edit-form">
 
-        <div
-          class="movement-edit-header"
-        >
+        <div class="movement-edit-header">
+
           <div>
             <strong>
               ${escapeHtml(
-      product?.name ||
-      movement.productName ||
-      "Producto"
-    )}
+                product?.name ||
+                  movement.productName ||
+                  "Producto"
+              )}
             </strong>
 
             <span>
               Stock actual:
               <strong>
                 ${formatQuantity(
-      getCurrentStockUnits(
-        product
-      )
-    )}
+                  getCurrentStockUnits(
+                    product
+                  )
+                )}
               </strong>
             </span>
 
             <span>
-              Unidades por caja del producto:
-              <strong>
-                ${formatQuantity(
-      productUnitsPerBox
-    )}
-              </strong>
-            </span>
-
-            <span>
-              Unidades por caja de esta entrada:
-              <strong>
-                ${formatQuantity(
-      movementUnitsPerBox
-    )}
-              </strong>
-            </span>
-
-            <span>
-              Proveedor del movimiento:
+              Proveedores de esta entrada:
               <strong>
                 ${escapeHtml(
-      movementProviderDisplay ||
-      "Sin proveedor"
-    )}
+                  movement.providerDisplay ||
+                    getLineProvidersDisplay(
+                      movement
+                    )
+                )}
               </strong>
             </span>
           </div>
+
         </div>
 
-        <div
-          class="movement-edit-grid"
-        >
+        <div class="movement-edit-grid">
 
           <div class="inv-field">
             <label>
@@ -9378,25 +9901,32 @@
               id="movement-edit-date"
               type="date"
               value="${escapeHtml(
-      operationDate
-    )}"
+                operationDate
+              )}"
             >
           </div>
 
-          <div class="inv-field">
+          <div
+            class="inv-field movement-edit-provider-field"
+          >
             <label>
-              Proveedor
+              Proveedores de esta entrada
             </label>
 
-            ${getProviderComboboxHtml(
-      "movement-edit-provider",
-      "movement-edit-provider-list",
-      movementProviderDisplay,
-      "movement-edit-provider-input"
-    )}
+            <div
+              id="movement-edit-provider-selector"
+            >
+              ${buildProviderMultiSelectHtml(
+                "movement-edit-provider-selector",
+                availableProviders,
+                getProviderIds(
+                  movementProviders
+                )
+              )}
+            </div>
 
             <small>
-              Puedes buscar por nombre o Razón Social / Denominación.
+              Puedes seleccionar uno o varios proveedores.
             </small>
           </div>
 
@@ -9412,14 +9942,9 @@
               step="any"
               inputmode="decimal"
               value="${formatQuantity(
-      movementUnitsPerBox
-    )}"
+                movementUnitsPerBox
+              )}"
             >
-
-            <small>
-              Editable. Al cambiarlo se recalculan
-              las unidades de las cajas y el stock.
-            </small>
           </div>
 
           <div class="inv-field">
@@ -9434,18 +9959,12 @@
               step="any"
               inputmode="decimal"
               value="${formatQuantity(
-      breakdown.cajas
-    )}"
+                breakdown.cajas
+              )}"
             >
-
-            <small>
-              Cantidad de cajas pagadas.
-            </small>
           </div>
 
-          <div
-            class="inv-field bonus-field"
-          >
+          <div class="inv-field bonus-field">
             <label>
               Cajas bono
             </label>
@@ -9457,8 +9976,8 @@
               step="any"
               inputmode="decimal"
               value="${formatQuantity(
-      breakdown.cajasBono
-    )}"
+                breakdown.cajasBono
+              )}"
             >
           </div>
 
@@ -9474,14 +9993,12 @@
               step="any"
               inputmode="decimal"
               value="${formatQuantity(
-      breakdown.unidades
-    )}"
+                breakdown.unidades
+              )}"
             >
           </div>
 
-          <div
-            class="inv-field bonus-field"
-          >
+          <div class="inv-field bonus-field">
             <label>
               Unidades bono
             </label>
@@ -9493,8 +10010,8 @@
               step="any"
               inputmode="decimal"
               value="${formatQuantity(
-      breakdown.unidadesBono
-    )}"
+                breakdown.unidadesBono
+              )}"
             >
           </div>
 
@@ -9510,8 +10027,8 @@
               step="0.01"
               inputmode="decimal"
               value="${currentCostPerBox.toFixed(
-      2
-    )}"
+                2
+              )}"
             >
           </div>
 
@@ -9524,8 +10041,8 @@
               id="movement-edit-cost-unit"
               type="text"
               value="${currentCostPerUnit.toFixed(
-      4
-    )}"
+                4
+              )}"
               readonly
             >
           </div>
@@ -9542,8 +10059,8 @@
               step="0.01"
               inputmode="decimal"
               value="${currentSalePrice.toFixed(
-      2
-    )}"
+                2
+              )}"
             >
           </div>
 
@@ -9556,8 +10073,8 @@
               id="movement-edit-entry"
               type="text"
               value="${formatQuantity(
-      breakdown.totalUnits
-    )}"
+                breakdown.totalUnits
+              )}"
               readonly
             >
           </div>
@@ -9573,9 +10090,9 @@
               id="movement-edit-reference"
               type="text"
               value="${escapeHtml(
-      movement.referenciaLibro ||
-      ""
-    )}"
+                movement.referenciaLibro ||
+                  ""
+              )}"
             >
           </div>
 
@@ -9590,9 +10107,9 @@
               id="movement-edit-document"
               type="text"
               value="${escapeHtml(
-      movement.numeroDocumento ||
-      ""
-    )}"
+                movement.numeroDocumento ||
+                  ""
+              )}"
             >
           </div>
 
@@ -9603,25 +10120,24 @@
           class="movement-edit-preview"
         ></div>
 
-        <div
-          class="movement-edit-warning"
-        >
+        <div class="movement-edit-warning">
           <strong>
             Importante:
           </strong>
 
-          Las cajas, unidades por caja y proveedor
-          aceptan valores decimales.
-
-          <br><br>
-
-          El proveedor seleccionado aquí corresponde
+          Puedes asignar uno o varios proveedores
           específicamente a esta entrada.
 
           <br><br>
 
-          Cambiar el proveedor del movimiento
-          no cambia el proveedor global del producto.
+          Los proveedores seleccionados no modifican
+          el costo calculado de la entrada.
+
+          <br><br>
+
+          Al guardar, los proveedores seleccionados
+          también quedarán asociados al producto para
+          futuras entradas.
 
           <br><br>
 
@@ -9634,11 +10150,10 @@
           sobre el stock vigente.
         </div>
 
-        ${movement.expenseId
-        ? `
-              <div
-                class="movement-edit-linked"
-              >
+        ${
+          movement.expenseId
+            ? `
+              <div class="movement-edit-linked">
                 <i class="fas fa-link"></i>
 
                 Esta entrada está vinculada a un gasto.
@@ -9646,16 +10161,14 @@
                 las cantidades pagadas.
               </div>
             `
-        : `
-              <div
-                class="movement-edit-warning"
-              >
+            : `
+              <div class="movement-edit-warning">
                 <i class="fas fa-info-circle"></i>
 
                 Esta entrada no tiene un gasto vinculado.
               </div>
             `
-      }
+        }
 
       </div>
     `;
@@ -9738,10 +10251,10 @@
         0.000001,
         decimalOrZero(
           movement.unidadesPorCaja ??
-          movement.unitsPerBox
+            movement.unitsPerBox
         ) ||
-        oldBreakdown.unitsPerBox ||
-        1
+          oldBreakdown.unitsPerBox ||
+          1
       );
 
     const newUnitsPerBox =
@@ -9750,7 +10263,7 @@
         decimalOrZero(
           unitsPerBoxInput.value
         ) ||
-        oldUnitsPerBox
+          oldUnitsPerBox
       );
 
     const cajas =
@@ -9776,37 +10289,37 @@
     const paidUnits =
       decimalOrZero(
         cajas *
-        newUnitsPerBox +
-        unidades
+          newUnitsPerBox +
+          unidades
       );
 
     const bonusUnits =
       decimalOrZero(
         cajasBono *
-        newUnitsPerBox +
-        unidadesBono
+          newUnitsPerBox +
+          unidadesBono
       );
 
     const newEntry =
       decimalOrZero(
         paidUnits +
-        bonusUnits
+          bonusUnits
       );
 
     const oldEntry =
       decimalOrZero(
         oldBreakdown.cajas *
-        oldUnitsPerBox +
-        oldBreakdown.unidades +
-        oldBreakdown.cajasBono *
-        oldUnitsPerBox +
-        oldBreakdown.unidadesBono
+          oldUnitsPerBox +
+          oldBreakdown.unidades +
+          oldBreakdown.cajasBono *
+          oldUnitsPerBox +
+          oldBreakdown.unidadesBono
       );
 
     const difference =
       decimalOrZero(
         newEntry -
-        oldEntry
+          oldEntry
       );
 
     const currentStock =
@@ -9817,7 +10330,7 @@
     const resultingStock =
       decimalOrZero(
         currentStock +
-        difference
+          difference
       );
 
     const costPerBox =
@@ -9831,7 +10344,7 @@
     const costPerUnit =
       newUnitsPerBox > 0
         ? costPerBox /
-        newUnitsPerBox
+          newUnitsPerBox
         : 0;
 
     const purchaseCost =
@@ -9866,65 +10379,11 @@
 
     preview.innerHTML = `
       <div>
-        Unidades/caja anterior
-        <strong>
-          ${formatQuantity(
-      oldUnitsPerBox
-    )}
-        </strong>
-      </div>
-
-      <div>
-        Nuevas unidades/caja
-        <strong>
-          ${formatQuantity(
-      newUnitsPerBox
-    )}
-        </strong>
-      </div>
-
-      <div>
-        Cajas
-        <strong>
-          ${formatQuantity(
-      cajas
-    )}
-        </strong>
-      </div>
-
-      <div>
-        Cajas bono
-        <strong>
-          ${formatQuantity(
-      cajasBono
-    )}
-        </strong>
-      </div>
-
-      <div>
-        Unidades sueltas
-        <strong>
-          ${formatQuantity(
-      unidades
-    )}
-        </strong>
-      </div>
-
-      <div>
-        Unidades bono
-        <strong>
-          ${formatQuantity(
-      unidadesBono
-    )}
-        </strong>
-      </div>
-
-      <div>
         Entrada anterior
         <strong>
           ${formatQuantity(
-      oldEntry
-    )}
+            oldEntry
+          )}
         </strong>
       </div>
 
@@ -9932,8 +10391,8 @@
         Entrada pagada
         <strong>
           ${formatQuantity(
-      paidUnits
-    )}
+            paidUnits
+          )}
         </strong>
       </div>
 
@@ -9941,8 +10400,8 @@
         Entrada bono
         <strong>
           ${formatQuantity(
-      bonusUnits
-    )}
+            bonusUnits
+          )}
         </strong>
       </div>
 
@@ -9950,29 +10409,21 @@
         Nueva entrada
         <strong>
           ${formatQuantity(
-      newEntry
-    )}
+            newEntry
+          )}
         </strong>
       </div>
 
       <div>
         Diferencia
-        <strong
-          style="
-            color:${difference > 0
-        ? "#166534"
-        : difference < 0
-          ? "#b91c1c"
-          : "#374151"
-      };
-          "
-        >
-          ${difference > 0
-        ? "+"
-        : ""
-      }${formatQuantity(
-        difference
-      )}
+        <strong>
+          ${
+            difference > 0
+              ? "+"
+              : ""
+          }${formatQuantity(
+            difference
+          )}
         </strong>
       </div>
 
@@ -9980,24 +10431,17 @@
         Stock actual
         <strong>
           ${formatQuantity(
-        currentStock
-      )}
+            currentStock
+          )}
         </strong>
       </div>
 
       <div>
         Stock resultante
-        <strong
-          style="
-            color:${resultingStock < 0
-        ? "#b91c1c"
-        : "#1d4ed8"
-      };
-          "
-        >
+        <strong>
           ${formatQuantity(
-        resultingStock
-      )}
+            resultingStock
+          )}
         </strong>
       </div>
 
@@ -10005,8 +10449,8 @@
         Costo por caja
         <strong>
           ${currency(
-        costPerBox
-      )}
+            costPerBox
+          )}
         </strong>
       </div>
 
@@ -10014,8 +10458,8 @@
         Costo por unidad
         <strong>
           ${currency(
-        costPerUnit
-      )}
+            costPerUnit
+          )}
         </strong>
       </div>
 
@@ -10023,8 +10467,8 @@
         Precio de venta
         <strong>
           ${currency(
-        salePrice
-      )}
+            salePrice
+          )}
         </strong>
       </div>
 
@@ -10032,8 +10476,8 @@
         Costo de entrada
         <strong>
           ${currency(
-        purchaseCost
-      )}
+            purchaseCost
+          )}
         </strong>
       </div>
     `;
@@ -10074,48 +10518,29 @@
         operationDate
       );
 
-    const providerText =
-      String(
-        values.proveedorTexto ||
-        ""
-      ).trim();
+    const explicitProviderIds =
+      normalizeIdArray(
+        values.proveedorIds
+      );
 
-    const selectedProvider =
-      providerText
-        ? resolveProviderSelection(
-          providerText
-        )
-        : null;
+    const selectedProviders =
+      explicitProviderIds.map(
+        providerId =>
+          getProviderById(
+            providerId
+          )
+      );
 
     if (
-      providerText &&
-      !selectedProvider
+      explicitProviderIds.length !==
+      selectedProviders.filter(
+        Boolean
+      ).length
     ) {
       throw new Error(
-        `No se encontró un proveedor que coincida con "${providerText}" por nombre o razón social.`
+        "Uno o más de los proveedores seleccionados ya no están disponibles."
       );
     }
-
-    const selectedProviderId =
-      selectedProvider
-        ? String(
-          selectedProvider.id
-        ).trim()
-        : "";
-
-    const selectedProviderName =
-      selectedProvider
-        ? getProviderName(
-          selectedProvider
-        )
-        : "";
-
-    const selectedProviderReason =
-      selectedProvider
-        ? getProviderBusinessName(
-          selectedProvider
-        )
-        : "";
 
     let updatedMovement =
       null;
@@ -10148,7 +10573,7 @@
         if (
           String(
             oldMovementRaw.tipoMovimiento ||
-            ""
+              ""
           )
             .trim()
             .toLowerCase() !==
@@ -10172,12 +10597,10 @@
         const productId =
           String(
             oldMovementRaw.productId ||
-            ""
+              ""
           ).trim();
 
-        if (
-          !productId
-        ) {
+        if (!productId) {
           throw new Error(
             "El movimiento no tiene un producto asociado."
           );
@@ -10236,13 +10659,13 @@
             0.000001,
             decimalOrZero(
               oldMovementRaw.unidadesPorCaja ??
-              oldMovementRaw.unitsPerBox
+                oldMovementRaw.unitsPerBox
             ) ||
-            oldBreakdown.unitsPerBox ||
-            decimalOrZero(
-              productData.unitsPerBox
-            ) ||
-            1
+              oldBreakdown.unitsPerBox ||
+              decimalOrZero(
+                productData.unitsPerBox
+              ) ||
+              1
           );
 
         const newBoxes =
@@ -10271,27 +10694,27 @@
             decimalOrZero(
               values.unidadesPorCaja
             ) ||
-            oldUnitsPerBox
+              oldUnitsPerBox
           );
 
         const newPaidUnits =
           decimalOrZero(
             newBoxes *
-            unitsPerBox +
-            newUnits
+              unitsPerBox +
+              newUnits
           );
 
         const newBonusUnitsTotal =
           decimalOrZero(
             newBonusBoxes *
-            unitsPerBox +
-            newBonusUnits
+              unitsPerBox +
+              newBonusUnits
           );
 
         const newEntry =
           decimalOrZero(
             newPaidUnits +
-            newBonusUnitsTotal
+              newBonusUnitsTotal
           );
 
         let newCostPerBox =
@@ -10338,11 +10761,11 @@
         const oldEntry =
           decimalOrZero(
             oldBreakdown.cajas *
-            oldUnitsPerBox +
-            oldBreakdown.unidades +
-            oldBreakdown.cajasBono *
-            oldUnitsPerBox +
-            oldBreakdown.unidadesBono
+              oldUnitsPerBox +
+              oldBreakdown.unidades +
+              oldBreakdown.cajasBono *
+              oldUnitsPerBox +
+              oldBreakdown.unidadesBono
           );
 
         const currentStock =
@@ -10353,13 +10776,13 @@
         const difference =
           decimalOrZero(
             newEntry -
-            oldEntry
+              oldEntry
           );
 
         const nextStock =
           decimalOrZero(
             currentStock +
-            difference
+              difference
           );
 
         if (
@@ -10380,8 +10803,8 @@
         const oldPaidUnits =
           decimalOrZero(
             oldBreakdown.cajas *
-            oldUnitsPerBox +
-            oldBreakdown.unidades
+              oldUnitsPerBox +
+              oldBreakdown.unidades
           );
 
         let oldCostPerUnit =
@@ -10393,41 +10816,38 @@
           oldCostPerUnit <=
           0
         ) {
-          const oldCostPerBox =
-            numberOrZero(
-              oldMovement.costoPorCaja
-            );
-
           oldCostPerUnit =
             oldUnitsPerBox >
               0
-              ? oldCostPerBox /
-              oldUnitsPerBox
+              ? numberOrZero(
+                  oldMovement.costoPorCaja
+                ) /
+                oldUnitsPerBox
               : 0;
         }
 
         const oldCostTotal =
           oldMovement.costoTotal !==
             undefined &&
-            oldMovement.costoTotal !==
+          oldMovement.costoTotal !==
             null
             ? Math.max(
-              0,
-              numberOrZero(
-                oldMovement.costoTotal
+                0,
+                numberOrZero(
+                  oldMovement.costoTotal
+                )
               )
-            )
             : Math.max(
-              0,
-              oldPaidUnits *
-              oldCostPerUnit
-            );
+                0,
+                oldPaidUnits *
+                  oldCostPerUnit
+              );
 
         const newCostTotal =
           Math.max(
             0,
             newPaidUnits *
-            newCostPerUnit
+              newCostPerUnit
           );
 
         let expenseData =
@@ -10436,7 +10856,7 @@
         const expenseId =
           String(
             oldMovement.expenseId ||
-            ""
+              ""
           ).trim();
 
         if (
@@ -10479,7 +10899,7 @@
               Math.max(
                 0,
                 oldExpenseAmount +
-                expenseDifference
+                  expenseDifference
               );
 
             expenseData = {
@@ -10517,273 +10937,342 @@
           }
         }
 
-        const nextMovementData = {
-          ...oldMovementRaw,
+        const productProviders =
+          getProductProviders(
+            productData
+          );
 
-          entrada:
-            newEntry,
+        const mergedProductProviders =
+          mergeProviderCollections(
+            productProviders,
+            selectedProviders
+          );
 
-          saldoAnterior:
-            decimalOrZero(
-              currentStock -
-              oldEntry
-            ),
+        const primaryProductProvider =
+          selectedProviders[0] ||
+          mergedProductProviders[0] ||
+          null;
 
-          saldoActual:
-            nextStock,
+        const movementProviders =
+          selectedProviders;
 
-          cajas:
-            newBoxes,
+        const movementProviderIds =
+          getProviderIds(
+            movementProviders
+          );
 
-          boxes:
-            newBoxes,
+        const nextMovementData =
+          buildMovementData({
+            productId,
 
-          cajasBono:
-            newBonusBoxes,
+            productName:
+              oldMovementRaw.productName ||
+              productData.name ||
+              "",
 
-          bonusBoxes:
-            newBonusBoxes,
+            codigoProducto:
+              oldMovementRaw.codigoProducto ||
+              getProductCode(
+                productData
+              ) ||
+              "",
 
-          unidades:
-            newUnits,
+            tipoMovimiento:
+              "entrada",
 
-          units:
-            newUnits,
+            referenciaLibro:
+              values.referenciaLibro,
 
-          unidadesBono:
-            newBonusUnits,
+            numeroDocumento:
+              values.numeroDocumento,
 
-          bonusUnits:
-            newBonusUnits,
+            entrada:
+              newEntry,
 
-          unidadesPorCaja:
-            unitsPerBox,
+            salida:
+              0,
 
-          unitsPerBox,
+            saldoAnterior:
+              decimalOrZero(
+                currentStock -
+                  oldEntry
+              ),
 
-          entradaPagada:
-            newPaidUnits,
+            saldoActual:
+              nextStock,
 
-          entradaBono:
-            newBonusUnitsTotal,
+            cajas:
+              newBoxes,
 
-          costoUnitario:
-            newCostPerUnit,
+            cajasBono:
+              newBonusBoxes,
 
-          unitCost:
-            newCostPerUnit,
+            unidades:
+              newUnits,
 
-          costoPorUnidad:
-            newCostPerUnit,
+            unidadesBono:
+              newBonusUnits,
 
-          costoPorCaja:
-            newCostPerBox,
+            unidadesPorCaja:
+              unitsPerBox,
 
-          lastCostPerBox:
-            newCostPerBox,
+            costoUnitario:
+              newCostPerUnit,
 
-          costoTotal:
-            newCostTotal,
+            costoPorCaja:
+              newCostPerBox,
 
-          precioVenta:
-            newSalePrice,
+            precioVenta:
+              newSalePrice,
 
-          price:
-            newSalePrice,
+            costoTotal:
+              newCostTotal,
 
-          fechaOperacion:
-            getLocalDateInputValue(
-              operationDate
-            ),
+            entradaPagada:
+              newPaidUnits,
 
-          createdAt:
-            operationTimestamp,
+            entradaBono:
+              newBonusUnitsTotal,
 
-          referenciaLibro:
-            values.referenciaLibro,
+            proveedorIds:
+              movementProviderIds,
 
-          referenceBook:
-            values.referenciaLibro,
+            proveedores:
+              movementProviders,
 
-          bookReference:
-            values.referenciaLibro,
+            expenseId,
 
-          numeroDocumento:
-            values.numeroDocumento,
+            detalle:
+              [
+                `Cajas: ${formatQuantity(
+                  newBoxes
+                )}`,
 
-          proveedorId:
-            selectedProviderId ||
-            null,
+                `Cajas bono: ${formatQuantity(
+                  newBonusBoxes
+                )}`,
 
-          proveedorNombre:
-            selectedProviderName,
+                `Unidades: ${formatQuantity(
+                  newUnits
+                )}`,
 
-          proveedorRazonSocial:
-            selectedProviderReason,
+                `Unidades bono: ${formatQuantity(
+                  newBonusUnits
+                )}`,
 
-          providerId:
-            selectedProviderId ||
-            null,
+                `Entrada pagada: ${formatQuantity(
+                  newPaidUnits
+                )}`,
 
-          providerName:
-            selectedProviderName,
+                `Entrada bono: ${formatQuantity(
+                  newBonusUnitsTotal
+                )}`,
 
-          providerBusinessName:
-            selectedProviderReason,
+                `Entrada total: ${formatQuantity(
+                  newEntry
+                )}`,
 
-          detalle:
-            [
-              `Cajas: ${formatQuantity(
-                newBoxes
-              )}`,
+                `Unidades por caja: ${formatQuantity(
+                  unitsPerBox
+                )}`,
 
-              `Cajas bono: ${formatQuantity(
-                newBonusBoxes
-              )}`,
+                `Costo por unidad: ${currency(
+                  newCostPerUnit
+                )}`,
 
-              `Unidades: ${formatQuantity(
-                newUnits
-              )}`,
+                `Costo por caja: ${currency(
+                  newCostPerBox
+                )}`,
 
-              `Unidades bono: ${formatQuantity(
-                newBonusUnits
-              )}`,
+                `Precio de venta: ${currency(
+                  newSalePrice
+                )}`,
 
-              `Entrada pagada: ${formatQuantity(
-                newPaidUnits
-              )}`,
+                `Costo total: ${currency(
+                  newCostTotal
+                )}`,
 
-              `Entrada bono: ${formatQuantity(
-                newBonusUnitsTotal
-              )}`,
+                `Proveedores: ${
+                  movementProviders.length
+                    ? movementProviders
+                        .map(
+                          provider =>
+                            getProviderDisplayName(
+                              provider
+                            )
+                        )
+                        .filter(Boolean)
+                        .join(
+                          " | "
+                        )
+                    : "Sin proveedor"
+                }`,
 
-              `Entrada total: ${formatQuantity(
-                newEntry
-              )}`,
+                `Fecha de operación: ${formatOperationDate(
+                  operationDate
+                )}`
+              ].join(
+                " | "
+              ),
 
-              `Unidades por caja: ${formatQuantity(
-                unitsPerBox
-              )}`,
+            user,
 
-              `Costo por unidad: ${currency(
-                newCostPerUnit
-              )}`,
-
-              `Costo por caja: ${currency(
-                newCostPerBox
-              )}`,
-
-              `Precio de venta: ${currency(
-                newSalePrice
-              )}`,
-
-              `Costo total: ${currency(
-                newCostTotal
-              )}`,
-
-              selectedProviderName
-                ? `Proveedor: ${selectedProviderName}`
-                : "Proveedor: Sin proveedor",
-
-              selectedProviderReason
-                ? `Razón Social: ${selectedProviderReason}`
-                : "Razón Social: Sin especificar",
-
-              `Fecha de operación: ${formatOperationDate(
-                operationDate
-              )}`
-            ].join(
-              " | "
-            ),
-
-          updatedAt:
-            firebase.firestore
-              .FieldValue
-              .serverTimestamp(),
-
-          editado:
-            true,
-
-          fechaUltimaEdicion:
-            firebase.firestore
-              .FieldValue
-              .serverTimestamp(),
-
-          usuarioUltimaEdicion:
-            user
-              ? user.uid
-              : null,
-
-          usuarioUltimaEdicionNombre:
-            currentUserInventoryContext?.name ||
-            user?.email ||
-            ""
-        };
+            operationDate
+          });
 
         transaction.update(
           movementRef,
-          nextMovementData
+          {
+            ...nextMovementData,
+
+            createdAt:
+              operationTimestamp,
+
+            editado:
+              true,
+
+            fechaUltimaEdicion:
+              firebase.firestore
+                .FieldValue
+                .serverTimestamp(),
+
+            usuarioUltimaEdicion:
+              user
+                ? user.uid
+                : null,
+
+            usuarioUltimaEdicionNombre:
+              currentUserInventoryContext?.name ||
+              user?.email ||
+              "",
+
+            updatedAt:
+              firebase.firestore
+                .FieldValue
+                .serverTimestamp()
+          }
         );
-
-        const nextProductData = {
-          quantity:
-            nextStock,
-
-          stockCurrentUnits:
-            nextStock,
-
-          boxes:
-            decimalOrZero(
-              nextStock /
-              unitsPerBox
-            ),
-
-          unitsPerBox,
-
-          lastCostPerBox:
-            newCostPerBox,
-
-          lastCostPerUnit:
-            newCostPerUnit,
-
-          price:
-            newSalePrice,
-
-          referenciaLibro:
-            values.referenciaLibro ||
-            productData.referenciaLibro ||
-            "",
-
-          referenceBook:
-            values.referenciaLibro ||
-            productData.referenceBook ||
-            productData.referenciaLibro ||
-            "",
-
-          numeroDocumento:
-            values.numeroDocumento ||
-            productData.numeroDocumento ||
-            "",
-
-          fechaUltimaEntrada:
-            getLocalDateInputValue(
-              operationDate
-            ),
-
-          updatedAt:
-            firebase.firestore
-              .FieldValue
-              .serverTimestamp()
-        };
 
         transaction.update(
           productRef,
-          nextProductData
+          {
+            proveedorIds:
+              getProviderIds(
+                mergedProductProviders
+              ),
+
+            providerIds:
+              getProviderIds(
+                mergedProductProviders
+              ),
+
+            proveedores:
+              mergedProductProviders,
+
+            proveedorId:
+              primaryProductProvider?.id ||
+              productData.proveedorId ||
+              null,
+
+            proveedorNombre:
+              getProviderName(
+                primaryProductProvider
+              ) ||
+              productData.proveedorNombre ||
+              "",
+
+            proveedorRazonSocial:
+              getProviderBusinessName(
+                primaryProductProvider
+              ) ||
+              productData.proveedorRazonSocial ||
+              "",
+
+            providerId:
+              primaryProductProvider?.id ||
+              productData.providerId ||
+              productData.proveedorId ||
+              null,
+
+            providerName:
+              getProviderName(
+                primaryProductProvider
+              ) ||
+              productData.providerName ||
+              productData.proveedorNombre ||
+              "",
+
+            providerBusinessName:
+              getProviderBusinessName(
+                primaryProductProvider
+              ) ||
+              productData.providerBusinessName ||
+              productData.proveedorRazonSocial ||
+              "",
+
+            quantity:
+              nextStock,
+
+            stockCurrentUnits:
+              nextStock,
+
+            boxes:
+              decimalOrZero(
+                nextStock /
+                  unitsPerBox
+              ),
+
+            unitsPerBox,
+
+            lastCostPerBox:
+              newCostPerBox,
+
+            lastCostPerUnit:
+              newCostPerUnit,
+
+            price:
+              newSalePrice,
+
+            referenciaLibro:
+              values.referenciaLibro ||
+              productData.referenciaLibro ||
+              "",
+
+            referenceBook:
+              values.referenciaLibro ||
+              productData.referenceBook ||
+              productData.referenciaLibro ||
+              "",
+
+            numeroDocumento:
+              values.numeroDocumento ||
+              productData.numeroDocumento ||
+              "",
+
+            fechaUltimaEntrada:
+              getLocalDateInputValue(
+                operationDate
+              ),
+
+            updatedAt:
+              firebase.firestore
+                .FieldValue
+                .serverTimestamp()
+          }
         );
 
         updatedMovement = {
           ...oldMovementRaw,
           ...nextMovementData,
+
+          proveedores:
+            movementProviders,
+
+          proveedorIds:
+            movementProviderIds,
+
+          providerIds:
+            movementProviderIds,
 
           id:
             movementId,
@@ -10792,12 +11281,68 @@
             operationTimestamp.toMillis(),
 
           updatedAt:
-            Date.now()
+            Date.now(),
+
+          editado:
+            true
         };
 
         updatedProduct = {
           ...productData,
-          ...nextProductData,
+
+          proveedorIds:
+            getProviderIds(
+              mergedProductProviders
+            ),
+
+          providerIds:
+            getProviderIds(
+              mergedProductProviders
+            ),
+
+          proveedores:
+            mergedProductProviders,
+
+          proveedorId:
+            primaryProductProvider?.id ||
+            productData.proveedorId ||
+            null,
+
+          proveedorNombre:
+            getProviderName(
+              primaryProductProvider
+            ) ||
+            productData.proveedorNombre ||
+            "",
+
+          proveedorRazonSocial:
+            getProviderBusinessName(
+              primaryProductProvider
+            ) ||
+            productData.proveedorRazonSocial ||
+            "",
+
+          providerId:
+            primaryProductProvider?.id ||
+            productData.providerId ||
+            productData.proveedorId ||
+            null,
+
+          providerName:
+            getProviderName(
+              primaryProductProvider
+            ) ||
+            productData.providerName ||
+            productData.proveedorNombre ||
+            "",
+
+          providerBusinessName:
+            getProviderBusinessName(
+              primaryProductProvider
+            ) ||
+            productData.providerBusinessName ||
+            productData.proveedorRazonSocial ||
+            "",
 
           id:
             productId,
@@ -10811,7 +11356,7 @@
           boxes:
             decimalOrZero(
               nextStock /
-              unitsPerBox
+                unitsPerBox
             ),
 
           unitsPerBox,
@@ -10860,7 +11405,7 @@
       !updatedProduct
     ) {
       throw new Error(
-        "No se pudo construir la actualización del movimiento."
+        "No se pudo construir la actualización."
       );
     }
 
@@ -10983,7 +11528,7 @@
           ),
 
         width:
-          "980px",
+          "1050px",
 
         showCancelButton:
           true,
@@ -11004,6 +11549,12 @@
 
         didOpen:
           () => {
+            bindProviderSelectorEvents(
+              document.getElementById(
+                "movement-edit-provider-selector"
+              )
+            );
+
             const selectors = [
               "#movement-edit-boxes",
               "#movement-edit-bonus-boxes",
@@ -11021,9 +11572,7 @@
                     selector
                   );
 
-                if (
-                  !element
-                ) {
+                if (!element) {
                   return;
                 }
 
@@ -11062,7 +11611,7 @@
                 document.getElementById(
                   "movement-edit-date"
                 )?.value ||
-                ""
+                  ""
               ).trim();
 
             const cajas =
@@ -11123,20 +11672,22 @@
                 )
               );
 
-            const proveedorTexto =
-              String(
-                document.getElementById(
-                  "movement-edit-provider"
-                )?.value ||
-                ""
-              ).trim();
+            const providerRoot =
+              document.getElementById(
+                "movement-edit-provider-selector"
+              );
+
+            const proveedorIds =
+              getSelectedProviderIdsFromSelector(
+                providerRoot
+              );
 
             const referenciaLibro =
               String(
                 document.getElementById(
                   "movement-edit-reference"
                 )?.value ||
-                ""
+                  ""
               ).trim();
 
             const numeroDocumento =
@@ -11144,7 +11695,7 @@
                 document.getElementById(
                   "movement-edit-document"
                 )?.value ||
-                ""
+                  ""
               ).trim();
 
             const operationDate =
@@ -11162,56 +11713,24 @@
               return;
             }
 
-            if (
-              proveedorTexto
-            ) {
-              const provider =
-                resolveProviderSelection(
-                  proveedorTexto
-                );
-
-              if (
-                !provider
-              ) {
-                Swal.showValidationMessage(
-                  `No se encontró el proveedor "${escapeHtml(
-                    proveedorTexto
-                  )}". Puedes buscarlo por nombre o razón social.`
-                );
-
-                return;
-              }
-            }
-
-            if (
-              unidadesPorCaja <=
-              0
-            ) {
-              Swal.showValidationMessage(
-                "Las unidades por caja deben ser mayores que cero."
-              );
-
-              return;
-            }
-
             const paidUnits =
               decimalOrZero(
                 cajas *
-                unidadesPorCaja +
-                unidades
+                  unidadesPorCaja +
+                  unidades
               );
 
             const bonusUnits =
               decimalOrZero(
                 cajasBono *
-                unidadesPorCaja +
-                unidadesBono
+                  unidadesPorCaja +
+                  unidadesBono
               );
 
             const totalUnits =
               decimalOrZero(
                 paidUnits +
-                bonusUnits
+                  bonusUnits
               );
 
             if (
@@ -11242,7 +11761,7 @@
 
               precioVenta,
 
-              proveedorTexto,
+              proveedorIds,
 
               referenciaLibro,
 
@@ -11263,7 +11782,7 @@
           "Actualizando entrada",
 
         text:
-          "Calculando diferencia de stock, costos, proveedor y valores del movimiento.",
+          "Calculando diferencia de stock, costos y proveedores.",
 
         allowOutsideClick:
           false,
@@ -11296,52 +11815,35 @@
 
         html:
           `
-            <div
-              style="
-                text-align:left;
-              "
-            >
+            <div style="text-align:left">
+
               <p>
                 Producto:
                 <strong>
                   ${escapeHtml(
-            resultData.product.name ||
-            product.name ||
-            ""
-          )}
+                    resultData.product.name ||
+                      product.name ||
+                      ""
+                  )}
                 </strong>
               </p>
 
               <p>
-                Proveedor del movimiento:
+                Proveedores de la entrada:
                 <strong>
                   ${escapeHtml(
-            resultData.movement.proveedorNombre ||
-            "Sin proveedor"
-          )}
+                    resultData.movement.providerDisplay ||
+                      "Sin proveedor"
+                  )}
                 </strong>
               </p>
-
-              ${resultData.movement.proveedorRazonSocial
-            ? `
-                    <p>
-                      Razón Social / Denominación:
-                      <strong>
-                        ${escapeHtml(
-              resultData.movement.proveedorRazonSocial
-            )}
-                      </strong>
-                    </p>
-                  `
-            : ""
-          }
 
               <p>
                 Cajas:
                 <strong>
                   ${formatQuantity(
-            resultData.movement.cajas
-          )}
+                    resultData.movement.cajas
+                  )}
                 </strong>
               </p>
 
@@ -11349,8 +11851,8 @@
                 Unidades por caja:
                 <strong>
                   ${formatQuantity(
-            resultData.movement.unidadesPorCaja
-          )}
+                    resultData.movement.unidadesPorCaja
+                  )}
                 </strong>
               </p>
 
@@ -11358,27 +11860,19 @@
                 Entrada pagada:
                 <strong>
                   ${formatQuantity(
-            resultData.movement.entradaPagada
-          )}
+                    resultData.movement.entradaPagada
+                  )}
                   unidades
                 </strong>
               </p>
 
               <p>
-                Cajas bono:
+                Entrada bono:
                 <strong>
                   ${formatQuantity(
-            resultData.movement.cajasBono
-          )}
-                </strong>
-              </p>
-
-              <p>
-                Unidades bono:
-                <strong>
-                  ${formatQuantity(
-            resultData.movement.unidadesBono
-          )}
+                    resultData.movement.entradaBono
+                  )}
+                  unidades
                 </strong>
               </p>
 
@@ -11386,8 +11880,8 @@
                 Entrada total:
                 <strong>
                   ${formatQuantity(
-            resultData.movement.entrada
-          )}
+                    resultData.movement.entrada
+                  )}
                   unidades
                 </strong>
               </p>
@@ -11396,8 +11890,8 @@
                 Costo por caja:
                 <strong>
                   ${currency(
-            resultData.movement.costoPorCaja
-          )}
+                    resultData.movement.costoPorCaja
+                  )}
                 </strong>
               </p>
 
@@ -11405,26 +11899,17 @@
                 Costo por unidad:
                 <strong>
                   ${currency(
-            resultData.movement.costoUnitario
-          )}
+                    resultData.movement.costoUnitario
+                  )}
                 </strong>
               </p>
 
               <p>
-                Precio de venta:
+                Costo total:
                 <strong>
                   ${currency(
-            resultData.movement.precioVenta
-          )}
-                </strong>
-              </p>
-
-              <p>
-                Costo total de la entrada:
-                <strong>
-                  ${currency(
-            resultData.movement.costoTotal
-          )}
+                    resultData.movement.costoTotal
+                  )}
                 </strong>
               </p>
 
@@ -11432,37 +11917,36 @@
                 Nuevo stock:
                 <strong>
                   ${formatQuantity(
-            resultData.product.stockCurrentUnits
-          )}
+                    resultData.product.stockCurrentUnits
+                  )}
                   unidades
                 </strong>
               </p>
 
-              ${resultData.expense
-            ? `
+              ${
+                resultData.expense
+                  ? `
                     <p>
                       Gasto actualizado:
                       <strong>
                         ${currency(
-              resultData.expense.amount
-            )}
+                          resultData.expense.amount
+                        )}
                       </strong>
                     </p>
                   `
-            : ""
-          }
-            </div>
-          `,
+                  : ""
+              }
 
-        confirmButtonText:
-          "Aceptar"
+            </div>
+          `
       });
 
       await openMovementManagerModal(
         movement.productId
       );
     } catch (
-    error
+      error
     ) {
       Swal.close();
 
@@ -11474,7 +11958,7 @@
       await Swal.fire(
         "Error",
         error.message ||
-        "No se pudo actualizar la entrada.",
+          "No se pudo actualizar la entrada.",
         "error"
       );
     }
@@ -11482,7 +11966,7 @@
 
   /*
    * ============================================================
-   * ELIMINAR MOVIMIENTO DE ENTRADA
+   * ELIMINAR ENTRADA
    * ============================================================
    */
 
@@ -11492,14 +11976,12 @@
     const target =
       String(
         movementId ||
-        ""
+          ""
       ).trim();
 
-    if (
-      !target
-    ) {
+    if (!target) {
       throw new Error(
-        "No se indicó el movimiento que se desea eliminar."
+        "No se indicó el movimiento."
       );
     }
 
@@ -11540,12 +12022,6 @@
 
     await db.runTransaction(
       async transaction => {
-        /*
-         * ========================================================
-         * TODAS LAS LECTURAS DEBEN OCURRIR ANTES DE LAS ESCRITURAS
-         * ========================================================
-         */
-
         const movementSnap =
           await transaction.get(
             movementRef
@@ -11566,7 +12042,7 @@
         if (
           String(
             oldMovementRaw.tipoMovimiento ||
-            ""
+              ""
           )
             .trim()
             .toLowerCase() !==
@@ -11587,22 +12063,16 @@
           );
         }
 
-        /*
-         * --------------------------------------------------------
-         * NO PERMITIR ELIMINAR ENTRADAS DE CONVERSIÓN
-         * --------------------------------------------------------
-         */
-
         const conversionId =
           String(
             oldMovementRaw.conversionId ||
-            ""
+              ""
           ).trim();
 
         const conversionType =
           String(
             oldMovementRaw.conversionType ||
-            ""
+              ""
           ).trim();
 
         if (
@@ -11610,22 +12080,16 @@
           conversionType
         ) {
           throw new Error(
-            "Esta entrada fue generada por una conversión y no se puede eliminar desde el historial de compras. Corrige o elimina la conversión desde su módulo correspondiente."
+            "Esta entrada fue generada por una conversión y no se puede eliminar desde el historial de compras."
           );
         }
-
-        /*
-         * --------------------------------------------------------
-         * PRODUCTO
-         * --------------------------------------------------------
-         */
 
         deletedProductId =
           String(
             oldMovementRaw.productId ||
-            oldMovementRaw.productID ||
-            oldMovementRaw.product_id ||
-            ""
+              oldMovementRaw.productID ||
+              oldMovementRaw.product_id ||
+              ""
           ).trim();
 
         if (
@@ -11672,12 +12136,6 @@
           );
         }
 
-        /*
-         * --------------------------------------------------------
-         * NORMALIZAR MOVIMIENTO
-         * --------------------------------------------------------
-         */
-
         const normalizedMovement =
           normalizeMovementDocument(
             target,
@@ -11691,14 +12149,15 @@
           );
 
         removedEntry =
-          breakdown.totalUnits > 0
+          breakdown.totalUnits >
+          0
             ? breakdown.totalUnits
             : Math.max(
-              0,
-              numberOrZero(
-                oldMovementRaw.entrada
-              )
-            );
+                0,
+                numberOrZero(
+                  oldMovementRaw.entrada
+                )
+              );
 
         if (
           removedEntry <=
@@ -11708,12 +12167,6 @@
             "El movimiento no contiene una cantidad válida para revertir."
           );
         }
-
-        /*
-         * --------------------------------------------------------
-         * STOCK
-         * --------------------------------------------------------
-         */
 
         previousStock =
           getCurrentStockUnits(
@@ -11729,15 +12182,13 @@
           0
         ) {
           throw new Error(
-            `No se puede eliminar esta entrada porque el stock actual (${previousStock}) es menor que la cantidad del movimiento (${removedEntry}). El stock resultante sería ${nextStock}.`
+            `No se puede eliminar esta entrada porque el stock actual (${formatQuantity(
+              previousStock
+            )}) es menor que la cantidad del movimiento (${formatQuantity(
+              removedEntry
+            )}).`
           );
         }
-
-        /*
-         * --------------------------------------------------------
-         * COSTO DE LA ENTRADA
-         * --------------------------------------------------------
-         */
 
         const oldPaidUnits =
           breakdown.paidUnits;
@@ -11751,49 +12202,37 @@
           oldCostPerUnit <=
           0
         ) {
-          const oldCostPerBox =
-            numberOrZero(
-              normalizedMovement.costoPorCaja
-            );
-
           oldCostPerUnit =
             breakdown.unitsPerBox >
               0
-              ? oldCostPerBox /
-              breakdown.unitsPerBox
+              ? numberOrZero(
+                  normalizedMovement.costoPorCaja
+                ) /
+                breakdown.unitsPerBox
               : 0;
         }
 
         removedCostTotal =
           normalizedMovement.costoTotal !==
             undefined &&
-            normalizedMovement.costoTotal !==
+          normalizedMovement.costoTotal !==
             null
             ? Math.max(
-              0,
-              numberOrZero(
-                normalizedMovement.costoTotal
+                0,
+                numberOrZero(
+                  normalizedMovement.costoTotal
+                )
               )
-            )
             : Math.max(
-              0,
-              oldPaidUnits *
-              oldCostPerUnit
-            );
-
-        /*
-         * --------------------------------------------------------
-         * LECTURA DEL GASTO VINCULADO
-         *
-         * IMPORTANTE:
-         * Esta lectura ocurre ANTES de cualquier update/delete.
-         * --------------------------------------------------------
-         */
+                0,
+                oldPaidUnits *
+                  oldCostPerUnit
+              );
 
         const expenseId =
           String(
             oldMovementRaw.expenseId ||
-            ""
+              ""
           ).trim();
 
         let expenseRef =
@@ -11804,9 +12243,6 @@
 
         let expenseData =
           null;
-
-        let oldExpenseAmount =
-          0;
 
         let nextExpenseAmount =
           0;
@@ -11835,7 +12271,7 @@
               expenseSnap.data() ||
               {};
 
-            oldExpenseAmount =
+            const oldExpenseAmount =
               Math.max(
                 0,
                 numberOrZero(
@@ -11847,27 +12283,15 @@
               Math.max(
                 0,
                 oldExpenseAmount -
-                removedCostTotal
+                  removedCostTotal
               );
           }
         }
-
-        /*
-         * ========================================================
-         * A PARTIR DE AQUÍ SOLO ESCRITURAS
-         * ========================================================
-         */
 
         const currentUnitsPerBox =
           getUnitsPerBox(
             productData
           );
-
-        /*
-         * --------------------------------------------------------
-         * ACTUALIZAR PRODUCTO
-         * --------------------------------------------------------
-         */
 
         transaction.update(
           productRef,
@@ -11879,9 +12303,9 @@
               nextStock,
 
             boxes:
-              Math.floor(
+              decimalOrZero(
                 nextStock /
-                currentUnitsPerBox
+                  currentUnitsPerBox
               ),
 
             updatedAt:
@@ -11891,21 +12315,9 @@
           }
         );
 
-        /*
-         * --------------------------------------------------------
-         * ELIMINAR MOVIMIENTO
-         * --------------------------------------------------------
-         */
-
         transaction.delete(
           movementRef
         );
-
-        /*
-         * --------------------------------------------------------
-         * ACTUALIZAR GASTO
-         * --------------------------------------------------------
-         */
 
         if (
           expenseSnap &&
@@ -11942,22 +12354,10 @@
       }
     );
 
-    /*
-     * ==========================================================
-     * ACTUALIZAR CACHÉ DE MOVIMIENTOS
-     * ==========================================================
-     */
-
     removeSessionDocument(
       MOVEMENTS_COLLECTION,
       target
     );
-
-    /*
-     * ==========================================================
-     * ACTUALIZAR CACHÉ DEL PRODUCTO
-     * ==========================================================
-     */
 
     const localProduct =
       findProductById(
@@ -11982,9 +12382,9 @@
           nextStock,
 
         boxes:
-          Math.floor(
+          decimalOrZero(
             nextStock /
-            currentUnitsPerBox
+              currentUnitsPerBox
           ),
 
         updatedAt:
@@ -12001,60 +12401,7 @@
         deletedProductId,
         updatedLocalProduct
       );
-    } else {
-      const cachedProduct =
-        getSessionCollection(
-          PRODUCTS_COLLECTION
-        ).find(
-          item =>
-            String(
-              item.id
-            ).trim() ===
-            deletedProductId
-        );
-
-      if (
-        cachedProduct
-      ) {
-        const productData =
-          cachedProduct.data ||
-          {};
-
-        const currentUnitsPerBox =
-          getUnitsPerBox(
-            productData
-          );
-
-        upsertSessionDocument(
-          PRODUCTS_COLLECTION,
-          deletedProductId,
-          {
-            ...productData,
-
-            quantity:
-              nextStock,
-
-            stockCurrentUnits:
-              nextStock,
-
-            boxes:
-              Math.floor(
-                nextStock /
-                currentUnitsPerBox
-              ),
-
-            updatedAt:
-              Date.now()
-          }
-        );
-      }
     }
-
-    /*
-     * ==========================================================
-     * ACTUALIZAR CACHÉ DEL GASTO
-     * ==========================================================
-     */
 
     if (
       updatedExpense
@@ -12077,21 +12424,9 @@
       );
     }
 
-    /*
-     * ==========================================================
-     * INVALIDAR CACHÉ DE MOVIMIENTOS
-     * ==========================================================
-     */
-
     invalidateProductStockMovementsCache(
       deletedProductId
     );
-
-    /*
-     * ==========================================================
-     * RESULTADO
-     * ==========================================================
-     */
 
     return {
       movementId:
@@ -12111,12 +12446,12 @@
       expense:
         updatedExpense
           ? {
-            id:
-              updatedExpense.id,
+              id:
+                updatedExpense.id,
 
-            amount:
-              updatedExpense.amount
-          }
+              amount:
+                updatedExpense.amount
+            }
           : null
     };
   }
@@ -12144,9 +12479,9 @@
     const managerProductId =
       manager
         ? String(
-          manager.dataset.productId ||
-          ""
-        ).trim()
+            manager.dataset.productId ||
+              ""
+          ).trim()
         : "";
 
     const movement =
@@ -12154,12 +12489,10 @@
         movementId
       );
 
-    if (
-      !movement
-    ) {
+    if (!movement) {
       await Swal.fire(
         "Movimiento no encontrado",
-        "El movimiento ya no está disponible en la caché de sesión.",
+        "El movimiento ya no está disponible.",
         "warning"
       );
 
@@ -12172,7 +12505,7 @@
     ) {
       await Swal.fire(
         "Movimiento no válido",
-        "Solo se pueden eliminar movimientos de tipo entrada.",
+        "Solo se pueden eliminar entradas.",
         "warning"
       );
 
@@ -12185,7 +12518,7 @@
     ) {
       await Swal.fire(
         "Entrada de conversión",
-        "Esta entrada fue generada por una conversión. Debe modificarse desde el módulo de conversiones para conservar la trazabilidad de la operación.",
+        "Esta entrada fue generada por una conversión y debe gestionarse desde conversiones.",
         "warning"
       );
 
@@ -12207,11 +12540,11 @@
       breakdown.totalUnits > 0
         ? breakdown.totalUnits
         : Math.max(
-          0,
-          decimalOrZero(
-            movement.entrada
-          )
-        );
+            0,
+            decimalOrZero(
+              movement.entrada
+            )
+          );
 
     const confirmation =
       await Swal.fire({
@@ -12220,19 +12553,16 @@
 
         html:
           `
-            <div
-              style="
-                text-align:left;
-              "
-            >
+            <div style="text-align:left">
+
               <p>
                 Producto:
                 <strong>
                   ${escapeHtml(
-            product?.name ||
-            movement.productName ||
-            "Producto"
-          )}
+                    product?.name ||
+                      movement.productName ||
+                      "Producto"
+                  )}
                 </strong>
               </p>
 
@@ -12240,11 +12570,21 @@
                 Fecha:
                 <strong>
                   ${escapeHtml(
-            getMovementOperationDateValue(
-              movement
-            ) ||
-            "Sin fecha"
-          )}
+                    getMovementOperationDateValue(
+                      movement
+                    ) ||
+                      "Sin fecha"
+                  )}
+                </strong>
+              </p>
+
+              <p>
+                Proveedores:
+                <strong>
+                  ${escapeHtml(
+                    movement.providerDisplay ||
+                      "Sin proveedor"
+                  )}
                 </strong>
               </p>
 
@@ -12252,19 +12592,9 @@
                 Entrada:
                 <strong>
                   ${formatQuantity(
-            removalUnits
-          )}
+                    removalUnits
+                  )}
                   unidades
-                </strong>
-              </p>
-
-              <p>
-                Proveedor:
-                <strong>
-                  ${escapeHtml(
-            movement.proveedorNombre ||
-            "Sin proveedor"
-          )}
                 </strong>
               </p>
 
@@ -12272,8 +12602,8 @@
                 Costo total:
                 <strong>
                   ${currency(
-            movement.costoTotal
-          )}
+                    movement.costoTotal
+                  )}
                 </strong>
               </p>
 
@@ -12281,39 +12611,24 @@
                 Stock actual:
                 <strong>
                   ${formatQuantity(
-            getCurrentStockUnits(
-              product
-            )
-          )}
+                    getCurrentStockUnits(
+                      product
+                    )
+                  )}
                   unidades
                 </strong>
               </p>
 
               <hr>
 
-              <p
-                style="
-                  color:#b91c1c;
-                  font-weight:700;
-                "
-              >
-                Esta acción reducirá el stock en
-                ${formatQuantity(
-            removalUnits
-          )}
-                unidades y eliminará el movimiento.
+              <p style="
+                color:#b91c1c;
+                font-weight:700;
+              ">
+                Esta acción reducirá el stock y eliminará
+                el movimiento.
               </p>
 
-              ${movement.expenseId
-            ? `
-                    <p>
-                      El gasto vinculado también
-                      se ajustará restando el costo
-                      de esta entrada.
-                    </p>
-                  `
-            : ""
-          }
             </div>
           `,
 
@@ -12345,7 +12660,7 @@
           "Eliminando entrada",
 
         text:
-          "Revirtiendo stock y actualizando el gasto vinculado.",
+          "Revirtiendo stock y actualizando el gasto.",
 
         allowOutsideClick:
           false,
@@ -12368,20 +12683,6 @@
 
       refreshInventoryView();
 
-      const expenseHtml =
-        result.expense
-          ? `
-              <p>
-                Gasto actualizado:
-                <strong>
-                  ${currency(
-            result.expense.amount
-          )}
-                </strong>
-              </p>
-            `
-          : "";
-
       await Swal.fire({
         icon:
           "success",
@@ -12391,28 +12692,14 @@
 
         html:
           `
-            <div
-              style="
-                text-align:left;
-              "
-            >
-              <p>
-                Producto:
-                <strong>
-                  ${escapeHtml(
-            product?.name ||
-            movement.productName ||
-            "Producto"
-          )}
-                </strong>
-              </p>
+            <div style="text-align:left">
 
               <p>
-                Unidades retiradas del stock:
+                Unidades retiradas:
                 <strong>
                   ${formatQuantity(
-            result.removedEntry
-          )}
+                    result.removedEntry
+                  )}
                 </strong>
               </p>
 
@@ -12420,8 +12707,8 @@
                 Stock anterior:
                 <strong>
                   ${formatQuantity(
-            result.previousStock
-          )}
+                    result.previousStock
+                  )}
                 </strong>
               </p>
 
@@ -12429,8 +12716,8 @@
                 Nuevo stock:
                 <strong>
                   ${formatQuantity(
-            result.nextStock
-          )}
+                    result.nextStock
+                  )}
                 </strong>
               </p>
 
@@ -12438,17 +12725,28 @@
                 Costo retirado:
                 <strong>
                   ${currency(
-            result.removedCostTotal
-          )}
+                    result.removedCostTotal
+                  )}
                 </strong>
               </p>
 
-              ${expenseHtml}
-            </div>
-          `,
+              ${
+                result.expense
+                  ? `
+                    <p>
+                      Gasto actualizado:
+                      <strong>
+                        ${currency(
+                          result.expense.amount
+                        )}
+                      </strong>
+                    </p>
+                  `
+                  : ""
+              }
 
-        confirmButtonText:
-          "Aceptar"
+            </div>
+          `
       });
 
       await openMovementManagerModal(
@@ -12457,19 +12755,14 @@
 
       return true;
     } catch (
-    error
+      error
     ) {
       Swal.close();
-
-      console.error(
-        "Error eliminando entrada:",
-        error
-      );
 
       await Swal.fire(
         "Error",
         error.message ||
-        "No se pudo eliminar la entrada.",
+          "No se pudo eliminar la entrada.",
         "error"
       );
 
@@ -12490,43 +12783,38 @@
     const product =
       productId
         ? findProductById(
-          productId
-        )
+            productId
+          )
         : null;
-
-    const defaultDateTo =
-      "";
-
-    const defaultDateFrom =
-      "";
 
     return `
       <div
         class="movement-manager"
         id="movement-manager"
         data-product-id="${escapeHtml(
-      productId || ""
-    )}"
+          productId || ""
+        )}"
       >
 
-        <div
-          class="movement-manager-title"
-        >
+        <div class="movement-manager-title">
+
           <div>
             <strong>
-              ${product
-        ? `Entradas de ${escapeHtml(
-          product.name
-        )}`
-        : "Entradas de inventario"
-      }
+              ${
+                product
+                  ? `Entradas de ${escapeHtml(
+                      product.name
+                    )}`
+                  : "Entradas de inventario"
+              }
             </strong>
 
             <small>
-              ${product
-        ? "Historial completo de entradas de este producto."
-        : "Historial completo de entradas del local."
-      }
+              ${
+                product
+                  ? "Historial completo de entradas de este producto."
+                  : "Historial completo de entradas del local."
+              }
             </small>
           </div>
 
@@ -12535,23 +12823,29 @@
             id="movement-summary"
           >
             ${movements.length}
-            entradas
+            ${
+              movements.length ===
+              1
+                ? "entrada"
+                : "entradas"
+            }
           </div>
+
         </div>
 
-        ${product
-        ? `
-              <div
-                class="movement-current-stock-summary"
-              >
+        ${
+          product
+            ? `
+              <div class="movement-current-stock-summary">
+
                 <span>
                   Stock actual:
                   <strong>
                     ${formatQuantity(
-          getCurrentStockUnits(
-            product
-          )
-        )}
+                      getCurrentStockUnits(
+                        product
+                      )
+                    )}
                   </strong>
                   unidades
                 </span>
@@ -12560,10 +12854,10 @@
                   Unidades/caja:
                   <strong>
                     ${formatQuantity(
-          getUnitsPerBox(
-            product
-          )
-        )}
+                      getUnitsPerBox(
+                        product
+                      )
+                    )}
                   </strong>
                 </span>
 
@@ -12571,20 +12865,30 @@
                   Cajas actuales:
                   <strong>
                     ${formatQuantity(
-          getStockBoxes(
-            product
-          )
-        )}
+                      getStockBoxes(
+                        product
+                      )
+                    )}
                   </strong>
                 </span>
+
+                <span>
+                  Proveedores:
+                  <strong>
+                    ${escapeHtml(
+                      getProductProvidersDisplay(
+                        product
+                      )
+                    )}
+                  </strong>
+                </span>
+
               </div>
             `
-        : ""
-      }
+            : ""
+        }
 
-        <div
-          class="movement-filters"
-        >
+        <div class="movement-filters">
 
           <div class="inv-field">
             <label>
@@ -12594,7 +12898,6 @@
             <input
               id="movement-filter-from"
               type="date"
-              value="${defaultDateFrom}"
             >
           </div>
 
@@ -12606,13 +12909,13 @@
             <input
               id="movement-filter-to"
               type="date"
-              value="${defaultDateTo}"
             >
           </div>
 
-          ${product
-        ? ""
-        : `
+          ${
+            product
+              ? ""
+              : `
                 <div class="inv-field">
                   <label>
                     Producto / Proveedor
@@ -12626,16 +12929,17 @@
                     autocomplete="off"
                   >
 
-                  <datalist id="movement-filter-product-list">
+                  <datalist
+                    id="movement-filter-product-list"
+                  >
                     ${getProductFilterOptionsHtml()}
                   </datalist>
                 </div>
               `
-      }
+          }
 
-          <div
-            class="movement-filter-actions"
-          >
+          <div class="movement-filter-actions">
+
             <button
               type="button"
               class="btn-primary"
@@ -12652,6 +12956,7 @@
             >
               Limpiar
             </button>
+
           </div>
 
         </div>
@@ -12661,8 +12966,8 @@
           class="movement-table-wrapper"
         >
           ${renderMovementTableHtml(
-        movements
-      )}
+            movements
+          )}
         </div>
 
       </div>
@@ -12676,9 +12981,8 @@
       !movements.length
     ) {
       return `
-        <div
-          class="movement-empty"
-        >
+        <div class="movement-empty">
+
           <i class="fas fa-box-open"></i>
 
           <strong>
@@ -12686,313 +12990,291 @@
           </strong>
 
           <span>
-            No se encontraron movimientos de tipo entrada
-            con los filtros actuales.
+            No se encontraron movimientos de tipo entrada.
           </span>
+
         </div>
       `;
     }
 
     return `
-      <div
-        class="movement-table-scroll"
-      >
-        <table
-          class="movement-table"
-        >
+      <div class="movement-table-scroll">
+
+        <table class="movement-table">
+
           <thead>
             <tr>
-              <th>
-                Fecha
-              </th>
-
-              <th>
-                Producto
-              </th>
-
-              <th>
-                Proveedor
-              </th>
-
-              <th>
-                Entrada
-              </th>
-
-              <th>
-                Costo por unidad
-              </th>
-
-              <th>
-                Costo por caja
-              </th>
-
-              <th>
-                Costo total
-              </th>
-
-              <th>
-                Precio venta
-              </th>
-
-              <th>
-                Referencia
-              </th>
-
-              <th>
-                Documento
-              </th>
-
-              <th>
-                Saldo
-              </th>
-
-              <th>
-                Acción
-              </th>
+              <th>Fecha</th>
+              <th>Producto</th>
+              <th>Proveedores</th>
+              <th>Entrada</th>
+              <th>Costo por unidad</th>
+              <th>Costo por caja</th>
+              <th>Costo total</th>
+              <th>Precio venta</th>
+              <th>Referencia</th>
+              <th>Documento</th>
+              <th>Saldo</th>
+              <th>Acción</th>
             </tr>
           </thead>
 
           <tbody>
+
             ${movements
-        .map(
-          movement => {
-            const hasConversionReference =
-              Boolean(
-                String(
-                  movement.conversionId ||
-                  ""
-                ).trim()
-              ) ||
-              Boolean(
-                String(
-                  movement.conversionType ||
-                  ""
-                ).trim()
-              );
+              .map(
+                movement => {
+                  const hasConversionReference =
+                    Boolean(
+                      String(
+                        movement.conversionId ||
+                          ""
+                      ).trim()
+                    ) ||
+                    Boolean(
+                      String(
+                        movement.conversionType ||
+                          ""
+                      ).trim()
+                    );
 
-            const deleteDisabled =
-              !canDeleteInventoryMovement() ||
-              hasConversionReference;
+                  const deleteDisabled =
+                    !canDeleteInventoryMovement() ||
+                    hasConversionReference;
 
-            const deleteTitle =
-              hasConversionReference
-                ? "Entrada generada por conversión; debe gestionarse desde conversiones"
-                : !canDeleteInventoryMovement()
-                  ? "Solo administrador puede eliminar movimientos"
-                  : "Eliminar esta entrada";
+                  const deleteTitle =
+                    hasConversionReference
+                      ? "Entrada generada por conversión"
+                      : !canDeleteInventoryMovement()
+                        ? "Solo administrador"
+                        : "Eliminar entrada";
 
-            return `
-                  <tr>
-                    <td>
-                      ${escapeHtml(
-              getMovementOperationDateValue(
-                movement
-              ) ||
-              "—"
-            )}
-                    </td>
+                  return `
+                    <tr>
 
-                    <td>
-                      <strong>
+                      <td>
                         ${escapeHtml(
-              movement.productCurrentName ||
-              movement.productName ||
-              "Producto"
-            )}
-                      </strong>
+                          getMovementOperationDateValue(
+                            movement
+                          ) ||
+                            "—"
+                        )}
+                      </td>
 
-                      ${movement.codigoProducto
-                ? `
-                            <small>
-                              Código:
-                              ${escapeHtml(
-                  movement.codigoProducto
-                )}
-                            </small>
-                          `
-                : ""
-              }
-                    </td>
+                      <td>
+                        <strong>
+                          ${escapeHtml(
+                            movement.productCurrentName ||
+                              movement.productName ||
+                              "Producto"
+                          )}
+                        </strong>
 
-                    <td>
-                      <strong>
-                        ${escapeHtml(
-                movement.proveedorNombre ||
-                "Sin proveedor"
-              )}
-                      </strong>
+                        ${
+                          movement.codigoProducto
+                            ? `
+                              <small>
+                                Código:
+                                ${escapeHtml(
+                                  movement.codigoProducto
+                                )}
+                              </small>
+                            `
+                            : ""
+                        }
+                      </td>
 
-                      ${movement.proveedorRazonSocial
-                ? `
-                            <small>
-                              ${escapeHtml(
-                  movement.proveedorRazonSocial
-                )}
-                            </small>
-                          `
-                : ""
-              }
-                    </td>
+                      <td>
+                        <strong>
+                          ${escapeHtml(
+                            movement.providerDisplay ||
+                              "Sin proveedor"
+                          )}
+                        </strong>
 
-                    <td>
-                      <strong>
-                        ${formatQuantity(
-                movement.cajas
-              )}
-                      </strong>
-                      ${decimalOrZero(
-                movement.cajas
-              ) === 1
-                ? "caja"
-                : "cajas"
-              }
+                        ${
+                          movement.proveedorRazonSocial
+                            ? `
+                              <small>
+                                ${escapeHtml(
+                                  movement.proveedorRazonSocial
+                                )}
+                              </small>
+                            `
+                            : ""
+                        }
+                      </td>
 
-                      ×
+                      <td>
 
-                      <strong>
-                        ${formatQuantity(
-                movement.unidadesPorCaja
-              )}
-                      </strong>
-
-                      <small>
-                        ${formatQuantity(
-                movement.unidades
-              )}
-                        unidades sueltas
-                      </small>
-
-                      ${decimalOrZero(
-                movement.cajasBono
-              ) > 0
-                ? `
-                            <small>
-                              +
-                              ${formatQuantity(
-                  movement.cajasBono
-                )}
-                              cajas bono
-                            </small>
-                          `
-                : ""
-              }
-
-                      ${decimalOrZero(
-                movement.unidadesBono
-              ) > 0
-                ? `
-                            <small>
-                              +
-                              ${formatQuantity(
-                  movement.unidadesBono
-                )}
-                              unidades bono
-                            </small>
-                          `
-                : ""
-              }
-
-                      <br>
-
-                      <small>
-                        Total:
                         <strong>
                           ${formatQuantity(
-                movement.entrada
-              )}
+                            movement.cajas
+                          )}
                         </strong>
-                        unidades
-                      </small>
-                    </td>
 
-                    <td>
-                      ${currency(
-                movement.costoUnitario
-              )}
-                    </td>
+                        ${
+                          decimalOrZero(
+                            movement.cajas
+                          ) === 1
+                            ? "caja"
+                            : "cajas"
+                        }
 
-                    <td>
-                      ${currency(
-                movement.costoPorCaja
-              )}
-                    </td>
+                        ×
 
-                    <td>
-                      <strong>
+                        <strong>
+                          ${formatQuantity(
+                            movement.unidadesPorCaja
+                          )}
+                        </strong>
+
+                        <small>
+                          ${formatQuantity(
+                            movement.unidades
+                          )}
+                          unidades sueltas
+                        </small>
+
+                        ${
+                          decimalOrZero(
+                            movement.cajasBono
+                          ) > 0
+                            ? `
+                              <small>
+                                +
+                                ${formatQuantity(
+                                  movement.cajasBono
+                                )}
+                                cajas bono
+                              </small>
+                            `
+                            : ""
+                        }
+
+                        ${
+                          decimalOrZero(
+                            movement.unidadesBono
+                          ) > 0
+                            ? `
+                              <small>
+                                +
+                                ${formatQuantity(
+                                  movement.unidadesBono
+                                )}
+                                unidades bono
+                              </small>
+                            `
+                            : ""
+                        }
+
+                        <small>
+                          Total:
+                          <strong>
+                            ${formatQuantity(
+                              movement.entrada
+                            )}
+                          </strong>
+                          unidades
+                        </small>
+
+                      </td>
+
+                      <td>
                         ${currency(
-                movement.costoTotal
-              )}
-                      </strong>
-                    </td>
+                          movement.costoUnitario
+                        )}
+                      </td>
 
-                    <td>
-                      ${currency(
-                movement.precioVenta
-              )}
-                    </td>
+                      <td>
+                        ${currency(
+                          movement.costoPorCaja
+                        )}
+                      </td>
 
-                    <td>
-                      ${escapeHtml(
-                movement.referenciaLibro ||
-                "—"
-              )}
-                    </td>
+                      <td>
+                        <strong>
+                          ${currency(
+                            movement.costoTotal
+                          )}
+                        </strong>
+                      </td>
 
-                    <td>
-                      ${escapeHtml(
-                movement.numeroDocumento ||
-                "—"
-              )}
-                    </td>
+                      <td>
+                        ${currency(
+                          movement.precioVenta
+                        )}
+                      </td>
 
-                    <td>
-                      ${formatQuantity(
-                movement.saldoActual
-              )}
-                    </td>
+                      <td>
+                        ${escapeHtml(
+                          movement.referenciaLibro ||
+                            "—"
+                        )}
+                      </td>
 
-                    <td>
-                      <div
-                        class="movement-action-group"
-                      >
-                        <button
-                          type="button"
-                          class="btn-outline movement-edit-button"
-                          data-movement-id="${escapeHtml(
-                movement.id
-              )}"
-                        >
-                          <i class="fas fa-edit"></i>
-                          Editar
-                        </button>
+                      <td>
+                        ${escapeHtml(
+                          movement.numeroDocumento ||
+                            "—"
+                        )}
+                      </td>
 
-                        <button
-                          type="button"
-                          class="btn-outline movement-delete-button"
-                          data-movement-id="${escapeHtml(
-                movement.id
-              )}"
-                          ${deleteDisabled
-                ? `disabled title="${escapeHtml(
-                  deleteTitle
-                )}"`
-                : `title="${escapeHtml(
-                  deleteTitle
-                )}"`
-              }
-                        >
-                          <i class="fas fa-trash"></i>
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                `;
-          }
-        )
-        .join("")}
+                      <td>
+                        ${formatQuantity(
+                          movement.saldoActual
+                        )}
+                      </td>
+
+                      <td>
+
+                        <div class="movement-action-group">
+
+                          <button
+                            type="button"
+                            class="btn-outline movement-edit-button"
+                            data-movement-id="${escapeHtml(
+                              movement.id
+                            )}"
+                          >
+                            <i class="fas fa-edit"></i>
+                            Editar
+                          </button>
+
+                          <button
+                            type="button"
+                            class="btn-outline movement-delete-button"
+                            data-movement-id="${escapeHtml(
+                              movement.id
+                            )}"
+                            ${
+                              deleteDisabled
+                                ? `disabled title="${escapeHtml(
+                                    deleteTitle
+                                  )}"`
+                                : `title="${escapeHtml(
+                                    deleteTitle
+                                  )}"`
+                            }
+                          >
+                            <i class="fas fa-trash"></i>
+                            Eliminar
+                          </button>
+
+                        </div>
+
+                      </td>
+
+                    </tr>
+                  `;
+                }
+              )
+              .join("")}
+
           </tbody>
+
         </table>
+
       </div>
     `;
   }
@@ -13018,9 +13300,9 @@
           String(
             movement.productId
           ).trim() !==
-          String(
-            productId
-          ).trim()
+            String(
+              productId
+            ).trim()
         ) {
           return false;
         }
@@ -13035,7 +13317,7 @@
           (
             !date ||
             date <
-            dateFrom
+              dateFrom
           )
         ) {
           return false;
@@ -13046,7 +13328,7 @@
           (
             !date ||
             date >
-            dateTo
+              dateTo
           )
         ) {
           return false;
@@ -13055,59 +13337,32 @@
         if (
           normalizedProductText
         ) {
-          const productName =
-            normalizeText(
+          const searchable =
+            [
               movement.productCurrentName ||
-              movement.productName
-            );
+                movement.productName ||
+                "",
 
-          const code =
-            normalizeText(
-              movement.codigoProducto
-            );
+              movement.codigoProducto ||
+                "",
 
-          const movementProviderName =
-            normalizeText(
-              movement.proveedorNombre
-            );
+              movement.providerDisplay ||
+                "",
 
-          const movementProviderReason =
-            normalizeText(
-              movement.proveedorRazonSocial
-            );
+              movement.proveedorNombre ||
+                "",
 
-          const productProviderName =
-            normalizeText(
-              movement.productCurrentProvider
-            );
-
-          const productProviderReason =
-            normalizeText(
-              movement.productCurrentProviderReason
-            );
-
-          const matches =
-            productName.includes(
-              normalizedProductText
-            ) ||
-            code.includes(
-              normalizedProductText
-            ) ||
-            movementProviderName.includes(
-              normalizedProductText
-            ) ||
-            movementProviderReason.includes(
-              normalizedProductText
-            ) ||
-            productProviderName.includes(
-              normalizedProductText
-            ) ||
-            productProviderReason.includes(
-              normalizedProductText
-            );
+              movement.proveedorRazonSocial ||
+                ""
+            ]
+              .join(" ");
 
           if (
-            !matches
+            !normalizeText(
+              searchable
+            ).includes(
+              normalizedProductText
+            )
           ) {
             return false;
           }
@@ -13136,8 +13391,8 @@
     let movements =
       productId
         ? await loadProductStockMovements(
-          productId
-        )
+            productId
+          )
         : await loadAllEntryMovements();
 
     movements =
@@ -13160,7 +13415,7 @@
         ),
 
       width:
-        "1380px",
+        "1400px",
 
       showCancelButton:
         false,
@@ -13195,7 +13450,7 @@
                   document.getElementById(
                     "movement-filter-from"
                   )?.value ||
-                  ""
+                    ""
                 ).trim();
 
               const dateTo =
@@ -13203,7 +13458,7 @@
                   document.getElementById(
                     "movement-filter-to"
                   )?.value ||
-                  ""
+                    ""
                 ).trim();
 
               const productText =
@@ -13211,14 +13466,14 @@
                   document.getElementById(
                     "movement-filter-product"
                   )?.value ||
-                  ""
+                    ""
                 ).trim();
 
               if (
                 dateFrom &&
                 dateTo &&
                 dateFrom >
-                dateTo
+                  dateTo
               ) {
                 Swal.fire(
                   "Filtro inválido",
@@ -13254,10 +13509,11 @@
                 summary
               ) {
                 summary.textContent =
-                  `${filtered.length} entrada${filtered.length ===
+                  `${filtered.length} entrada${
+                    filtered.length ===
                     1
-                    ? ""
-                    : "s"
+                      ? ""
+                      : "s"
                   }`;
               }
 
@@ -13344,38 +13600,26 @@
               eventName => {
                 productFilter.addEventListener(
                   eventName,
-                  () => {
-                    renderFiltered();
-                  }
+                  renderFiltered
                 );
               }
             );
           }
 
-          const dateFrom =
+          [
             document.getElementById(
               "movement-filter-from"
-            );
-
-          const dateTo =
+            ),
             document.getElementById(
               "movement-filter-to"
-            );
-
-          [
-            dateFrom,
-            dateTo
-          ]
-            .filter(
-              Boolean
             )
+          ]
+            .filter(Boolean)
             .forEach(
               element => {
                 element.addEventListener(
                   "change",
-                  () => {
-                    renderFiltered();
-                  }
+                  renderFiltered
                 );
               }
             );
@@ -13409,12 +13653,10 @@
                 String(
                   button.dataset
                     .movementId ||
-                  ""
+                    ""
                 ).trim();
 
-              if (
-                !movementId
-              ) {
+              if (!movementId) {
                 return;
               }
 
@@ -13423,12 +13665,10 @@
                   movementId
                 );
 
-              if (
-                !movement
-              ) {
+              if (!movement) {
                 await Swal.fire(
                   "Movimiento no encontrado",
-                  "El movimiento ya no está disponible en la caché de sesión.",
+                  "El movimiento ya no está disponible.",
                   "warning"
                 );
 
@@ -13474,7 +13714,7 @@
                 String(
                   button.dataset
                     .movementId ||
-                  ""
+                    ""
                 ).trim();
 
               if (
@@ -13503,12 +13743,10 @@
     const target =
       String(
         movementId ||
-        ""
+          ""
       ).trim();
 
-    if (
-      !target
-    ) {
+    if (!target) {
       return null;
     }
 
@@ -13546,34 +13784,27 @@
         "Producto";
 
       movement.productCurrentProvider =
-        getProductProviderName(
-          product
-        );
-
-      movement.productCurrentProviderReason =
-        getProductProviderReason(
+        getProductProvidersDisplay(
           product
         );
 
       movement.productCurrentStock =
         product
           ? getCurrentStockUnits(
-            product
-          )
+              product
+            )
           : movement.saldoActual;
+
+      movement.providerDisplay =
+        movement.providerDisplay ||
+        getLineProvidersDisplay(
+          movement
+        );
 
       return movement;
     }
 
     return null;
-  }
-
-  async function openEditModal(
-    productId
-  ) {
-    return openMovementManagerModal(
-      productId
-    );
   }
 
   /*
@@ -13587,12 +13818,7 @@
     productName
   ) {
     if (
-      !(
-        currentRole ===
-        "administrador" ||
-        currentRole ===
-        "admin"
-      )
+      !isAdministratorRole()
     ) {
       await Swal.fire(
         "Sin permisos",
@@ -13682,7 +13908,7 @@
           1500
       });
     } catch (
-    error
+      error
     ) {
       console.error(
         "Error eliminando producto:",
@@ -13699,9 +13925,129 @@
 
   /*
    * ============================================================
-   * BOTÓN GENERAL DE MOVIMIENTOS
+   * BOTONES
    * ============================================================
    */
+
+  function ensureConversionModuleLoaded() {
+    if (
+      window.InventoryConversions
+    ) {
+      return Promise.resolve(
+        window.InventoryConversions
+      );
+    }
+
+    return import(
+      "./conversion.js"
+    ).then(
+      () => {
+        if (
+          !window.InventoryConversions
+        ) {
+          throw new Error(
+            "No se pudo cargar el módulo de conversiones."
+          );
+        }
+
+        return window.InventoryConversions;
+      }
+    );
+  }
+
+  function ensureConversionButton() {
+    const existing =
+      document.getElementById(
+        "btnConversions"
+      );
+
+    if (
+      existing
+    ) {
+      existing.style.display =
+        canEditInventory &&
+        currentLocalId
+          ? ""
+          : "none";
+
+      return existing;
+    }
+
+    const btnAdd =
+      getInventoryAddButton();
+
+    if (
+      !btnAdd ||
+      !canEditInventory ||
+      !currentLocalId
+    ) {
+      return null;
+    }
+
+    const button =
+      document.createElement(
+        "button"
+      );
+
+    button.id =
+      "btnConversions";
+
+    button.type =
+      "button";
+
+    button.className =
+      "btn-outline";
+
+    button.innerHTML = `
+      <i class="fas fa-arrows-alt-h"></i>
+      Convertir productos
+    `;
+
+    button.style.marginLeft =
+      "8px";
+
+    button.addEventListener(
+      "click",
+      async () => {
+        try {
+          const module =
+            await ensureConversionModuleLoaded();
+
+          if (
+            typeof module.openConversionModal !==
+            "function"
+          ) {
+            throw new Error(
+              "El módulo de conversiones no expone openConversionModal()."
+            );
+          }
+
+          await module.openConversionModal();
+        } catch (
+          error
+        ) {
+          console.error(
+            "Error abriendo conversiones:",
+            error
+          );
+
+          await Swal.fire(
+            "Error",
+            error.message ||
+              "No se pudo abrir el módulo de conversiones.",
+            "error"
+          );
+        }
+      }
+    );
+
+    btnAdd.parentNode?.insertBefore(
+      button,
+      btnAdd.nextSibling
+    );
+
+    return button;
+  }
 
   function ensureGlobalMovementsButton() {
     const existing =
@@ -13714,7 +14060,7 @@
     ) {
       existing.style.display =
         canEditInventory &&
-          currentLocalId
+        currentLocalId
           ? ""
           : "none";
 
@@ -13772,7 +14118,7 @@
 
   /*
    * ============================================================
-   * BÚSQUEDA PRINCIPAL
+   * BÚSQUEDA
    * ============================================================
    */
 
@@ -13806,40 +14152,62 @@
       !normalized
         ? currentProductsList
         : currentProductsList.filter(
-          product =>
-            normalizeText(
-              product.name
-            ).includes(
-              normalized
-            ) ||
-            normalizeText(
-              getProductCode(
-                product
+            product =>
+              normalizeText(
+                product.name
+              ).includes(
+                normalized
+              ) ||
+              normalizeText(
+                getProductCode(
+                  product
+                )
+              ).includes(
+                normalized
+              ) ||
+              normalizeText(
+                getProductProvidersSearchText(
+                  product
+                )
+              ).includes(
+                normalized
               )
-            ).includes(
-              normalized
-            ) ||
-            normalizeText(
-              getProductProviderName(
-                product
-              )
-            ).includes(
-              normalized
-            ) ||
-            normalizeText(
-              getProductProviderReason(
-                product
-              )
-            ).includes(
-              normalized
-            )
-        );
+          );
 
     renderInventoryFallback(
       filtered.map(
         buildRowData
       )
     );
+  }
+
+  /*
+   * ============================================================
+   * CONVERSIÓN RELOAD
+   * ============================================================
+   */
+
+  async function reloadInventoryAfterConversion() {
+    inventoryLoadPromise =
+      null;
+
+    currentProductsList =
+      [];
+
+    currentMonthlySalesMap =
+      {};
+
+    currentMonthlyBoxesMap =
+      {};
+
+    invalidateAllMovementsCache();
+
+    await loadInventoryData();
+
+    applySearch();
+
+    ensureGlobalMovementsButton();
+    ensureConversionButton();
   }
 
   /*
@@ -13857,10 +14225,12 @@
 
     if (
       searchInput &&
-      searchInput.dataset.inventorySearchBound !==
-      "1"
+      searchInput.dataset
+        .inventorySearchBound !==
+        "1"
     ) {
-      searchInput.dataset.inventorySearchBound =
+      searchInput.dataset
+        .inventorySearchBound =
         "1";
 
       [
@@ -13879,10 +14249,12 @@
 
     if (
       btnAdd &&
-      btnAdd.dataset.inventoryAddBound !==
-      "1"
+      btnAdd.dataset
+        .inventoryAddBound !==
+        "1"
     ) {
-      btnAdd.dataset.inventoryAddBound =
+      btnAdd.dataset
+        .inventoryAddBound =
         "1";
 
       btnAdd.addEventListener(
@@ -14034,6 +14406,10 @@
         grid-column:span 2;
       }
 
+      .batch-provider-field {
+        grid-column:span 2;
+      }
+
       .batch-product-status {
         min-height:18px;
       }
@@ -14099,6 +14475,94 @@
 
       .batch-info-box p {
         margin:5px 0;
+      }
+
+      .provider-multi-select {
+        border:1px solid #d1d5db;
+        border-radius:10px;
+        background:#ffffff;
+        padding:8px;
+      }
+
+      .provider-multi-header {
+        display:flex;
+        justify-content:space-between;
+        gap:8px;
+        align-items:center;
+        margin-bottom:7px;
+        font-size:.74rem;
+        font-weight:700;
+        color:#374151;
+      }
+
+      .provider-multi-count {
+        color:#1d4ed8;
+        white-space:nowrap;
+      }
+
+      .provider-multi-search {
+        width:100%;
+        min-height:36px;
+        margin-bottom:7px;
+        box-sizing:border-box;
+      }
+
+      .provider-multi-options {
+        max-height:145px;
+        overflow-y:auto;
+        border:1px solid #e5e7eb;
+        border-radius:8px;
+        padding:5px;
+        background:#f8fafc;
+      }
+
+      .provider-multi-option {
+        display:flex;
+        align-items:flex-start;
+        gap:8px;
+        padding:7px 8px;
+        border-radius:7px;
+        cursor:pointer;
+        font-size:.76rem;
+      }
+
+      .provider-multi-option:hover {
+        background:#eff6ff;
+      }
+
+      .provider-multi-option input {
+        width:auto !important;
+        min-height:auto !important;
+        margin-top:3px;
+      }
+
+      .provider-multi-option span {
+        display:flex;
+        flex-direction:column;
+        gap:2px;
+        min-width:0;
+      }
+
+      .provider-multi-option small {
+        color:#6b7280;
+        font-size:.68rem;
+      }
+
+      .provider-multi-summary {
+        margin-top:7px;
+        padding:7px 8px;
+        border-radius:7px;
+        background:#eff6ff;
+        color:#1d4ed8;
+        font-size:.7rem;
+        line-height:1.35;
+      }
+
+      .provider-multi-empty {
+        padding:10px;
+        text-align:center;
+        color:#6b7280;
+        font-size:.74rem;
       }
 
       .movement-manager {
@@ -14177,10 +14641,6 @@
         min-height:40px;
       }
 
-      .movement-table-wrapper {
-        width:100%;
-      }
-
       .movement-table-scroll {
         overflow-x:auto;
         max-height:58vh;
@@ -14225,10 +14685,6 @@
         align-items:center;
         flex-wrap:wrap;
         gap:8px;
-      }
-
-      .movement-action-group .btn-outline {
-        margin-left:0 !important;
       }
 
       .movement-empty {
@@ -14294,6 +14750,10 @@
         grid-column:span 3;
       }
 
+      .movement-edit-provider-field {
+        grid-column:span 2;
+      }
+
       .movement-edit-preview {
         display:grid;
         grid-template-columns:
@@ -14340,12 +14800,6 @@
         color:#166534;
       }
 
-      #movement-edit-provider {
-        width:100%;
-        min-height:40px;
-        box-sizing:border-box;
-      }
-
       @media (max-width:1100px) {
         .movement-edit-grid {
           grid-template-columns:
@@ -14379,7 +14833,12 @@
             repeat(2,minmax(0,1fr));
         }
 
-        .batch-product-field {
+        .batch-product-field,
+        .batch-provider-field {
+          grid-column:span 2;
+        }
+
+        .movement-edit-provider-field {
           grid-column:span 2;
         }
       }
@@ -14393,7 +14852,8 @@
           grid-template-columns:1fr;
         }
 
-        .movement-edit-full {
+        .movement-edit-full,
+        .movement-edit-provider-field {
           grid-column:span 1;
         }
 
@@ -14415,7 +14875,8 @@
           grid-template-columns:1fr;
         }
 
-        .batch-product-field {
+        .batch-product-field,
+        .batch-provider-field {
           grid-column:span 1;
         }
 
@@ -14451,6 +14912,8 @@
 
       ensureConversionButton();
 
+      ensureGlobalMovementsButton();
+
       return;
     }
 
@@ -14480,7 +14943,7 @@
       ) {
         window.renderNavigationForRole(
           currentUserInventoryContext.role ||
-          ""
+            ""
         );
       }
 
@@ -14504,7 +14967,7 @@
 
       applySearch();
     } catch (
-    error
+      error
     ) {
       inventoryInitialized =
         false;
@@ -14532,12 +14995,6 @@
       }
     }
   }
-
-  /*
-   * ============================================================
-   * DOM READY
-   * ============================================================
-   */
 
   function initializePageEventsWhenPossible() {
     injectInventoryStyles();
@@ -14598,7 +15055,7 @@
   if (
     window.AppRouter &&
     typeof window.AppRouter.registerSecurePageController ===
-    "function"
+      "function"
   ) {
     window.AppRouter.registerSecurePageController(
       inventoryController
@@ -14612,14 +15069,12 @@
             .pop()
             .toLowerCase();
 
-        if (
-          !user
-        ) {
+        if (!user) {
           if (
             currentPage !==
-            "index.html" &&
+              "index.html" &&
             currentPage !==
-            "login.html"
+              "login.html"
           ) {
             window.location.href =
               "index.html";
@@ -14655,5 +15110,4 @@
       );
     }
   }
-
 })();
