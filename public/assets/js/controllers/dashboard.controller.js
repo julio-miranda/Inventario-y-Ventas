@@ -1,5 +1,3 @@
-// assets/js/controllers/dashboard.controller.js
-
 "use strict";
 
 
@@ -1169,127 +1167,70 @@ function normalizeCachedDocument(
 function readCollectionFromAppCache(
   collectionName
 ) {
-
-  if (
-    typeof window.getSessionCollection ===
-      "function"
-  ) {
-
+  // La caché en memoria es la fuente principal. Incluso una colección
+  // vacía debe considerarse un resultado válido: no se debe reemplazar
+  // por una copia antigua o truncada de sessionStorage.
+  if (typeof window.getSessionCollection === "function") {
     try {
+      const documents = window.getSessionCollection(
+        collectionName,
+        {
+          uid: window.auth?.currentUser?.uid || ""
+        }
+      );
 
-      const documents =
-        window.getSessionCollection(
-          collectionName,
-          {
-            uid:
-              window.auth?.currentUser?.uid ||
-              ""
-          }
-        );
-
-
-      if (
-
-        Array.isArray(
-          documents
-        ) &&
-
-        documents.length
-
-      ) {
-
-        return documents
-
-          .map(
-            normalizeCachedDocument
-          )
-
-          .filter(
-            Boolean
-          );
-
+      if (!Array.isArray(documents)) {
+        return [];
       }
 
-    } catch (
-      error
-    ) {
-
+      return documents
+        .map(normalizeCachedDocument)
+        .filter(Boolean);
+    } catch (error) {
       debugWarn(
-
         `No se pudo leer ${collectionName} mediante getSessionCollection():`,
-
         error
-
       );
+      return [];
     }
   }
 
-
+  // Compatibilidad con cargas antiguas en las que todavía no está
+  // expuesta la API de caché en memoria. Nunca se usan entradas que
+  // indiquen explícitamente que fueron truncadas o están incompletas.
   try {
-
-    const raw =
-      sessionStorage.getItem(
-        "CONTROL_ACCESO_SESSION_CACHE"
-      );
-
-
-    if (
-      !raw
-    ) {
-
-      return [];
-    }
-
-
-    const parsed =
-      JSON.parse(
-        raw
-      );
-
-
-    const entry =
-      parsed?.collections?.[
-        collectionName
-      ];
-
-
-    if (
-
-      !entry ||
-
-      !Array.isArray(
-        entry.docs
-      )
-
-    ) {
-
-      return [];
-    }
-
-
-    return entry.docs
-
-      .map(
-        normalizeCachedDocument
-      )
-
-      .filter(
-        Boolean
-      );
-
-  } catch (
-    error
-  ) {
-
-    debugWarn(
-      `No se pudo leer la caché raw de ${collectionName}:`,
-      error
+    const raw = window.sessionStorage?.getItem(
+      "CONTROL_ACCESO_SESSION_CACHE"
     );
 
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    const entry = parsed?.collections?.[collectionName];
+
+    if (
+      !entry ||
+      !Array.isArray(entry.docs) ||
+      entry.complete === false ||
+      entry.partial === true ||
+      entry.storageTruncated === true
+    ) {
+      return [];
+    }
+
+    return entry.docs
+      .map(normalizeCachedDocument)
+      .filter(Boolean);
+  } catch (error) {
+    debugWarn(
+      `No se pudo leer la caché persistida de ${collectionName}:`,
+      error
+    );
     return [];
   }
 }
-
 
 function loadCollectionFromSession(
   collectionName

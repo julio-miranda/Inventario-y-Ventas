@@ -12,8 +12,7 @@
     });
 
   mvc.models =
-    mvc.models ||
-    {};
+    mvc.models || {};
 
   const model = Object.freeze({
     name: "inventory",
@@ -77,16 +76,18 @@
     }
   });
 
-  mvc.models.inventory =
-    model;
+  mvc.models.inventory = model;
 
   if (
     window.AppRouter &&
-    typeof window.AppRouter.registerRoute ===
-      "function"
+    typeof window.AppRouter.registerRoute === "function"
   ) {
-    window.AppRouter.registerRoute(
-      model
+    window.AppRouter.registerRoute(model);
+  } else {
+    console.warn(
+      "[Inventory Model] AppRouter no está disponible. " +
+      "La ruta inventory.html no se registró."
     );
   }
 })();
+
