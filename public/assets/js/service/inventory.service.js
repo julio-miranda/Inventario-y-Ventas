@@ -1,6 +1,90 @@
-//js/inventory/inventory.service.js
 "use strict";
 
+/*
+ * ============================================================
+ * FIREBASE COMPAT: INSTANCIA CANÓNICA DEL SERVICIO
+ * ============================================================
+ *
+ * Este módulo utiliza exclusivamente la API compat del mismo
+ * SDK expuesto en window.firebase. No debe mezclar referencias,
+ * consultas, lotes o transacciones creados por la API modular
+ * ni por otra copia/versión del SDK.
+ *
+ * La conexión al emulador se configura previamente en
+ * js/config/firebase.js. Esta instancia hereda esa configuración.
+ */
+
+const bioxInvFirebaseSdk =
+  typeof window !== "undefined" ? window.firebase : null;
+
+if (
+  !bioxInvFirebaseSdk ||
+  typeof bioxInvFirebaseSdk.firestore !== "function" ||
+  typeof bioxInvFirebaseSdk.auth !== "function"
+) {
+  throw new Error(
+    "Firebase compat no está disponible. Carga js/config/firebase.js antes de inventory.service.js."
+  );
+}
+
+const bioxInvFirestore = bioxInvFirebaseSdk.firestore();
+const bioxInvAuth = bioxInvFirebaseSdk.auth();
+
+if (
+  !bioxInvFirestore ||
+  typeof bioxInvFirestore.collection !== "function" ||
+  typeof bioxInvFirestore.batch !== "function" ||
+  typeof bioxInvFirestore.runTransaction !== "function"
+) {
+  throw new Error(
+    "La instancia de Firestore no es compatible con la API compat esperada por inventory.service.js."
+  );
+}
+
+function bioxInvServerTimestamp() {
+  return bioxInvFirebaseSdk.firestore.FieldValue.serverTimestamp();
+}
+
+/*
+ * Firestore acepta objetos Date nativos. Se utiliza esta conversión
+ * al escribir marcas de tiempo de operación para evitar enviar un
+ * Timestamp creado por otra copia/versión del SDK.
+ *
+ * El Timestamp original se conserva en las variables locales cuando
+ * se necesita llamar toMillis() para cálculos y caché de sesión.
+ */
+function bioxInvToFirestoreDate(value) {
+  let date = null;
+
+  if (value instanceof Date) {
+    date = new Date(value.getTime());
+  } else if (value && typeof value.toDate === "function") {
+    date = value.toDate();
+    if (date instanceof Date) {
+      date = new Date(date.getTime());
+    }
+  } else if (value && typeof value.toMillis === "function") {
+    const milliseconds = Number(value.toMillis());
+    if (Number.isFinite(milliseconds)) {
+      date = new Date(milliseconds);
+    }
+  } else if (typeof value === "number" || typeof value === "string") {
+    date = new Date(value);
+  }
+
+  if (!(date instanceof Date) || !Number.isFinite(date.getTime())) {
+    throw new Error(
+      "No se pudo convertir la fecha de operación a una fecha válida para Firestore."
+    );
+  }
+
+  return date;
+}
+
+console.info("[Inventario] Servicio conectado a una única instancia Firebase compat.", {
+  projectId: bioxInvFirestore.app?.options?.projectId || "desconocido",
+  sdkVersion: bioxInvFirebaseSdk.SDK_VERSION || "desconocida"
+});
 
 /*
  * Reparación histórica automática por local.
@@ -41,9 +125,9 @@ function bioxInvAssertInventoryWriteAccess(user = null) {
   const authenticatedUser =
     user ||
     (
-      typeof auth !== "undefined" &&
-        auth
-        ? auth.currentUser
+      typeof bioxInvAuth !== "undefined" &&
+        bioxInvAuth
+        ? bioxInvAuth.currentUser
         : null
     );
   if (
@@ -230,7 +314,7 @@ async function bioxInvProcessBatchLines(
   operationDate
 ) {
   const user =
-    auth.currentUser || null;
+    bioxInvAuth.currentUser || null;
   if (!user || !user.uid) {
     throw new Error(
       "No existe un usuario autenticado para registrar la entrada de inventario."
@@ -361,9 +445,19 @@ async function bioxInvProcessBatchLines(
         error && error.message
           ? error.message
           : "Error desconocido al procesar el producto.";
-      throw new Error(
-        `${label}: ${message}`
-      );
+
+      console.error("[Inventario] Falló el procesamiento de una línea.", {
+        producto: line.name || line.product?.name || line.productText || label,
+        modo: line.mode,
+        codigo: error?.code || null,
+        tipoError: error?.name || "Error",
+        mensaje: message,
+        errorOriginal: error
+      });
+
+      const wrappedError = new Error(`${label}: ${message}`);
+      wrappedError.cause = error;
+      throw wrappedError;
     }
   }
   return results;
@@ -456,14 +550,14 @@ async function bioxInvReconcileProductsAgainstMovements(
         index + 450
       );
     const batch =
-      db.batch();
+      bioxInvFirestore.batch();
     chunk.forEach(
       ({
         product,
         stock
       }) => {
         const ref =
-          db
+          bioxInvFirestore
             .collection(
               bioxInvPRODUCTS_COLLECTION
             )
@@ -489,9 +583,7 @@ async function bioxInvReconcileProductsAgainstMovements(
                 )
                 : 0,
             updatedAt:
-              firebase.firestore
-                .FieldValue
-                .serverTimestamp()
+              bioxInvServerTimestamp()
           }
         );
       }
@@ -702,7 +794,7 @@ async function bioxInvRegisterInventoryExpense(
       )
       : 0;
   const expenseRef =
-    db
+    bioxInvFirestore
       .collection(
         bioxInvEXPENSES_COLLECTION
       )
@@ -751,8 +843,8 @@ async function bioxInvRegisterInventoryExpense(
     userId:
       user
         ? user.uid
-        : auth.currentUser
-          ? auth.currentUser.uid
+        : bioxInvAuth.currentUser
+          ? bioxInvAuth.currentUser.uid
           : null,
     userName:
       context.name ||
@@ -797,7 +889,7 @@ async function bioxInvRegisterInventoryExpense(
   await expenseRef.set({
     ...expenseData,
     createdAt:
-      operationTimestamp
+      bioxInvToFirestoreDate(operationTimestamp)
   });
   bioxInvUpsertSessionDocument(
     bioxInvEXPENSES_COLLECTION,
@@ -842,11 +934,11 @@ async function bioxInvAttachExpenseToMovements(
     return;
   }
   const batch =
-    db.batch();
+    bioxInvFirestore.batch();
   movementIds.forEach(
     movementId => {
       batch.update(
-        db
+        bioxInvFirestore
           .collection(
             bioxInvMOVEMENTS_COLLECTION
           )
@@ -856,9 +948,7 @@ async function bioxInvAttachExpenseToMovements(
         {
           expenseId,
           updatedAt:
-            firebase.firestore
-              .FieldValue
-              .serverTimestamp()
+            bioxInvServerTimestamp()
         }
       );
     }
@@ -1127,33 +1217,58 @@ async function bioxInvGetProductMovementSnapshotsForTransaction(
     );
   }
 
-  const collection = db.collection(bioxInvMOVEMENTS_COLLECTION);
+  const collection = bioxInvFirestore.collection(bioxInvMOVEMENTS_COLLECTION);
 
   /*
    * Se consultan las tres variantes históricas del identificador.
    * Así no quedan fuera movimientos antiguos que usaban productID
    * o product_id en lugar de productId.
    */
-  const snapshots = await Promise.all([
-    transaction.get(collection.where("productId", "==", targetProductId)),
-    transaction.get(collection.where("productID", "==", targetProductId)),
-    transaction.get(collection.where("product_id", "==", targetProductId))
+  /*
+   * La API web de Firestore solo admite DocumentReference en
+   * transaction.get(). No admite Query. Por eso primero se ejecutan
+   * las consultas normales y después se vuelven a leer sus documentos
+   * individualmente dentro de la transacción.
+   *
+   * Esta función se invoca dentro del callback transaccional; si Firestore
+   * reintenta el callback por un conflicto, las consultas también se repiten.
+   */
+  const querySnapshots = await Promise.all([
+    collection.where("productId", "==", targetProductId).get(),
+    collection.where("productID", "==", targetProductId).get(),
+    collection.where("product_id", "==", targetProductId).get()
   ]);
+
+  const referencesById = new Map();
+
+  querySnapshots.forEach(querySnapshot => {
+    (querySnapshot.docs || []).forEach(document => {
+      referencesById.set(document.id, document.ref);
+    });
+  });
+
+  const currentSnapshots = await Promise.all(
+    Array.from(referencesById.values()).map(reference =>
+      transaction.get(reference)
+    )
+  );
 
   const documentsById = new Map();
 
-  snapshots.forEach(querySnapshot => {
-    (querySnapshot.docs || []).forEach(document => {
-      const raw = document.data() || {};
-      const movementProductId = bioxInvGetMovementProductIdForRepair(raw);
+  currentSnapshots.forEach(document => {
+    if (!document || !document.exists) {
+      return;
+    }
 
-      if (
-        movementProductId === targetProductId &&
-        bioxInvMatchesCurrentLocal(raw)
-      ) {
-        documentsById.set(document.id, document);
-      }
-    });
+    const raw = document.data() || {};
+    const movementProductId = bioxInvGetMovementProductIdForRepair(raw);
+
+    if (
+      movementProductId === targetProductId &&
+      bioxInvMatchesCurrentLocal(raw)
+    ) {
+      documentsById.set(document.id, document);
+    }
   });
 
   return Array.from(documentsById.values());
@@ -1273,7 +1388,7 @@ async function bioxInvCreateNewProductFromLine(
       validOperationDate
     );
   const productRef =
-    db
+    bioxInvFirestore
       .collection(
         bioxInvPRODUCTS_COLLECTION
       )
@@ -1405,7 +1520,7 @@ async function bioxInvCreateNewProductFromLine(
       )
   };
   const movementRef =
-    db
+    bioxInvFirestore
       .collection(
         bioxInvMOVEMENTS_COLLECTION
       )
@@ -1509,17 +1624,15 @@ async function bioxInvCreateNewProductFromLine(
         validOperationDate
     });
   const batch =
-    db.batch();
+    bioxInvFirestore.batch();
   batch.set(
     productRef,
     {
       ...productData,
       createdAt:
-        operationTimestamp,
+        bioxInvToFirestoreDate(operationTimestamp),
       updatedAt:
-        firebase.firestore
-          .FieldValue
-          .serverTimestamp()
+        bioxInvServerTimestamp()
     }
   );
   batch.set(
@@ -1527,7 +1640,7 @@ async function bioxInvCreateNewProductFromLine(
     {
       ...movementData,
       createdAt:
-        operationTimestamp
+        bioxInvToFirestoreDate(operationTimestamp)
     }
   );
   await batch.commit();
@@ -1618,8 +1731,8 @@ async function bioxInvAddStockToExistingProduct(
 
   const operationDateValue = bioxInvGetLocalDateInputValue(validOperationDate);
   const operationTimestamp = bioxInvBuildOperationTimestamp(validOperationDate);
-  const productRef = db.collection(bioxInvPRODUCTS_COLLECTION).doc(product.id);
-  const movementRef = db.collection(bioxInvMOVEMENTS_COLLECTION).doc();
+  const productRef = bioxInvFirestore.collection(bioxInvPRODUCTS_COLLECTION).doc(product.id);
+  const movementRef = bioxInvFirestore.collection(bioxInvMOVEMENTS_COLLECTION).doc();
 
   let previousStock = 0;
   let nextStock = 0;
@@ -1629,7 +1742,7 @@ async function bioxInvAddStockToExistingProduct(
   let timelineBalanceUpdates = [];
   let latestEntryMetadata = null;
 
-  const transactionResult = await db.runTransaction(async transaction => {
+  const transactionResult = await bioxInvFirestore.runTransaction(async transaction => {
     const productSnapshot = await transaction.get(productRef);
 
     if (!productSnapshot.exists) {
@@ -1831,7 +1944,7 @@ async function bioxInvAddStockToExistingProduct(
       referenceBook: latestEntryMetadata.reference,
       numeroDocumento: latestEntryMetadata.documentNumber,
       fechaUltimaEntrada: latestEntryMetadata.operationDate,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      updatedAt: bioxInvServerTimestamp()
     };
 
     // Todas las lecturas de la transacción se completaron antes de escribir.
@@ -1839,7 +1952,7 @@ async function bioxInvAddStockToExistingProduct(
       transaction.update(update.ref, {
         saldoAnterior: update.saldoAnterior,
         saldoActual: update.saldoActual,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        updatedAt: bioxInvServerTimestamp()
       });
     });
 
@@ -1847,7 +1960,7 @@ async function bioxInvAddStockToExistingProduct(
 
     transaction.set(movementRef, {
       ...movementData,
-      createdAt: operationTimestamp
+      createdAt: bioxInvToFirestoreDate(operationTimestamp)
     });
 
     return {
@@ -2239,7 +2352,7 @@ async function bioxInvUpdateLinkedExpenseForEntryEdit(transaction, {
     expenseId
   ) {
     const expenseRef =
-      db
+      bioxInvFirestore
         .collection(
           bioxInvEXPENSES_COLLECTION
         )
@@ -2422,9 +2535,7 @@ async function bioxInvUpdateLinkedExpenseForEntryEdit(transaction, {
           inventoryProductCount:
             expenseProductIds.size,
           updatedAt:
-            firebase.firestore
-              .FieldValue
-              .serverTimestamp()
+            bioxInvServerTimestamp()
         }
       );
     }
@@ -2444,7 +2555,7 @@ async function bioxInvUpdateEntryMovement(
   values
 ) {
   const movementRef =
-    db
+    bioxInvFirestore
       .collection(
         bioxInvMOVEMENTS_COLLECTION
       )
@@ -2453,8 +2564,8 @@ async function bioxInvUpdateEntryMovement(
       );
   const user =
     bioxInvAssertInventoryWriteAccess(
-      typeof auth !== "undefined"
-        ? auth.currentUser
+      typeof bioxInvAuth !== "undefined"
+        ? bioxInvAuth.currentUser
         : null
     );
 
@@ -2516,7 +2627,7 @@ async function bioxInvUpdateEntryMovement(
     null;
   let timelineBalanceUpdates =
     [];
-  await db.runTransaction(
+  await bioxInvFirestore.runTransaction(
     async transaction => {
       const movementSnap =
         await transaction.get(
@@ -2564,23 +2675,25 @@ async function bioxInvUpdateEntryMovement(
       if (
         linkedExpenseId
       ) {
+        /*
+         * transaction.get() no admite consultas. Se obtiene primero
+         * el conjunto de referencias y luego cada documento se lee
+         * individualmente dentro de la transacción.
+         */
         const linkedExpenseQuerySnapshot =
-          await transaction.get(
-            db
-              .collection(
-                bioxInvMOVEMENTS_COLLECTION
-              )
-              .where(
-                "expenseId",
-                "==",
-                linkedExpenseId
-              )
-          );
+          await bioxInvFirestore
+            .collection(bioxInvMOVEMENTS_COLLECTION)
+            .where("expenseId", "==", linkedExpenseId)
+            .get();
+
+        const linkedExpenseSnapshots = await Promise.all(
+          linkedExpenseQuerySnapshot.docs
+            .filter(document => document.id !== movementId)
+            .map(document => transaction.get(document.ref))
+        );
+
         linkedExpenseMovementSnapshots =
-          linkedExpenseQuerySnapshot.docs.filter(
-            document =>
-              document.id !== movementId
-          );
+          linkedExpenseSnapshots.filter(document => document.exists);
       }
       const productId =
         String(
@@ -2593,7 +2706,7 @@ async function bioxInvUpdateEntryMovement(
         );
       }
       const productRef =
-        db
+        bioxInvFirestore
           .collection(
             bioxInvPRODUCTS_COLLECTION
           )
@@ -2939,13 +3052,11 @@ async function bioxInvUpdateEntryMovement(
         {
           ...nextMovementData,
           createdAt:
-            operationTimestamp,
+            bioxInvToFirestoreDate(operationTimestamp),
           editado:
             true,
           fechaUltimaEdicion:
-            firebase.firestore
-              .FieldValue
-              .serverTimestamp(),
+            bioxInvServerTimestamp(),
           usuarioUltimaEdicion:
             user
               ? user.uid
@@ -2955,9 +3066,7 @@ async function bioxInvUpdateEntryMovement(
             user?.email ||
             "",
           updatedAt:
-            firebase.firestore
-              .FieldValue
-              .serverTimestamp()
+            bioxInvServerTimestamp()
         }
       );
       timelineBalanceUpdates.forEach(
@@ -2970,9 +3079,7 @@ async function bioxInvUpdateEntryMovement(
               saldoActual:
                 movementUpdate.saldoActual,
               updatedAt:
-                firebase.firestore
-                  .FieldValue
-                  .serverTimestamp()
+                bioxInvServerTimestamp()
             }
           );
         }
@@ -3065,9 +3172,7 @@ async function bioxInvUpdateEntryMovement(
               )
               : "",
           updatedAt:
-            firebase.firestore
-              .FieldValue
-              .serverTimestamp()
+            bioxInvServerTimestamp()
         }
       );
       updatedMovement = {
@@ -3303,10 +3408,10 @@ async function bioxInvRecalculateProductMovementBalances(productId) {
   }
 
   bioxInvAssertInventoryWriteAccess(
-    typeof auth !== "undefined" ? auth.currentUser : null
+    typeof bioxInvAuth !== "undefined" ? bioxInvAuth.currentUser : null
   );
 
-  const productRef = db
+  const productRef = bioxInvFirestore
     .collection(bioxInvPRODUCTS_COLLECTION)
     .doc(targetProductId);
 
@@ -3315,7 +3420,7 @@ async function bioxInvRecalculateProductMovementBalances(productId) {
   let openingBalance = 0;
   let movementCount = 0;
 
-  await db.runTransaction(async transaction => {
+  await bioxInvFirestore.runTransaction(async transaction => {
     const productSnapshot = await transaction.get(productRef);
 
     if (!productSnapshot.exists) {
@@ -3356,7 +3461,7 @@ async function bioxInvRecalculateProductMovementBalances(productId) {
       transaction.update(update.ref, {
         saldoAnterior: update.saldoAnterior,
         saldoActual: update.saldoActual,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        updatedAt: bioxInvServerTimestamp()
       });
     });
   });
@@ -3392,7 +3497,7 @@ async function bioxInvRecalculateProductMovementBalances(productId) {
  */
 async function bioxInvRepairAllHistoricalMovementBalances() {
   bioxInvAssertInventoryWriteAccess(
-    typeof auth !== "undefined" ? auth.currentUser : null
+    typeof bioxInvAuth !== "undefined" ? bioxInvAuth.currentUser : null
   );
 
   const localId = String(bioxInvCurrentLocalId || "").trim();
@@ -3401,10 +3506,10 @@ async function bioxInvRepairAllHistoricalMovementBalances() {
   }
 
   const [productSnapshot, movementSnapshot] = await Promise.all([
-    db.collection(bioxInvPRODUCTS_COLLECTION)
+    bioxInvFirestore.collection(bioxInvPRODUCTS_COLLECTION)
       .where("id_local", "==", localId)
       .get(),
-    db.collection(bioxInvMOVEMENTS_COLLECTION)
+    bioxInvFirestore.collection(bioxInvMOVEMENTS_COLLECTION)
       .where("id_local", "==", localId)
       .get()
   ]);
@@ -3475,13 +3580,13 @@ async function bioxInvRepairAllHistoricalMovementBalances() {
 
   for (let index = 0; index < allUpdates.length; index += 450) {
     const chunk = allUpdates.slice(index, index + 450);
-    const batch = db.batch();
+    const batch = bioxInvFirestore.batch();
 
     chunk.forEach(update => {
       batch.update(update.ref, {
         saldoAnterior: update.saldoAnterior,
         saldoActual: update.saldoActual,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        updatedAt: bioxInvServerTimestamp()
       });
     });
 
@@ -3564,7 +3669,7 @@ async function bioxInvDeleteEntryMovement(movementId) {
 
   await bioxInvEnsureAutomaticHistoricalRepair();
 
-  const movementRef = db.collection(bioxInvMOVEMENTS_COLLECTION).doc(target);
+  const movementRef = bioxInvFirestore.collection(bioxInvMOVEMENTS_COLLECTION).doc(target);
 
   let deletedProductId = '';
   let removedEntry = 0;
@@ -3574,7 +3679,7 @@ async function bioxInvDeleteEntryMovement(movementId) {
   let updatedExpense = null;
   let timelineBalanceUpdates = [];
 
-  await db.runTransaction(async transaction => {
+  await bioxInvFirestore.runTransaction(async transaction => {
     const movementSnapshot = await transaction.get(movementRef);
 
     if (!movementSnapshot.exists) {
@@ -3608,7 +3713,7 @@ async function bioxInvDeleteEntryMovement(movementId) {
       throw new Error('El movimiento no tiene un producto asociado.');
     }
 
-    const productRef = db.collection(bioxInvPRODUCTS_COLLECTION).doc(deletedProductId);
+    const productRef = bioxInvFirestore.collection(bioxInvPRODUCTS_COLLECTION).doc(deletedProductId);
     const productSnapshot = await transaction.get(productRef);
 
     if (!productSnapshot.exists) {
@@ -3691,7 +3796,7 @@ async function bioxInvDeleteEntryMovement(movementId) {
     let nextExpenseAmount = 0;
 
     if (expenseId) {
-      expenseRef = db.collection(bioxInvEXPENSES_COLLECTION).doc(expenseId);
+      expenseRef = bioxInvFirestore.collection(bioxInvEXPENSES_COLLECTION).doc(expenseId);
       expenseSnapshot = await transaction.get(expenseRef);
 
       if (expenseSnapshot.exists) {
@@ -3718,7 +3823,7 @@ async function bioxInvDeleteEntryMovement(movementId) {
       transaction.update(update.ref, {
         saldoAnterior: update.saldoAnterior,
         saldoActual: update.saldoActual,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        updatedAt: bioxInvServerTimestamp()
       });
     });
 
@@ -3726,7 +3831,7 @@ async function bioxInvDeleteEntryMovement(movementId) {
       quantity: nextStock,
       stockCurrentUnits: nextStock,
       boxes: bioxInvDecimalOrZero(nextStock / currentUnitsPerBox),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      updatedAt: bioxInvServerTimestamp()
     });
 
     transaction.delete(movementRef);
@@ -3734,7 +3839,7 @@ async function bioxInvDeleteEntryMovement(movementId) {
     if (expenseSnapshot && expenseSnapshot.exists && expenseRef) {
       transaction.update(expenseRef, {
         amount: nextExpenseAmount,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: bioxInvServerTimestamp(),
         inventoryLastMovementDeletion: true
       });
 
